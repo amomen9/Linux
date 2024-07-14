@@ -268,3 +268,5 @@ Inside the timer specify the service with argument.
 
 6) [https://blog.dcycle.com/blog/112/systemd-replacement-cron-every-10-seconds/](https://blog.dcycle.com/blog/112/systemd-replacement-cron-every-10-seconds/)
 7) [https://stackoverflow.com/questions/48195340/systemd-with-multiple-execstart](https://stackoverflow.com/questions/48195340/systemd-with-multiple-execstart)
+
+Finish ■
