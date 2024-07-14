@@ -4,10 +4,9 @@ Note:
 
 * Some of the very few directives are for RHEL (Red Hat Enterprise Linux). For example syslog.target exists in RHEL. Overall, this document is nearly identical for all Linux Distros which have systemd. (Ex: Debian, RHEL, etc.)
 * For the unit files (services, timers, targets etc.) you can create the file under one of these paths:
- 
- 
+
   `/lib/systemd/system/`
-  
+
   `/etc/systemd/system/`
 
 1) create service file in /etc/systemd/system/ for your task
@@ -256,9 +255,8 @@ Inside the timer specify the service with argument.
   timer may start the service at startup anyway if the scheduled time is
   relative. If the timer is set to a service template though, the service
   template has to be enabled.
-
-If you stop an enabled timer, it will start on its own again after some time even without reboot. To
-prevent a timer from working at all you must disable it.
+* If you stop an enabled timer, it will start on its own again after some time even without reboot. To
+  prevent a timer from working at all you must disable it.
 
 **References:**
 
