@@ -3,31 +3,19 @@
 1) create service file in /etc/systemd/system/ for your task
    (which is to be scheduled)
 
-| vi /lib/systemd/system/pgbt.service |
-| :---------------------------------- |
+sudo vi /lib/systemd/system/pgbt.service
+
 
 or
 
-| vi /etc/systemd/system/pgbt.service |
-| :---------------------------------- |
+```shell sudo vi /etc/systemd/system/pgbt.service```
+
 
 2) paste something like the following inside:
 
-|   #
-  /etc/systemd/system/pgbt.service # It's not
-  recommended to modify this file in-place, It is recommended to use systemd #
-  "dropin" feature; i.e.
-  create file with suffix .conf under #
-  /etc/systemd/system/pgb.service.d directory overriding the # unit's
-  defaults. You can also use "systemctl edit pgb" # Look at
-  systemd.unit(5) manual page for more info.   [Unit] Description=PG13
-  backup service triggered by timer #Documentation='No
-  documentation for now' After=syslog.target After=network.target After=multi-user.target After=sshd.service After=postgresql-13.service Wants=pgbt.timer   [Service] Type=oneshot   User=postgres Group=postgres   Environment=PGDATA=/data/postgres13/data/ Environment=PGLOG=/var/log/pgsql/ Environment=SCHOME=/data/scripts/ WorkingDirectory=/data/scripts/   # Where to
-  send early-startup messages from the server # This is
-  normally controlled by the global default set by systemd StandardOutput=syslog   # Disable
 
-| OOM kill on the scripts OOMScoreAdjust=-1000 Environment=PGB_OOM_ADJUST_FILE=/proc/self/oom_score_adj Environment=PGB_OOM_ADJUST_VALUE=0   ExecStart=/bin/bash /data/scripts/postgres_backup.sh   [Install] WantedBy=multi-user.target |
-| :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|  |
+| :- |
 
 ·
 in step 2 under unit you
