@@ -228,7 +228,7 @@ WantedBy=multi-user.target
 %i and %I
 
 are variables holding the value passed to the service template's argument. %i is literal,
-meaning it is exactly the value that is written in front of @ in "servicet@arg-1.service". Though %I replaces - with / (hyphen with forward slash).
+meaning it is exactly the value that is written in front of @ in "`servicet@arg-1.service`". Though %I replaces - with / (hyphen with forward slash).
 
 * pass script's name as an
   argument to the following command if you want to run it once
