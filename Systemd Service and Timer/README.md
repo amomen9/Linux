@@ -26,11 +26,7 @@ sudo vi /etc/systemd/system/pgbt.service
 
 ```shell
 # /etc/systemd/system/pgbt.service
-# It's not recommended to modify this file in-place, It is recommended to use systemd
-# "dropin" feature;  i.e. create file with suffix .conf under
-# /etc/systemd/system/pgb.service.d directory overriding the
-# unit's defaults. You can also use "systemctl edit pgb"
-# Look at systemd.unit(5) manual page for more info.
+
 
 [Unit]
 Description=PG13 backup service triggered by timer
@@ -182,11 +178,7 @@ systemctl enable pgbt.timer
 
 ```shell
 # /etc/systemd/system/backup@.service
-# It's not recommended to modify this file in-place, It is recommended to use systemd
-# "dropin" feature;  i.e. create file with suffix .conf under
-# /etc/systemd/system/backup@.service.d directory overriding the
-# unit's defaults. You can also use "systemctl edit backup@"
-# Look at systemd.unit(5) manual page for more info.
+
 
 [Unit]
 Description= backup service triggered by timer executing %I
