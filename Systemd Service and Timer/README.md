@@ -1,5 +1,7 @@
 # Setup managed systemd jobs triggered by systemd timers
 
+Note:
+Some of the very few directives are for RHEL (Red Hat Enterprise Linux). For example syslog.target exists in RHEL. Overall, this document is nearly identical for all Linux Distros which have systemd. (Ex: Debian, RHEL, etc.)
 1) create service file in /etc/systemd/system/ for your task
    (which is to be scheduled)
 
@@ -79,29 +81,46 @@ WantedBy=multi-user.target
 
 **- Some definitions:**
 
-ExecStartPre=, ExecStartPost=
+| ExecStartPre=, ExecStartPost= |
+| :---------------------------- |
 
-Additional commands that are executed before or after the
-command in ExecStart=, respectively.If any of those commands (not prefixed with
-"-") fail, the rest are not executed and the unit is considered
-failed.
+Additional commands that are executed before or after the command in `ExecStart=`, respectively. If any of those commands (not prefixed with "-") fail, by default, the rest are not executed and the unit is considered failed. Anyways, you can say to systemd what exit codes you consider success or pass for one of the `Exec` directives like below:
 
-ExecStart=
+`SuccessExitStatus=0 1 2`  (Consider success/pass if any of these exit codes where returned)
+
+| ExecStart= |
+| :--------- |
 
 main commands or scripts
 
-ExecStartPost= commands are only run after the commands
-specified in ExecStart= have been invoked successfully, as determined by Type
+`ExecStartPost=` commands are only run after the commands specified in `ExecStart=` have been invoked successfully, as determined by Type.
 
-ExecCondition=
+| ExecCondition= |
+| :------------- |
 
-Optional commands that are executed before the command(s) in
-ExecStartPre=. Syntax is the same as for ExecStart=, except that multiple
-command lines are allowed and the commands are executed one after the other,
-serially
+Optional commands that are executed before the command(s) in `ExecStartPre=`. Syntax is the same as for `ExecStart=`, except that multiple command lines are allowed and the commands are executed one after the other, serially
 
-3) create timer /lib/systemd/system/pgbt.timer’:
+3) create timer:
+```shell
+sudo vi /lib/systemd/system/pgbt.timer
+```
 
+```shell
+# Timer for the service
+
+[Unit]
+Description=Executes backup operation
+Requires=PostgreSQL@postgres_backup.service
+
+[Timer]
+Unit=PostgreSQL@postgres_backup.service
+OnCalendar=*-*-* 23:00:00
+AccuracySec=1us
+
+[Install]
+WantedBy=timers.target
+
+```
 |   # Timer for
   the service   [Unit] Description=Executes
   backup operation Requires=PostgreSQL@postgres_backup.service   [Timer] Unit=PostgreSQL@postgres_backup.service OnCalendar=*-*-*
