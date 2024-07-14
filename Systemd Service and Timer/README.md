@@ -3,66 +3,81 @@
 1) create service file in /etc/systemd/system/ for your task
    (which is to be scheduled)
 
+```shell
 sudo vi /lib/systemd/system/pgbt.service
-
+```
 
 or
 
-```shell sudo vi /etc/systemd/system/pgbt.service```
-
+```shell
+sudo vi /etc/systemd/system/pgbt.service
+```
 
 2) paste something like the following inside:
 
+```shell
+# /etc/systemd/system/pgbt.service
+# It's not recommended to modify this file in-place, It is recommended to use systemd
+# "dropin" feature;  i.e. create file with suffix .conf under
+# /etc/systemd/system/pgb.service.d directory overriding the
+# unit's defaults. You can also use "systemctl edit pgb"
+# Look at systemd.unit(5) manual page for more info.
 
-|  |
-| :- |
+[Unit]
+Description=PG13 backup service triggered by timer
+#Documentation='No documentation for now'
+After=syslog.target
+After=network.target
+After=multi-user.target
+After=sshd.service
+After=postgresql-13.service
+Wants=pgbt.timer
 
-·
-in step 2 under unit you
-should add after which units you want this service to load.
+[Service]
+Type=oneshot
 
-·
-in step 2 under unit you
-should add which timer is to trigger this service
+User=postgres
+Group=postgres
 
-·
-in step 2 under service you
-should specify type 'oneshot' for Type directive if you need to specify
-multiple **ExecStart** tags to be executed serially
+Environment=PGDATA=/data/postgres13/data/
+Environment=PGLOG=/var/log/pgsql/
+Environment=SCHOME=/data/scripts/
+WorkingDirectory=/data/scripts/
 
-·
-in step 2 under service you
-should add user and group with which the service is to be executed
+# Where to send early-startup messages from the server
+# This is normally controlled by the global default set by systemd
+StandardOutput=syslog
 
-·
-in step 2 under service you
-should add environment variables
+# Disable OOM kill on the scripts
+OOMScoreAdjust=-1000
+Environment=PGB_OOM_ADJUST_FILE=/proc/self/oom_score_adj
+Environment=PGB_OOM_ADJUST_VALUE=0
 
-·
-in step 2 under service you
-should disable OOM kill on the scripts
+ExecStart=/bin/bash /data/scripts/postgres_backup.sh
 
-·
-in step 2 under service you
-should add **ExecPre** tags to be executed before the ExecStart tag
-serially. Multiple ones can be specified
+[Install]
+WantedBy=multi-user.target
 
-·
-in step 2 under service you
-should specify ExecStart like what you see. Multiple ones are allowed because
-Type is “oneshot”
 
-·
-in step 2 under service you
-should specify **ExecPost** like what you see. Multiple ones are
-allowed.
+```
 
-·
-in step 2 under Install you
-should add the target multi-user.target because this task is to be run by this
-target
+* in step 2 under unit you should add after which units you want this service to load.
+* in step 2 under unit you should add which timer is to trigger this service
+* in step 2 under service you should specify type 'oneshot' for Type directive if you need to specify
+  multiple **ExecStart** tags to be executed serially
+* in step 2 under service you should add user and group with which the service is to be executed
+* in step 2 under service you should add environment variables
+* in step 2 under service you should disable OOM kill on the scripts
+* in step 2 under service you should add **ExecPre** tags to be executed before the ExecStart tag
+  serially. Multiple ones can be specified
+* in step 2 under service you should specify ExecStart like what you see. Multiple ones are allowed because
+  Type is “oneshot”
+* in step 2 under service you should specify **ExecPost** like what you see. Multiple ones are
+  allowed.
+* in step 2 under Install you should add the target multi-user.target because this task is to be run by this
+  target
 
-*) Some definitions:
+**- Some definitions:**
 
 ExecStartPre=, ExecStartPost=
 
