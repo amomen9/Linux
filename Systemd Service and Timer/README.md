@@ -4,6 +4,8 @@ Note:
 
 * Some of the very few directives are for RHEL (Red Hat Enterprise Linux). For example syslog.target exists in RHEL. Overall, this document is nearly identical for all Linux Distros which have systemd. (Ex: Debian, RHEL, etc.)
 * For the unit files (services, timers, targets etc.) you can create the file under one of these paths:
+ 
+ 
   `/lib/systemd/system/`
   `/etc/systemd/system/`
 
