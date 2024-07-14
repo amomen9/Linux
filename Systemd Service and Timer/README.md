@@ -1,4 +1,4 @@
-# Setup manual for managed systemd jobs triggered by systemd timers
+# Setup managed systemd jobs triggered by systemd timers
 
 1) create service file in /etc/systemd/system/ for your task
    (which is to be scheduled)
