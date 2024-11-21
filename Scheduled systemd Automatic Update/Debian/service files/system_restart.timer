@@ -1,0 +1,15 @@
+# Timer for the service
+
+[Unit]
+Description=Triggers system and applications update
+Requires=system_update.service
+
+[Timer]
+Unit=system_update.service
+OnCalendar=Fri 04:30:00
+Persistent=true
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target
+

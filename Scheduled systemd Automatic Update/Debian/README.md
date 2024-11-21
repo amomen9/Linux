@@ -35,14 +35,14 @@ Environment=PGB_OOM_ADJUST_FILE=/proc/self/oom_score_adj
 Environment=PGB_OOM_ADJUST_VALUE=0
 
 # update & upgrade
-ExecStart=/bin/sh -c 'dpkg --configure -a; DEBIAN_FRONTEND=noninteractive apt update && apt upgrade -y'
+ExecStart=/bin/sh -c '/usr/bin/dpkg --configure -a; DEBIAN_FRONTEND=noninteractive apt update && apt upgrade -y'
 
 [Install]
 WantedBy=multi-user.target
 
 ```
 
-The command `/bin/sh -c 'sudo dpkg --configure -a; DEBIAN_FRONTEND=noninteractive apt update && apt upgrade -y'` first recovers
+The command `/bin/sh -c '/usr/bin/dpkg --configure -a; DEBIAN_FRONTEND=noninteractive apt update && apt upgrade -y'` first recovers
  any broken dpkg process, then updates the repository indexes first, then upgrades the packages, suppressing service(s) restart
  prompt. We evidently need to skip the service restart prompt because the update process needs to be carried out passively.
 
