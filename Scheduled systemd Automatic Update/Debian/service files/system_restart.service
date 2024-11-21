@@ -21,7 +21,7 @@ Environment=PGB_OOM_ADJUST_FILE=/proc/self/oom_score_adj
 Environment=PGB_OOM_ADJUST_VALUE=0
 
 # update & upgrade
-ExecStart=/bin/sh -c '/usr/bin/dpkg --configure -a; DEBIAN_FRONTEND=noninteractive apt update && apt upgrade -y'
+ExecStart=/usr/bin/bash -c 'if grep -q "System restart required" "/var/run/reboot-required"; then echo "rebooting..."; reboot -i; fi'
 
 [Install]
 WantedBy=multi-user.target
