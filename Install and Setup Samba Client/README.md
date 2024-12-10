@@ -15,7 +15,7 @@ sudo mkdir /backup
 sudo chown -R postgres:postgres /backup
 ```
 
-### 3. Mount (temporary mount) the remote share
+### 3. Mount(temporary mount) the remote share
 
 Mount (temporary mount) the remote share on the created local mount point. You will be prompted to enter the password for the Windows user account afterwards.
 
