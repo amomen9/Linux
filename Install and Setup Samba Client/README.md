@@ -31,7 +31,7 @@ Mount (temporary mount) the remote share on the created local mount point. You w
 # lsof /backup
 
 # sudo mount -t cifs -o username=username,password=P@$$vvorcl,uid=116,gid=122,_netdev //WINDOWS_IP/SHARE_NAME /mnt/windows_share
-mount -t cifs -o username=RedgateMon@mofid.dc,password=P@$$vvorcl,uid=116,gid=122,_netdev //172.23.97.4/PostgreSQL /backup
+mount -t cifs -o username=RedgateMon@mofid.dc,password=P@$$vvorcl,uid=116,gid=122,file_mode=0660,dir_mode=0660,_netdev //172.23.97.4/PostgreSQL /backup
 
 ```
 
