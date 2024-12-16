@@ -49,7 +49,7 @@ sudo vi /etc/fstab
 Add the following line at the end of the file:
 
 ```shell
-//WINDOWS_IP/SHARE_NAME /mnt/windows_share cifs username=username,password=your_password,uid=116,gid=122,file_mode=0660,dir_mode=0660,_netdev 0 0
+# //WINDOWS_IP/SHARE_NAME /mnt/windows_share cifs username=username,password=your_password,uid=116,gid=122,file_mode=0660,dir_mode=0660,_netdev 0 0
 //172.23.97.4/PostgreSQL /backup cifs username=RedgateMon@mofid.dc,password=P@$$vvorcl,uid=116,gid=122,file_mode=0660,dir_mode=0660,_netdev 0 0
 ```
 
