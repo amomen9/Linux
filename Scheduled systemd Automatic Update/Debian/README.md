@@ -81,7 +81,7 @@ The directive `OnCalendar=*-*-* 01:00:00` triggers the service every day at 01:0
 # Automatic restart on schedule (if feasible)
 
 It might suit your strategies for a server to be restarted on schedule if a restart is pending for the update
- process. The following plan restarts the server on schedule should a restart be required.
+ process to complete. The following plan restarts the server on schedule should a restart be required.
 
 ## Required unit files to install:
 
