@@ -113,14 +113,14 @@ Environment=PGB_OOM_ADJUST_FILE=/proc/self/oom_score_adj
 Environment=PGB_OOM_ADJUST_VALUE=0
 
 # reboot if required
-ExecStart=/bin/sh -c '[ -n "$(/usr/bin/grep /var/run/reboot-required -e 'System restart required' 2>/dev/null)" ] && /usr/sbin/reboot || true'
+ExecStart=/bin/sh -c '[ -n "$(/usr/bin/grep /var/run/reboot-required -e "System restart required" 2>/dev/null)" ] && /usr/sbin/reboot || true'
 
 [Install]
 WantedBy=multi-user.target
 
 ```
 
-The command `/bin/sh -c '[ -n "$(/usr/bin/grep /var/run/reboot-required -e 'System restart required' 2>/dev/null)" ] && /usr/sbin/reboot || true'` first 
+The command `/bin/sh -c '[ -n "$(/usr/bin/grep /var/run/reboot-required -e "System restart required" 2>/dev/null)" ] && /usr/sbin/reboot || true'` first 
  checks for a reboot requirement, then reboots the server. Additional conditions or actions for reboot can be applied arbitrarily.
 
 
