@@ -37,7 +37,7 @@ Bringing production snapshots to the test environment and running a developer-he
 test workload does not affect the performance of the production major replicas, as the disaster
 replica is serving the snapshots.
 
-#### 5. Process management
+#### 5. Whole process management
 
 The project supports executing any custom scripts before and after taking the snapshots to tailor bringing up
  the snapshots to the development team needs. 
