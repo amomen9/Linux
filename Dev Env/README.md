@@ -76,4 +76,4 @@ graph TB
     linkStyle 1 stroke:#f57c00,stroke-width:2px,stroke-dasharray: 5 5
 ```
 
-* The documents and scripts are not yet within a public repository, because of the team's policy.
+* The documents and scripts **are not yet published on a public repository**, because of the team's policy.
