@@ -13,7 +13,5 @@ Linux docs & Codes.
 
 * CI/CD Dev Environment
  
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[Dev Env](./Dev%20Env)
-
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Prepare the development environment for the developing teams
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[Dev Env:](./Dev%20Env)&nbsp;Prepare the development environment for the developing teams
 
