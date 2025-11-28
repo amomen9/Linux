@@ -43,3 +43,4 @@ The project supports executing any custom scripts before and after taking the sn
  the snapshots to the development team needs. 
 
 
+The documents and scripts are not yet within a public repository, because of the team's policy.
