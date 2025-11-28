@@ -43,4 +43,37 @@ The project supports executing any custom scripts before and after taking the sn
  the snapshots to the development team needs. 
 
 
+```mermaid
+graph TB
+    subgraph DC1 [DATA CENTER 1 - PRIMARY]
+        subgraph WSAG [Windows Server Availability Group]
+            N1[Node1<br/>Windows Server<br/>Synchronous Replica]
+            N2[Node2<br/>Windows Server<br/>Synchronous Replica]
+        end
+    end
+
+    subgraph DC2 [DATA CENTER 2 - DISASTER RECOVERY]
+        subgraph LSAG [Linux Server Availability Group]
+            NDR[⭐ NodeDR<br/>SQL Server on Linux<br/>Asynchronous Replica<br/>SNAPSHOT SOURCE]
+        end
+    end
+
+    %% Synchronous replication between Windows nodes
+    N1 <-.->|Synchronous<br/>Commit| N2
+    
+    %% Distributed Availability Group connection
+    WSAG -.->|Distributed AG<br/>Asynchronous Commit| LSAG
+
+    %% Styling
+    classDef windowsNode fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#000
+    classDef linuxNode fill:#e8f5e8,stroke:#388e3c,stroke-width:2px,color:#000
+    classDef snapshotNode fill:#fff3e0,stroke:#f57c00,stroke-width:3px,color:#000
+    
+    class N1,N2 windowsNode
+    class NDR linuxNode,snapshotNode
+
+    linkStyle 0 stroke:#1976d2,stroke-width:2px
+    linkStyle 1 stroke:#f57c00,stroke-width:2px,stroke-dasharray: 5 5
+```
+
 The documents and scripts are not yet within a public repository, because of the team's policy.
