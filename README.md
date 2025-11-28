@@ -1,4 +1,4 @@
-# linux
+# Linux
 
 Linux docs & Codes.
 
@@ -8,8 +8,8 @@ Linux docs & Codes.
 
 ### •  Scheduled systemd Automatic Update
 
-[&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Debian](./Scheduled%20systemd%20Automatic%20Update/Debian/README.md)
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[Debian](./Scheduled%20systemd%20Automatic%20Update/Debian/README.md)
 
-[&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;RHEL](./Scheduled%20systemd%20Automatic%20Update/RHEL/README.md)
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[RHEL](./Scheduled%20systemd%20Automatic%20Update/RHEL/README.md)
 
 
