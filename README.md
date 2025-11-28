@@ -1,15 +1,17 @@
-# linux
+# Linux
 
 Linux docs & Codes.
 
----
 
-### [•  systemd jobs triggered by timers](./Systemd%20Service%20and%20Timer/README.md)
+* systemd jobs triggered by timers:
 
-### •  Scheduled systemd Automatic Update
+  * Scheduled systemd Automatic Update
 
-[&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Debian](./Scheduled%20systemd%20Automatic%20Update/Debian/README.md)
+    * [Debian](./Scheduled%20systemd%20Automatic%20Update/Debian/README.md)
 
-[&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;RHEL](./Scheduled%20systemd%20Automatic%20Update/RHEL/README.md)
+    * [RHEL](./Scheduled%20systemd%20Automatic%20Update/RHEL/README.md)
 
+* CI/CD Dev Environment
+ 
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[Dev Env:](./Dev%20Env)&nbsp;Prepare the development environment for the developing teams
 
