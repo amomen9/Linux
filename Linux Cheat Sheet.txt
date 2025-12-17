@@ -1,0 +1,3584 @@
+
+create symbolic link. Create link for what where.
+ln -s /usr/libexec/xrdp/startwm.sh /etc/xrdp/startwm.sh
+
+
+pwd
+print working directory
+
+
+
+
+uuidgen <ifname>
+generate new uuid for the device
+
+echo "You are using $(getconf LONG_BIT) bit Linux distro."
+say the architecture of the linux
+uname -m
+show all info:
+uname -a
+grep VERSION /etc/os-release
+cat /etc/os-release
+cat /etc/*-release
+cat /etc/*-version
+
+### yum dnf package manager
+```
+/etc/yum.repos.d
+/etc/yum/repos.d
+/etc/distro.repos.d
+
+yum list [all]
+list installed and available packages
+
+## yum switches options flags
+-q, --quiet
+-v, --verbose
+--installroot [path]  #set install root
+--releasever RELEASEVER	#override the value of $releasever in config and repo files
+--skip-broken         #resolve depsolve problems by skipping packages
+--allowerasing        #allow erasing of installed packages to resolve dependencies
+-b, --best            #try the best available package versions in transactions.
+--nobest              #do not limit the transaction to the best candidate
+-C, --cacheonly       #run entirely from system cache, don't update cache
+--showduplicates      #show duplicates, in repos, in list/search commands
+--enablerepo=[repo]
+--disablerepo=[repo]
+--repo [repo], --repoid [repo]		#enable just specific repositories by an id or a glob, can be specified multiple times
+--enable              enable repos with config-manager command (automatically saves)
+--repofrompath [repo,path]	label and path to an additional repository to use (same path as in a baseurl), can be specified multiple times.
+--noautoremove        disable removal of dependencies that are no longer used
+-4                    resolve to IPv4 addresses only
+--destdir DESTDIR, --downloaddir DESTDIR
+                        set directory to copy packages to
+--security            Include security relevant packages, in updates
+--sec-severity {Critical,Important,Moderate,Low}, --secseverity {Critical,Important,Moderate,Low}
+                        Include security relevant packages matching the severity, in updates
+--forcearch ARCH      Force the use of an architecture						
+Group command-specific options:
+--with-optional       include optional packages from group
+--hidden              show also hidden groups 
+--installed           show only installed groups
+--available           show only available groups
+--ids                 show also ID of groups
+--download-only (--destdir=. or --downloaddir=.)					
+dnf deplist
+dnf distro-sync
+
+
+
+list dependencies
+yum deplist w3m
+
+yum --disablerepo='*' --enablerepo=appstream search perl
+yum --disablerepo='*' --enablerepo=timescale_timescaledb update
+
+yum localinstall ./google-chrome-stable_current_x86_64.rpm
+(-y): assume yes
+install the offline package file by also updating and downloading dependencies
+
+rpm -qa
+Display the list of all installed packages
+yum list installed
+
+rpm -qa --last
+rpm -q --last firefox
+rpm -qa --queryformat '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH} %{INSTALLTIME:date}\n'
+
+rpm --querytags
+repoquery -a --installed --qf '%{name}-%{version}-%{release}.%{arch}'
+
+rpm -ivh <packagename>.rpm
+(-i): install package
+	or with yum:
+yum localinstall sample_file.rpm
+
+yum distro-sync
+yum update
+update linux
+
+yum repolist
+
+
+yum -y install
+yum search
+yum info
+yum list installed/available
+https://access.redhat.com/solutions/10154
+find all URLs for repositories:
+grep 'baseurl=' /etc/yum.repos.d/* | cut -d= -f2
+sudo yum repolist -v
+
+yum --showduplicate list postgresql13-server
+show different versions of same application packages
+yum install [package-name]-[version].[architecture]
+example:
+yum install firefox-31.5.3-3.el7_1.x86_64
+
+/var/cache/yum/x86_64/7/epel/packages/
+
+yum-config-manager --add-repo repository_url
+yum-config-manager --enable repository
+yum-config-manager --enable glob_expression
+yum-config-manager --disable repository
+yum-config-manager --disable glob_expression
+
+rpm -qf /etc/yum.repos.d/<repo file>
+rpm -qf /bin/bash
+
+
+
+
+## yum Groups
+
+yum group info "Server with GUI"
+
+sleep $(($(date -d 'tomorrow 01:10' +%s) - $(date +%s))) && yum update && yum upgrade -y && yum group install -y "Server with GUI"
+
+## download packages install offline
+#rhel:
+
+install yumdownloader:
+yum install yum-utils -y
+
+get url of package:
+yumdownloader --urls <package name>
+repoquery --repoid=your-repo-id -a --location
+
+
+Warning!!!
+Downloaded packages remain in the DNF cache until the next successful transaction, or until you manually remove them with the dnf clean packages command
+If you want to keep the downloaded packages after installation, you can set the keepcache option to 1 in the /etc/dnf/dnf.conf configuration file
+You can change the cache location by modifying the cachedir option in the /etc/dnf/dnf.conf
+
+yum -y reinstall --downloadonly --downloaddir=. postgresql13-server
+yum -y reinstall --downloadonly --downloaddir=~/tsdb/ timescaledb-2-postgresql-13
+dnf download <package name>
+
+
+## scan the directory for the rpm package and its dependencies
+install all the rpm files in the directory and their dependencies
+sudo yum localinstall /home/user/rpms/*.rpm
+
+install the proj1 package and its dependencies
+sudo yum localinstall /home/user/rpms/proj1-1.0-1.x86_64.rpm
+
+offline rpms default installation directory. Also change cache dir with /etc/yum.conf or /etc/dnf/dnf.conf configuration files
+for yum: /var/cache/yum, and for DNF: /var/cache/dnf
+
+clean downloaded packages:
+yum clean packages	# only downloaded packages in the default cache directory will be cleaned
+dnf clean packages	# only downloaded packages in the default cache directory will be cleaned
+
+
+
+
+ssh-keygen -i ord
+
+### date
+```
+date +%Y-%m-%d\ %H:%M:%S		# 2024-02-24 11:03:55
+date "+%Y-%m-%d %T.%N %z"		# 2024-02-24 11:05:52.357165891 +0000, returns UTC time/date
+TZ='Asia/Tehran' date '+%Y-%m-%d %H:%M:%S %z'
+
+
+%N : Nanoseconds
+%6N: Microseconds
+%3N: Milliseconds
+
+# file timestamp:
+echo $(TZ='Asia/Tehran' date +%Y-%m-%d-%H%M%S)	# 2024-05-26-074503
+
+
+printf "%(%Y-%m-%d %H:%M:%S.%.3f)T\n" -1
+
+date --date='@2147483647'	# Convert seconds since the epoch (1970-01-01 UTC) to a date
+TZ='America/Los_Angeles' date
+TZ=UTC+3:30 date
+
+# set datetime with desired timezone not from timedatectl. please note that for an offset of +03:30, you must use -03:30.
+date -s $(TZ=UTC-3:30 date '+%Y-%m-%dT%H:%M:%S %Z')
+timedatectl set-ntp true		# sychronize with the internet.
+
+date --date='TZ="America/Los_Angeles" 09:00 next Fri'	# Show the local time for 9AM next Friday on the west coast of the US
+``` date
+
+download from my VPS
+scp -P44302 -i~/.ssh/ord ord_j30jgn0230sdd@49.13.52.62:/home/ord_j30jgn0230sdd/Downloads/Win11_23H2_English_x64v2.iso /mnt/d/Stateless/Applications/Microsoft/Windows.11.x64-VL/
+
+
+
+sleep $(($(date -d 'tomorrow 01:10' +%s) - $(date +%s)))
+#downloc=~/downloaded_packages
+group="Server with GUI"
+#dnf groupinstall -y --downloadonly --downloaddir=$downloc"/$group" "$group" && mv -f $downloc"/$group" /mnt/d/Stateless/Applications\ Linux/RHEL/el9/groups/"$group"/ 
+source="/mnt/d/Stateless/Applications Linux/RHEL/el9/groups" && mkdir -p $downloc"/$group" && dnf groupinstall -y --downloadonly --downloaddir="$source/$group/" "$group" && \cp "$source/$group/"*       "$source fixed/$group/"
+cd "$source/$group/"
+{
+Installing Environment Groups:
+ Server with GUI
+Installing Groups:
+ base-x
+ Container Management
+ Core
+ Fonts
+ GNOME
+ Guest Desktop Agents
+ Hardware Monitoring Utilities
+
+ Hardware Support
+ Headless Management
+ Internet Browser
+ Multimedia
+ Common NetworkManager submodules
+
+ Printing Client
+ Server product core
+ Standard
+
+}
+group="Fonts"
+source="/mnt/d/Stateless/Applications Linux/RHEL/el9/groups" && mkdir -p $source"/$group" && mkdir -p "$source fixed/$group/" && dnf groupinstall -y --downloadonly --downloaddir="$source/$group/" "$group" && \cp "$source/$group/"*       "$source fixed/$group/"
+cd "$source/$group/"
+
+group="Remote Management for Linux"
+source="/mnt/d/Stateless/Applications Linux/RHEL/el9/groups" && mkdir -p $source"/$group" && mkdir -p "$source fixed/$group/" && dnf groupinstall -y --downloadonly --downloaddir="$source/$group/" "$group" && \cp "$source/$group/"*       "$source fixed/$group/"
+
+group="Standard"
+source="/mnt/d/Stateless/Applications Linux/RHEL/el9/groups" && mkdir -p $source"/$group" && mkdir -p "$source fixed/$group/" && dnf groupinstall -y --downloadonly --downloaddir="$source/$group/" "$group" && \cp "$source/$group/"*       "$source fixed/$group/"
+
+group="Hardware Monitoring Utilities"
+source="/mnt/d/Stateless/Applications Linux/RHEL/el9/groups" && mkdir -p $source"/$group" && mkdir -p "$source fixed/$group/" && dnf groupinstall -y --downloadonly --downloaddir="$source/$group/" "$group" && \cp "$source/$group/"*       "$source fixed/$group/"
+
+group="Networking Tools"
+source="/mnt/d/Stateless/Applications Linux/RHEL/el9/groups" && mkdir -p $source"/$group" && mkdir -p "$source fixed/$group/" && dnf groupinstall -y --downloadonly --downloaddir="$source/$group/" "$group" && \cp "$source/$group/"*       "$source fixed/$group/"
+
+group="Office Suite and Productivity"
+source="/mnt/d/Stateless/Applications Linux/RHEL/el9/groups" && mkdir -p $source"/$group" && mkdir -p "$source fixed/$group/" && dnf groupinstall -y --downloadonly --downloaddir="$source/$group/" "$group" && \cp "$source/$group/"*       "$source fixed/$group/"
+
+group="Performance Tools"
+source="/mnt/d/Stateless/Applications Linux/RHEL/el9/groups" && mkdir -p $source"/$group" && mkdir -p "$source fixed/$group/" && dnf groupinstall -y --downloadonly --downloaddir="$source/$group/" "$group" && \cp "$source/$group/"*       "$source fixed/$group/"
+
+group="Remote Management for Linux"
+source="/mnt/d/Stateless/Applications Linux/RHEL/el9/groups" && mkdir -p $source"/$group" && mkdir -p "$source fixed/$group/" && dnf groupinstall -y --downloadonly --downloaddir="$source/$group/" "$group" && \cp "$source/$group/"*       "$source fixed/$group/"
+
+group="System Tools"
+source="/mnt/d/Stateless/Applications Linux/RHEL/el9/groups" && mkdir -p $source"/$group" && mkdir -p "$source fixed/$group/" && dnf groupinstall -y --downloadonly --downloaddir="$source/$group/" "$group" && \cp "$source/$group/"*       "$source fixed/$group/"
+
+group="Scientific Support"
+source="/mnt/d/Stateless/Applications Linux/RHEL/el9/groups" && mkdir -p $source"/$group" && mkdir -p "$source fixed/$group/" && dnf groupinstall -y --downloadonly --downloaddir="$source/$group/" "$group" && \cp "$source/$group/"*       "$source fixed/$group/"
+ 
+group="Virtualization Client"
+source="/mnt/d/Stateless/Applications Linux/RHEL/el9/groups" && mkdir -p $source"/$group" && mkdir -p "$source fixed/$group/" && dnf groupinstall -y --downloadonly --downloaddir="$source/$group/" "$group" && \cp "$source/$group/"*       "$source fixed/$group/"
+ 
+
+
+parentpath="/mnt/d/Stateless/Applications Linux/rhel/el9/groups/" && downpath="Standard" && mkdir -p "$parentpath$downpath" && dnf groupinstall -y --downloadonly --downloaddir="$parentpath$downpath" "$downpath"
+
+Basic Web Server
+Container Management				#
+Core								#
+Graphical Administration Tools		#
+Hardware Monitoring Utilities		##
+Hardware Support					#
+Large Systems Performance	
+Networking Tools					##
+Office Suite and Productivity		##
+Performance Tools					##
+Printing Client	
+Remote Desktop Clients				#
+Remote Management for Linux			##
+Scientific Support					#
+Security Tools						#
+Server product core					##
+Standard							##
+System Tools						#
+Virtualization Client
+Virtualization Hypervisor
+Virtualization Platform
+Virtualization Tools
+VMware platform specific packages	#
+Windows File Server
+Workstation product core
+
+Network File System Client
+Network Servers
+Windows File Server
+
+##Optional
+KDE
+KDE Applications
+GNOME 
+Applications
+pwd && \
+ll
+
+## import and export gpg keys
+gpg -a --export > mypubkeys.asc
+gpg -a --export-secret-keys > myprivatekeys.asc
+gpg --import mypubkeys.asc
+gpg --import myprivatekeys.asc
+# import from URL
+rpm --import /path/to/YOUR-RPM-GPG-KEY
+# list installed gpg keys
+rpm -qa gpg-pubkey*
+# verify the signature of an RPM package
+rpm --checksig package.rpm
+
+``` yum dnf package manager
+
+
+### apt package manager
+```
+apt list --installed
+
+
+apt search --names-only docker-ce	# search name only/only name within the package names
+
+sudo DEBIAN_FRONTEND=noninteractive apt update -y && sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y	# Update without service restart prompt as a non-root user
+DEBIAN_FRONTEND=noninteractive apt update -y && apt upgrade -y	# Update without service restart prompt as the root user
+
+apt-cache search --names-only keyword
+apt-cache search keyword
+
+apt list --all-versions package_name
+sudo apt install package_name=package_version
+
+# remove all orphaned configuratuion files:
+sudo apt-get --purge remove package_name
+
+##
+Check for and fix Broken Packages:
+sudo apt-get -f install
+
+Reconfigure Packages: If the above doesn't work, try reconfiguring all unpacked but unconfigured packages:
+sudo dpkg --configure -a
+ 
+Remove Problematic Package: If glibc-tools is not essential, consider removing it to avoid breaking libc-bin:
+sudo dpkg --purge --force-all <package name>
+##
+
+
+sudo add-apt-repository ppa:deadsnakes/ppa
+
+# default cache directory
+/var/cache/apt/archives/
+# download the pppoe package and any dependencies to the /var/cache/apt/archives directory
+sudo apt-get install --download-only pppoe
+
+# my move apt cache to windows/other directory
+mv /var/cache/apt/archives/* /mnt/d/stateless/Applications\ Linux/DEB/x2goserver/x2goserver\ x2goserver-xsession_22.04/ && rm -rf /mnt/d/stateless/Applications\ Linux/DEB/x2goserver/x2goserver\ x2goserver-xsession_22.04/{partial,acpid_*,acpi-support_*,lock}
+# install using dpkg
+#sudo apt-mark hold acpid acpi-support && find /mnt/d/stateless/Applications\ Linux/DEB/ubuntu-desktop-minimal_2204/ -maxdepth 1 -type f ! -name "acpi*" | xargs -I {} dpkg -i --force-all '{}'
+dpkg -i /mnt/d/stateless/Applications\ Linux/DEB/ubuntu-desktop-minimal_2204/*
+
+
+Remove the package and its configuration files:
+sudo apt-get --purge remove package_name
+
+Remove dependencies that are no longer needed:
+sudo apt-get autoremove
+
+
+Remove all cached packages
+sudo apt clean
+
+Remove obsolete cached packages
+sudo apt autoclean
+
+## downgrade ubuntu packages (manually install packages)
+``
+sudo apt -y remove pgpool2 pgpool2-dbgsym libpgpool2 libpgpool-dev libpgpool2-dbgsym postgresql-15-pgpool2
+sudo apt -y remove postgresql-15-pgpool2-dbgsym libpgpool2-dbgsym pgpool2-dbgsym
+sudo apt -y autoremove
+sudo dpkg -i --force-depends *
+# sudo apt-mark hold package_name
+sudo apt-mark hold pgpool2 pgpool2-dbgsym libpgpool2 libpgpool-dev libpgpool2-dbgsym \
+postgresql-15-pgpool2 postgresql-15-pgpool2-dbgsym libpgpool2-dbgsym pgpool2-dbgsym
+#show list of the packages that have been marked as hold
+apt-mark showhold
+
+sudo apt-get -f --no-upgrade -y install
+apt list --installed | grep pgpool
+# install missing dependencies. If not present in the local repos, download packages
+curl -sLO 'http://ftp.de.debian.org/debian/pool/main/o/openldap/libldap-2.4-2_2.4.57+dfsg-3+deb11u1_amd64.deb' 2>/dev/null || sudo dpkg -i 'libldap-2.4-2_2.4.57+dfsg-3+deb11u1_amd64.deb'
+curl -sLO 'http://archive.ubuntu.com/ubuntu/pool/main/libm/libmemcached/libmemcached11_1.0.18-4.2ubuntu4_amd64.deb' 2>/dev/null || sudo dpkg -i 'libmemcached11_1.0.18-4.2ubuntu4_amd64.deb'
+curl -sLO 'http://ftp.de.debian.org/debian/pool/main/o/openssl/libssl1.1_1.1.1w-0+deb11u1_amd64.deb' 2>/dev/null || sudo dpkg -i 'libssl1.1_1.1.1w-0+deb11u1_amd64.deb'
+# Check missing list
+sudo apt --fix-broken install -y
+# pgpool2 or any other service might be triggered without systemd so: 
+pgpool stop
+sudo systemctl start pgpool2
+sudo systemctl status pgpool2
+
+## if you want to release the hold, execute the following
+# sudo apt-mark unhold pgpool2 pgpool2-dbgsym libpgpool2 libpgpool-dev libpgpool2-dbgsym \
+# postgresql-15-pgpool2 postgresql-15-pgpool2-dbgsym libpgpool2-dbgsym pgpool2-dbgsym
+`` downgrade ubuntu package
+
+# remove with dpkg ignoring dependencies
+dpkg -r --ignore-depends=package1,package2 package-name
+# or
+dpkg -r --force-all package-name
+
+
+get url/uri of the package:
+apt install --print-uris --reinstall <package name>
+apt install --print-uris --reinstall --download-only <package-name>
+apt install --download-only --print-uris docker-compose | awk -F"'|\\.deb" '/\.deb/ {print $2}'
+
+download the pppoe package file to the current directory
+aptitude download pppoe
+
+# apt get repo list repolist ubuntu repositories.
+# <=22.04
+grep -rhE ^deb /etc/apt/sources.list* | cut -d' ' --complement -f1
+# >=24.04
+cat /etc/apt/sources.list.d/* | grep -v ^#
+
+## apt change mirror
+1.
+apt install python3-pip
+2.
+pip3 install apt-mirror-updater
+
+``` apt package manager
+
+### decode a URL in Linux Bash:
+urldecode() {
+: "${*//+/ }"
+echo -e "${_//%/\\x}"
+}
+
+
+url=$(urldecode "http%3A%2F%2Fwww.example.com%2Fpath%3Fquery%3Dvalue")
+echo $url
+
+add the following to the command to decode the url using pipe:
+| sed 's/%/\\\\x/g' | xargs -0 printf "%b"
+
+ex:
+clear && apt-get install --print-uris --reinstall --download-only postgresql | grep http | awk -F' ' '{print $1}' | sed 's/%/\\\\x/g' | xargs -0 printf "%b" | tr -d "'"
+
+``` decode a URL in Linux Bash
+
+
+
+
+who
+connected users
+
+/var/cache/dnf/appstream-a520ed22b0a8a736/packages/mesa-vulkan-drivers-20.3.3-2.el8.x86_64.rpm
+
+mv #move (rename) files. better alternative below:
+install -D .Xauthority /home/user/dir1/dir2/.Xauthority44
+
+find . -name "*maria*" #search for file names recursively in the current directory
+find /path/to/search \( -name "*.html" -o -name "*.py" \)
+
+find . -name '*.json' -type f -exec cat {} + #pass found files to a commad. for example for cancatenating all of them.
+
+#find/replace a pattern within a group of files (Note! first run without -i to see the potential modifications)
+find /path/to/files -type f -exec sed -i 's/old-pattern/new-pattern/g' {} +
+find /etc/php/7.4/apache2 -type f -exec sed -i 's/;zend.multibyte = Off/zend.multibyte = On/g' {} +
+
+
+#find either one pattern or the other
+find . -print | grep -i '.*[.]sh'
+#search for file names recursively in the current directory containing ".sh"
+find . -type f -name "*.qp" -exec rm -v {} \;
+#search for expression and execute the subsequent command for every found expression
+find . -maxdepth 1 -type f ! -name mysqld.log | xargs -I {} mv '{}' backup/
+find /home/postgres/archives -mtime +3d -exec rm  -f {} \;
+#deletes archiving logs that were created more than three days ago
+find "$(pwd)"
+#show full paths in the result list
+find -name "*.js" -not -path "/proc/*"
+find -name "*.js" -not -path "./directory1/*" -not -path "./directory2/*" -not -path "./directory3/*"
+#exclude, except directory in find
+{
+
+}
+file ./setup_repository
+setup_repository: Bourne-Again shell script, ASCII text executable
+
+history
+printf "Command History for $(date) on\n $(hostnamectl):\n\n" >> history_"$(date +%y%m%d_%H%M)".hist && history | cut -c 8- >> history_"$(date +%y%m%d_%H%M)".hist
+{ without line-numbers:
+cat ~/.bash_history
+history -w /dev/stdout
+history -w history.txt
+history -a history.txt
+history | cut -c 8-
+fc -l -n 1 | sed 's/^\s*//'
+history|awk '{$1="";print substr($0,2)}'
+}
+printf "Command History for $(date):\n\n" >> history_"$(date +%y%m%d_%H%M)"; history -a history_"$(date +%y%m%d_%H%M)"
+
+date
+
+timedatectl
+
+type
+
+head
+
+tail
+-f: actively update the results
+-n: number of last lines to print
+-n +value(with positive sign): print from line number value to the end
+
+chmod read and write only by the owner is done by assigning value 600
+chmod 755 mysql/
+
+chown -R mysql:mysql /var/log/mysql/
+
+hostnamectl
+hostnamectl set-hostname 'c1_MyCentOS8'
+
+variable command:
+rpm --checksig $(find . -name '*.rpm')
+Note: quote the dynamic command with double-quotes to avoid ambiguous redirect or similar errors
+
+rm -fv filename(s)
+f(orce)-v(erbose)
+
+rm -rd dirname
+r(ecursive)
+rmdir dirname
+
+rm -rf dirname
+
+printf "hello\nworld\n"
+
+grep: search for a string beginning with hyphen by grep:
+grep -- -X
+
+--exclude-dir={dir1,dir2,dir3}
+-R: --dereference-recursive
+
+exclude text
+grep -v
+grep -v -e apple -e cherry filename
+# limit file size
+find . -type f -size -100M -exec grep -rnw 'Copilot' '{}' + 2>/dev/null
+
+define a . (dot) inside a string after grep only:
+[.]
+
+ls -l = ll
+ls -l -h -S: human readable, sort by size
+ls -a(ll -a): show hidden files and folders
+{type numbers:
+	1 means file
+}
+
+rsync -av /var/lib/mysql /DATA
+rsync -a remote_user@remote_host_or_ip:/opt/media/ /opt/media/
+
+exit: exit the sudo su mode
+
+sudo -E su
+(-E): preserve the environment variables for root session
+
+/opt/datagrip/bin/datagrip.sh (Jetbrains Site)
+/home/a.momen/DataGrip-2021.1.3/bin/datagrip.sh (My Installation)
+open datagrip
+
+#Debian:
+ufw enable
+sudo ufw allow 55149/tcp
+sudo ufw allow 13116/tcp
+ufw allow [from 208.117.84.50 to any port] 3306
+ufw delete allow 2200/tcp
+ufw delete allow ssh
+ufw delete 3
+ufw reload
+
+#Red-Hat:
+configure firewall to allow traffic to incoming tcp port 3306 for mariadb
+{
+firewall-cmd --permanent --add-port=2052/tcp
+multiple:
+firewall-cmd --permanent --add-port={80/tcp,443/tcp,9200/tcp,5601/tcp,5044/tcp}
+}
+firewall-cmd --zone=public --remove-port=10050/tcp
+make temporary firewall rules persistent
+firewall-cmd --runtime-to-permanent 
+firewall-cmd --reload 
+
+du -h --max-depth 1
+estimate file space usage in human readable format
+
+scp -rp /DATA/mysql/backups/full-backup1 root@192.168.241.130:/DATA/mysql/backups/rep # or use rsync -a
+scp -avz a.momen@192.168.241.1:D:/Downloads/mariadb-10.6.3-rhel-8-x86_64-rpms.tar ./
+use scp with port
+scp scp://user@host:3131/path/to/file /local/destination
+scp -P 3131 user@host:/path/to/file /local/destination
+
+mkdir -p
+-p: make parent directories if needed
+
+mkdir -p "$d" && cp file "$d"
+
+cp -fp
+(-p): same as --preserve=mode,ownership,timestamps
+(-s): make symbolic links instead of copying ()
+(-u): copy only when the SOURCE file is newer than the destination file or when the destination file is missing
+(-f): force
+\The best way to force the overwrite is to use a backward slash before the cp command
+{ ways to force overwrite:
+yes | cp -rf xxx yyy
+unalias cp (removes -i flag from cp command
+\cp whatever
+}
+
+
+
+###user commands with admin privileges 
+```
+##show user list:
+lslogins -u
+compgen -u #all users
+cat /etc/passwd | grep home #users with home directories
+getent passwd | awk -F: '{print $1}'    #getent: Get entries from administrative database
+getent gshadow | awk -F: '{print $1}'
+-F is field separator. By default, it is space
+
+
+##on linux RHEL:
+#add
+useradd testadmin
+passwd testadmin
+usermod -aG wheel testadmin
+id testadmin
+groups testadmin
+
+
+##on linux Ubuntu:
+#add
+sudo adduser alig
+# add -M or --no-create-home flag to prevent home directory creation
+passwd alig
+usermod -aG sudo alig
+id you
+groups you
+
+adduser --group
+adduser --ingroup group
+adduser --disabled-password
+sudo addgroup developers
+
+addgroup etcd
+adduser --home /var/lib/etcd --disabled-password  --system etcd --ingroup etcd
+chown -R etcd:etcd ~etcd
+sudo rm -rf /var/lib/postgresql/15/main/*
+pg_dropcluster 15 main
+
+sudo gpasswd -d username groupname
+sudo deluser username groupname
+#logout a user:
+sudo pkill -KILL -u john
+
+
+
+#remove user & group
+sudo deluser --remove-home you
+#This command removes the group entry from the /etc/group and /etc/gshadow files: 
+sudo groupdel mygroup
+# verify group deletion:
+getent group | grep mygroup
+
+set expiration policy on a user
+sudo chage -E 2024-02-28 -M 30 charlie
+-E: expiration date
+-M: maximum number of days for a password validity
+
+
+## usermod
+{
+-l: rename 
+	(usermod -l <username_new> <username_old>)
+-L: lock the user's password
+-e: set an expiration date for the user account 
+	usermod -e YYYY-MM-DD <UName>
+	usermod -e <UName> # disable expiration policy
+	usermod -L -e 1 <UName>		# lock and expire a user immediately.
+	usermod -U -e "" <UName>	# unlock and remove expiration from the password immediately
+	
+-s: change the user's login shell to disable it
+	sudo usermod -s /sbin/nologin bob # or sudo usermod -s /bin/false bob
+-d, --home HOME_DIR: # The user's new login directory. with -m the contents of current will move to there
+	sudo usermod -d /nonexistent alice # or /var/nonexistent (This will prevent the user from accessing a shell or running any commands)
+-a: append
+-G: add/change group
+
+To remove the home directory for the user bob, you can change the line:
+bob:x:1001:1001::/home/bob:
+to
+bob:x:1001:1001::: # or bob:x:1001:1001::/nonexistent:
+the rm -rf /home/bob
+
+
+}
+rename
+sudo usermod -l <username_new> <username_old>	# rename from old to new
+sudo usermod -l tokrigj polrg					# rename from polrg to tokrigj
+
+
+```
+
+.bashrc is a file which autoexecutes its contents on user logon. 
+Use the source command to force Linux to reload the .bashrc file which normally is read only when you log in each time.
+
+switch the user:
+su postgres
+
+sudo setfacl -R -m u:username:rwx mydirectory
+grant rwx permissions to a user who does not own the directory
+
+touch filename
+create an empty file
+
+df -h
+show available partitions and mount points
+
+fdisk -l
+show available partitions and devices
+
+
+
+## partitioning: new partition from a new disk device:
+```
+1) fdisk /dev/sdb
+	a) p
+	b) n
+	c) p
+	d) default
+	e) default
+	f) default
+	g) w
+	
+2) shutdown -r now
+
+3) login as root
+
+4)format the newly created partition, replacing * with the input number of step 1.d.
+mke2fs -j /dev/sdb*
+
+5) create a mount point directory
+mkdir /newpartition
+
+6) mount partition, replacing * with the input number of step 1.d.
+mount /dev/sdb* /newpartition
+
+7) add the following line to /etc/fstab file, replacing * with the input number of step 1.d.
+/dev/sdb* /newpartition ext3 defaults 1 2
+
+8) shutdown -r now
+9) after system reboot check if the volume is mounted using df -h
+
+```
+
+## Environment variables:
+```
+1) add this line to /etc/profile or its drop-in to make a variable available for all users persistently:
+export PATH=$PATH:/usr/pgsql-13/bin/pg_receivewal
+the path variables are separated by ':'
+
+2)
+```
+
+ifconfig <IFNAME>
+
+ip a
+
+ps aux
+a = show processes for all users
+u = display the process’s user/owner
+x = also show processes not attached to a terminal
+
+readlink -f /proc/<pid>/exe or ll /proc/<pid>/exe
+
+Shows the symbolic link: get the executable path of the currently running process by its pid
+
+
+
+
+date +%s | sha256sum | base64 | head -c 20 ; echo
+random password generation (generator)
+
+kill -9 PID
+killall –9 IM
+-9 is SIGNAL
+
+netstat -ant | grep 3306
+find out which IPs and ports is the OS listening on.
+
+netstat -tulnp
+t – Show TCP
+u – Show UDP
+l – Show only listening processes (netstat can show both listening and all established connections, i.e. as a client too)
+n – Do not resolve network IP address names or port numbers
+p – Show the process name that is listening on the port
+
+extract only <list of files separated by space> from archive:
+tar --extract --file=collection.tar <list of files separated by space>
+extract specific files
+
+tar -xvf /home/data/mariadb-10.5.11-rhel-8-x86_64-rpms.tar
+{
+-C destination_dir (for extraction)
+-T Get names to extract or create from FILE.
+- stdin
+-z, --gzip, --gunzip, --ungzip
+       Filter the archive through gzip(1).
+-Z, --compress, --uncompress
+       Filter the archive through compre			ss(1).
+}
+
+
+## change boot time-out:
+```
+1) go to the following and change time-out value:
+vi /etc/default/grub
+
+2) remake the grub configuration file:
+grub2-mkconfig -o /boot/grub2/grub.cfg
+
+```
+creating a symbolic link to a file named my_file.txt, named pg_receivexlog
+ln -s /usr/pgsql-13/bin/pg_receivewal /usr/pgsql-13/bin/pg_receivexlog
+create a symbolic link named /usr/bin/python -> /usr/bin/python3.6*
+ln -s /usr/bin/python3.6 /usr/bin/python
+change the target of a symbolic link
+ln -sfT /path/to/new/target linkname 
+
+grep -r "0\.49" *
+* means any file name, \ is an escape character which makes "dot" literal instead of interpreting it as a single regex character.
+grep -r 0\\.49 *
+grep -Fr 0.49 * 	#F for fixed instead of regular expression
+grep -rwh /etc/my.cnf.d -e ^log-bin | head -n 1 | sed 's/ //g'
+sed 's/ //g' removes spaces from stdout
+-h: do not prefix file names
+
+grep -rnw '/path/to/somewhere/' -e 'pattern'
+-r or -R is recursive,
+-n is line number, and
+-w stands for match the whole word.
+-l can be added to just give the file name of matching files.
+-e is the pattern used during the search
+-h don't print out file name.
+find pattern within files
+
+
+grep -rnw / -e '192.168.100.15:10811'
+include and exclude some patterns:
+grep foo -r -e *.txt -v -e *bar*
+
+
+### mount cd-rom/usb drive:
+```
+1) create mount point:
+mkdir /media/iso
+
+2) Locate block device:
+blkid
+
+3) mount the device to the mount point
+mount /dev/position /mount/point
+
+4) now you can access data in the mount point directory
+``` mount cd-rom/usb drive:
+
+### install kernel headers of the running kernel:
+```
+yum -y install kernel-devel
+	the install location will be under:
+ll /usr/src/kernels/
+```
+
+
+# mysql-connector-python-8.0.23-1.el7.x86_64
+rpm -evh --allmatches --nodeps mysql-connector-python
+
+echo $HISTFILE
+
+[root@c1_MyCentOS8 log]# systemctl restart mariadb
+Job for mariadb.service failed because the control process exited with error code.
+See "systemctl status mariadb.service" and "journalctl -xe" for details.
+
+journalctl --state=failed
+journalctl -xe
+journalctl -S today -f -u pgbt.service
+view journal of service
+(-f is for follow)
+journalctl -u pgbt.service
+
+find /dir/to/search/ -maxdepth -name "*.doc" -exec tar -rvf out.tar {} \;
+find /dir/to/search/ -name "*.doc" -exec tar -rvf out.tar {} +
+find -name "/DATA/MariaDB/mysql/master1-bin*" ! -newer  -exec tar -rvf out.tar {} \;
+find $BINLOG_DIR -name "$BINLOG_BASE_NAME*" ! -newer "$BINLOG_DIR/$CURRENT_LOG" ! -name "$CURRENT_LOG" -print0 | tar -cavf /backup/binlog_archive/binlogs.tar.gz --null -T -
+combining tar and find
+
+lsof -i:22 
+## see a specific port such as 22 ##
+
+:w foo.txt
+save as the currently opened file to a separate file. The file must be able to be opened.
+
+disable selinux:
+1) Edit the config file and set the SELINUX to disabled
+vi /etc/selinux/config
+SELINUX=disabled
+
+1-2) check selinux status
+getenforce
+sestatus
+
+2) reboot
+
+remove or install selinux:
+https://www.vultr.com/docs/how-to-enable-or-reinstall-selinux-on-centos
+{
+#Disable and Remove SELinux:
+setenforce 0
+yum -y remove selinux-policy\*
+rm -rf /etc/selinux/targeted /etc/selinux/config
+
+#reinstall selinux:
+yum -y install selinux-policy-targeted
+yum -y install selinux-policy-devel policycoreutils
+touch /.autorelabel; reboot
+
+}
+
+restore_command = 'sudo -u barman barman get-wal SERVER %f > %p'
+
+/proc/1/task/1/net/arp 		#arp list
+
+su - <user>
+mkdir ~/.ssh
+cd ~/.ssh
+ssh-keygen -t rsa -f id_rsa_pgpool
+ssh-copy-id -f -i id_rsa_pgpool.pub postgres@simplepgpool1
+ssh-copy-id -f -i id_rsa_pgpool.pub postgres@simplepgpool2
+ssh-copy-id -f -i id_rsa_pgpool.pub postgres@simplepgpool3
+
+
+#sleep noop wait
+sleep 1d
+sleep 1h
+sleep 1m
+sleep 1s
+#second is default
+#ex:
+sleep 1.5h
+sleep 2h 30m
+sleep till specific time example
+sleep $(($(date -d 'tomorrow 10:00' +%s) - $(date +%s)))
+#countdown
+for i in $(seq 10000 -1 1); do printf '%s\r' "$i      "; sleep 1; done
+for i in $(seq 10 -1 1); do printf '%s' "$i "; sleep 1; done; echo 'Time is up!';
+
+
+#!/bin/bash
+while true; do
+/bin/bash /root/mysql_dump.sh ; sleep 1h ;
+done
+
+#!/bin/bash
+cd /var/lib/barman/bd/c1/
+while true; do
+du -h --max-depth=1 > dirinfo ; sleep 1s ;
+done
+
+watch -n 1 du -h --max-depth=1
+{if you have pipe "|" inside your command, quote your command with single quotes
+}
+
+
+printf "\nalias update=\"apt update && apt upgrade -y\"\n" >> .bashrc
+alias ls="ls -la"
+alias sw="barman switch-xlog --force --archive"
+alias a='ps -ef | grep -F .sh | grep -v amomen'
+alias
+see all registered aliases
+
+
+### rc-local:
+```
+1) enable rc-local service
+
+2) edit file /etc/rc.d/rc.local and add commands and executable calls
+
+3) start rc-local
+
+4) change logging level to debug mode for rc-local:
+SYSTEMD_LOG_LEVEL=debug /usr/lib/systemd/system-generators/systemd-rc-local-generator
+
+```
+script_path="/data/scripts/mysql_purge.sh"
+chmod +x $script_path
+#please set the execution time in 24 hours format.
+execution_time="16:30"
+while true; do
+        offset=$(($(date -d $execution_time +%s)-$(date +%s)))
+        if [[ $offset -lt 0 ]]
+        then
+                sleep 43200
+        elif [[ $offset -eq 0 ]]
+        then
+                $script_path
+        else
+                sleep $offset
+                $script_path
+        fi
+done
+
+## replace string/pattern:
+grep pattern file | tr '\n' ' '
+grep pattern file | awk '{print}' ORS='" '
+cat /etc/postgresql/15/main/postgresql.conf.del | sed 's/^[ \t]*//' | grep -v '^#' | tr -s "\n"
+{
+ORS: the output record separator, by default a new line
+}
+## remove string/pattern
+grep pattern file | tr -d "'"
+## get the contents of a config file that are in effect (without having a leading # )
+cat /etc/postgresql/15/main/postgresql.conf.del | sed 's/^[ \t]*//' | grep -v '^#' | tr -s "\n"
+
+
+### awk:
+```
+find input's second column
+awk -F'&' '{print $2}'
+{
+-F: field separator. By default, it is space
+}
+```
+wc -l
+count the number of lines of output
+
+set -o xtrace 	#=set -x
+DEST_NODE_HOST="$1"
+DEST_NODE_PGDATA="$2"
+
+### run-levels:
+
+./file.sh &
+run the shell script in the background
+
+free
+view space usage for virtual and physical memory
+
+ls commands:
+lsmem
+lscpu
+lslogins -u
+
+
+curl -o /etc/yum.repos.d/mssql-server.repo https://packages.microsoft.com/config/rhel/8/mssql-server-2019.repo
+
+source /etc/profile
+making /etc/profile changes effective
+
+df /dir
+find on which physical device a folder is located
+
+show information about md device
+mdadm --detail
+
+save as in vim:
+:w foo.txt
+
+### VIM VI
+```
+:set nu
+show line numbers
+:set nu!
+hide line numbers
+
+save /etc/httpd/cyberciti.biz.conf as “/etc/httpd/cyberciti.com.conf” as root user:
+:w !sudo tee /etc/httpd/cyberciti.com.conf
+
+save a file using root privileges
+:w !sudo tee %
+
+Type u to undo the last change.
+To undo the two last changes, you would type 2u .
+Press Ctrl-r to redo changes which were undone
+
+This will create a copy of your file in the new location, but it will not change the current buffer:
+:w /home/user/backups/foo.txt
+
+This will save your file to the new location and switch to that buffer:
+:sav /home/user/backups/foo.txt
+
+run bash commands in VIM
+:!command
+
+```
+
+
+## systemctl:
+````````````````````````````````````````````````````````````````````````
+
+run the following command in lcli to obtain application service location:
+systemctl show -p FragmentPath postgresql-13
+
+systemctl show -pUser,UID mariadb
+show the user under which mariadb service runs
+If User shows nothing, and UID is [not set], the service is running as root, or the owning user in the case of a user service.
+
+systemctl -t service -a
+show all services (t is for type, a is for all)
+
+systemctl is-enabled rc-local.service
+
+systemctl enable --now mariadb
+
+#alternative to shutdown
+shutdown -r now
+reboot
+systemctl reboot -i
+
+To show all installed unit files use:
+systemctl list-unit-files
+
+
+### boot up to specific target, and change target afterwards: 
+```
+*) press 'e' in the boot list and add 'systemd.unit=rescue.target' to the end of the line which begins
+with the word Linux then press ctrl+x
+---------
+*):
+systemctl start sshd
+systemctl start NetworkManager
+systemctl start postgresql-13.service
+systemctl isolate multi-user.target
+```
+
+#change target:
+systemctl isolate multi-user.target
+#check if the specific target is active:
+systemctl is-active graphical.target
+#inspect the list of all currently active targets
+systemctl list-units --type target --state active
+systemctl list-units --type service --state active
+``````````````````````````````````````````````````````````````````````````````
+
+nohup /data/scripts/cef.sh & ; jobs ; disown -h %1
+
+
+undo-redo in nano
+esc + u/e
+
+
+
+
+The PID of the last executed command is in the $! shell variable:
+my-app &
+echo $!
+
+show numerical permissions
+ls -l | awk '{k=0;for(i=0;i<=8;i++)k+=((substr($1,i+2,1)~/[rwx]/) *2^(8-i));if(k)printf("%0o ",k);print}'
+
+
+ll | grep cron |grep -rn cron | grep barman
+tail -400 /var/log/messages | grep -v barmanrw | grep -v receive-wal | grep -v pgbt_for_template.timer | grep -v sandbox-clamav
+watch -n 0.5 'tail -400 /var/log/messages | grep -v barmanrw | grep -v receive-wal | grep -v pgbt_for_template.timer | grep -v sandbox-clamav'
+journalctl -u postgresql-13 -f -S today
+\cp -rs /backup/barman/vip_zsb/* /backup/barman/backup/
+barman recover backup latest /data/postgres13/data/ --remote-ssh-command='ssh postgres@backup'
+
+switch turn on toggle debug mode
+set -x
+set +x
+
+gzip -d file.gz
+gunzip
+unzip files
+
+
+exec >> /var/log/pgsql/maintenance/reindex_job.log 2>&1
+send every command stdout and stderr to a log file. Combine it with 'export PS1="\W \$"' to hide
+user and hostname and combine it with 'export PS1=""' to hide everything at the beginning of the file.
+
+
+always run your shell scripts with /bin/sh, Linux is inconsistent and volatile sometimes
+
+bash can operate only on integers
+
+
+${#strvar}
+expr length $strvar
+expr “${strvar}”:’.*’
+$strvar | wc -c
+$strvar |awk '{print length}'
+{print the length of the string}
+
+---------------------------------------------------
+This example will parse one line of items separated by ;, pushing it into an array:
+
+IFS=';' read -ra ADDR <<< "$IN"
+for i in "${ADDR[@]}"; do
+  # process "$i"
+done
+This other example is for processing the whole content of $IN, each time one line of input separated by ;:
+
+while IFS=';' read -ra ADDR; do
+  for i in "${ADDR[@]}"; do
+    # process "$i"
+  done
+done <<< "$IN"
+---------------------------------------------------
+
+
+
+### Time:
+
+timedatectl list-timezones
+timedatectl list-timezones | grep -i tehran
+timedatectl set-timezone Asia/Tehran
+
+
+### Ubuntu:
+```
+root@metabase-u:~# curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0Warning: apt-key is deprecated. Manage keyring files in trusted.gpg.d instead (see apt-key(8)).
+100   983  100   983    0     0    666      0  0:00:01  0:00:01 --:--:--   665
+OK
+
+```
+
+### Ubuntu: configure interface:
+```
+# This is the network config written by 'subiquity'
+# This is the network config written by 'subiquity'
+network:
+  ethernets:
+    ens33:
+      #dhcp4: true
+      addresses: [192.168.241.203/24]
+      routes:
+        - to: default	# default keyword as of ubuntu 22.04. 0.0.0.0/0 works on 18.04 and 22.04
+          via: 192.168.241.2
+          on-link: true
+    ens37:
+      addresses: [192.168.171.203/24]
+      nameservers:
+        addresses:
+            - 8.8.8.8
+            - 8.8.4.4
+    ens38:
+      addresses: [192.168.100.203/24]
+      nameservers:
+        search: [Home.local]
+        addresses: [192.168.100.10]
+  version: 2
+The configuration can then be applied using the netplan command.
+sudo netplan apply  
+```
+
+### solve "ping: google.com: Temporary failure in name resolution" error
+```
+0.
+insert nameserver records in netplan configurations and enter the following command to make them effective:
+netplan apply
+1.
+sudo apt install resolvconf -y
+2.
+sudo systemctl enable --now resolvconf
+3.
+vi /etc/resolvconf/resolv.conf.d/head
+4. add lines for nameservers like the following:
+nameserver 8.8.8.8
+nameserver 8.8.4.4
+
+nameserver 192.168.100.10
+search Home.local
+5. check if the changes have been applied to the main resolv.conf
+```
+
+### SSH
+```
+##allow or disallow root or deny other users to connect via ssh:
+1) edit the following file:
+/etc/ssh/sshd_config
+2) Make sure that the following option is in effect:
+PermitRootLogin yes
+3) if you cannot start the service, enter the following command to check if a configuration in sshd_config is wrong
+sudo sshd -t
+
+
+ssh user@host 'command'
+run command on remote machine using ssh and exit
+view SSH connection information:
+echo $SSH_CLIENT
+echo $SSH_CONNECTION
+
+## Deny a specific user to connect through SSH:
+1. Open the SSH configuration file
+sudo nano /etc/ssh/sshd_config
+
+2. Add the DenyUsers directive
+DenyUsers username
+# Deny multiple users
+DenyUsers user1 user2 user3 
+
+3. Save and close the file.
+
+4. Restart the SSH service to apply the changes
+sudo systemctl restart sshd
+
+``` SSH
+
+
+### install speedtest.net speed test tool
+```
+#https://www.speedtest.net/apps/cli
+## Download manually:
+#https://packagecloud.io/ookla/speedtest-cli
+## Search for packages:
+#https://packagecloud.io/app/ookla/speedtest-cli/search?arch=amd64&dist=ubuntu&filter=deb&page=1&q=
+##Ubuntu jammy
+#wget --content-disposition "https://packagecloud.io/ookla/speedtest-cli/packages/ubuntu/jammy/speedtest_1.2.0.84-1.ea6b6773cf_amd64.deb/download.deb?distro_version_id=237"
+##look for the desired Debian/RHEL version
+##Debian:
+#Wheezy (7.0)
+#Jessie (8.0)
+#Stretch (9.0)
+#Buster (10.0)
+#Bullseye (11.0)
+#Bookworm (12.0)
+#Trixie (13.0)
+#Forky (14.0 upcoming)
+##Ubuntu
+#18.04 Bionic Beaver
+#18.10 Cosmic Cuttlefish
+#19.04 Disco Dingo
+#19.10 Eoan Ermine
+#20.04 Focal Fossa
+#20.10 Groovy Gorilla
+#21.04 Hirsute Hippo
+#21.10 Impish Indri
+#22.04 Jammy Jellyfish
+#22.10 Kinetic Kudu
+#23.04 Lunar Lobster
+#23.10 Mantic Minotaur
+#24.04 Noble Numbat
+#25.04 Plucky Puffin
+#25.10 Questing Quokka.
+
+# Download sample files to measure speedtest
+https://www.thinkbroadband.com/download
+wget http://ipv4.download.thinkbroadband.com/200MB.zip
+##Ubuntu: !!!This recently will not work!!!
+##sudo apt-get install curl -y
+##curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.deb.sh | sudo bash
+##sudo apt-get install speedtest -y
+
+
+##RHEL:
+curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.rpm.sh | sudo bash
+sudo yum install speedtest -y
+
+to use run speedtest
+speedtest-cli --list | grep -i "toronto"
+speedtest-cli --server 12345
+
+```
+
+
+### install epel repository
+```
+Extra Packages for Enterprise Linux (EPEL) is a repository maintained by Fedora packagers for use with CentOS Stream and RHEL
+https://docs.fedoraproject.org/en-US/epel/
+https://www.redhat.com/sysadmin/install-epel-linux
+1. update repository indexes and update the packages (if any)
+dnf update -y 
+2. install subscription-manager
+yum install subscription-manager -y
+3. Add EPEL Repository to RHEL 9
+-. enable codeready builder repository for our RHEL system by utilizing the given command
+subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+-. Install epel repository
+dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm -y
+4. dnf --disablerepo="*" --enablerepo="epel" list available
+```
+powertools repo has beem renamed to crb in RockyLinux > 9
+
+### install inxi (mistakenly inix ixni nixi by me)
+```
+1. enable powertools or crb repo
+sudo dnf config-manager --enable crb/powertools
+2. install perl(JSON::XS) if needed
+dnf  install perl-JSON-XS
+3.
+yum install inxi -y
+```
+
+### Install w3m:
+```
+1. First install epel repository:
+
+2. Then install w3m
+```
+
+
+### Install chrome:
+```
+Debian:
+1. 
+echo "You are using $(getcogoognf LONG_BIT) bit Linux distro."
+apt install xterm -y
+wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+sudo apt install ./google-chrome-stable_current_amd64.deb -y --fix-broken \
+&& rm -f google-chrome-stable_current_amd64.deb
+
+RHEL:
+1.2.3.4 
+echo "You are using $(getconf LONG_BIT) bit Linux distro."
+yum install xterm -y
+wget https://dl.google.com/linux/direct/google-chrome-stable_current_x86_64.rpm
+sudo yum install ./google-chrome-stable_current_*.rpm \
+&& rm -f google-chrome-stable_current_*.rpm
+google-chrome &
+```
+
+
+
+/home/myadminpi/Outline-Manager.AppImage --no-sandbox
+
+
+1 device has a firmware upgrade available.
+Run `fwupdmgr get-upgrades` for more information.
+
+
+## nmcli
+```
+show short list of devices' status:
+nmcli device status
+
+show devices' information:
+nmcli dev show [Interface Name]
+
+change ens33 to an unmanaged interface
+sudo nmcli device set ens33 managed yes/no
+
+sudo nmcli dev connect/disconnect ens33
+```
+
+
+tell the system to set the permissions of the new files to 600:
+umask 077
+
+
+## Apache http server
+```
+1. install apache2 package
+2. The home directory is "/var/www/html" by default,
+	however you can obtain it using the following command:
+grep -R "DocumentRoot" /etc/apache2/sites-enabled
+
+```
+
+# return permission code/number:
+stat -c '%a %n' file1.txt
+
+to request a DHCP lease manually:
+dhclient <interface> 
+
+
+### journal
+```
+manage journal logs:
+journalctl --disk-usage
+journalctl --rotate
+journalctl --vacuum-time=2days
+journalctl --vacuum-size=100M
+journalctl --vacuum-files=5
+keep only the active journal log file:
+journalctl --vacuum-files=0
+change journald conf:
+vi /etc/systemd/journald.conf
+
+
+
+kerm on jobvision:
+#_clj91_nkH
+reboot -f
+#after reboot:
+journalctl --rotate
+journalctl --vacuum-files=0
+rm -f .bash_history
+```
+
+
+### stdout & stderr
+```
+force a command to combine stdout and stderr
+command 2>&1
+
+force a command to suppress stderr:
+command 2>/dev/null
+
+suppress a command output entirely:
+command &>/dev/null
+
+suppress stdout:
+command 1>/dev/null
+
+#Ex
+write stdout into search.txt and ignore stderr
+grep -rnw / -e '192.168.100.15:10811' 1>/root/search.txt 2>/dev/null
+
+``` stdout & stderr
+
+
+### proxy
+```
+Failed to connect to https://changelogs.ubuntu.com/meta-release-lts. Check your Internet connection or p-roxy settings
+
+where pr-oxy can be set:
+(
+yum.conf
+dnf.conf
+export http_proxy=http://<proxy_server>:<port>/
+export socks_proxy=socks://192.168.171.1:18444/
+)
+proxy format:
+http://<username>:<password>@<proxy_server>:<port>/
+export http_proxy=http://<proxy_server>:<port>/
+export https_proxy=http://<proxy_server>:<port>/
+export ftp_proxy=http://<proxy_server>:<port>/
+export no_proxy="127.0.0.1,localhost"
+
+#ex:
+export http_proxy=http://192.168.171.1:18444/
+export https_proxy=http://192.168.171.1:18444/
+export ftp_proxy=http://192.168.241.15:10811/
+
+unset proxy:
+unset http_proxy
+unset https_proxy
+unset ftp_proxy
+unset no_proxy
+or remove entries from configuration files like:
+~/.bash_profile
+~/.bashrc
+/etc/environment
+/etc/profile.d/proxy.sh
+/etc/profile.d/http_proxy.sh
+
+# For proxy authentication (if needed)
+ export http_proxy_user="username"
+ export https_proxy_user="username"
+ export ftp_proxy_user="username"
+ export http_proxy_pass="password"
+ export https_proxy_pass="password"
+ export ftp_proxy_pass="password"
+ 
+## in package managers: yum/dnf proxy
+/etc/yum.conf
+proxy=http://192.168.171.1:18444
+#proxy_username=kjv0t20hgj20
+#proxy_password=7v8uDh5UPxUcBm
+
+
+apt:
+/etc/systemd/system/snapd.service.d/snap_proxy.conf:2:Environment="HTTP_PROXY=http://192.168.100.15:10811/"
+/etc/apt/apt.conf.d/90curtin-aptproxy:1:Acquire::http::Proxy "http://192.168.100.15:10811/";
+
+/etc/apt/apt.conf.d/*
+Acquire::http::proxy "http://192.168.171.1:18444/";
+Acquire::https::proxy "http://192.168.171.1:18444/";
+Acquire::ftp::proxy "ftp://your_proxy_server:port/";
+Acquire::socks::proxy "socks://your_proxy_server:port/";
+# authorization
+Acquire::http::proxy::Proxy-Authorization::"Basic your_proxy_username:your_proxy_password";
+Acquire::https::proxy::Proxy-Authorization::"Basic your_proxy_username:your_proxy_password";
+
+# test proxy configuration:
+curl -I --proxy http://192.168.171.1:18444 http://archive.ubuntu.com
+
+```
+
+
+### interface config netplan and resolv.conf on ubuntu
+```
+sample if config file (refer to https://netplan.readthedocs.io/en/stable/examples/ for more instructions):
+########################################
+network:
+  ethernets:
+    ens33:
+      #dhcp4: true
+      addresses: [192.168.241.203/24]
+      routes:
+        - to: default
+          via: 192.168.241.2
+          on-link: true
+    ens37:
+      addresses: [192.168.171.203/24]
+      nameservers:
+        addresses:
+            - 8.8.8.8
+            - 8.8.4.4
+    ens38:
+      addresses: [192.168.100.203/24]
+      nameservers:
+        search: [Home.local]
+        addresses: [192.168.100.10]
+  version: 2
+########################################
+
+change resolv.conf dynamically:
+1. apt install resolvconf -y
+2. change the following file and add nameserver records:
+vi /etc/resolvconf/resolv.conf.d/head
+# sample:
+nameserver 8.8.8.8
+nameserver 8.8.4.4
+
+nameserver 192.168.100.10
+search Home.local
+3. restart required services:
+systemctl restart resolvconf.service
+systemctl restart systemd-resolved.service
+4. run the following commands:
+resolvconf --enable-updates
+resolvconf -u
+
+```
+
+
+install basic c\c++ compiler:
+apt install make -y
+apt install gcc -y
+
+To build an executable from a single .cpp file with a main function in Ubuntu, you can use the g++ compiler,
+which is a part of the GNU Compiler Collection (GCC). You can install g++ by running the following command:
+sudo apt install g++ -y
+
+
+###
+what is $@ in bash scripting?
+
+$@ is a special parameter in bash scripting that expands to all the positional parameters passed to the script or the function.
+For example, if you run a script like this:
+
+./myscript.sh hello world
+
+Then $@ will be equal to hello world inside the script. You can use $@ to pass all the arguments to another command or
+function within the script. For example, you can write a script like this:
+
+#!/bin/bash
+echo "You passed $# arguments: $@"
+some_function "$@"
+
+This script will print the number and the value of the arguments, and then call some_function with 
+the same arguments. The double quotes around $@ are important, as they preserve the spaces and other
+characters in the arguments. If you omit the quotes, the arguments will be split by spaces and treated as separate words
+https://stackoverflow.com/questions/9994295/what-does-mean-in-a-shell-script.
+
+You can also use $@ to iterate over the arguments in a for loop. For example, you can write a script like this:
+
+#!/bin/bash
+for arg in "$@"; do
+  echo "Processing argument: $arg"
+done
+
+This script will print each argument on a separate line. Note that you can also use $* instead of $@,
+but they behave differently when quoted. $* will concatenate all the arguments into a single string,
+separated by spaces, while $@ will preserve each argument as a separate word
+https://www.freecodecamp.org/news/shell-scripting-crash-course-how-to-write-bash-scripts-in-linux/
+###
+
+
+### install ntfs-3g
+```
+apt install -y ntfs-3g libntfs-3g88
+```
+
+
+
+### setup ACL:
+```
+1. sudo apt install acl -y
+2. sample acl commands:
+#grant
+setfacl -R -m u:bob:rwx dir
+#revoke
+setfacl -x u:alice file.txt
+#view info
+getfacl file.txt
+```
+
+
+### RHEL Setup Windows Samba smb share to or from a Linux system:
+```
+## Linux Server
+https://opensource.com/article/21/4/share-files-linux-windows
+
+1. install samba:
+sudo dnf install samba -y
+# samba: (both) Server and Client software to interoperate with Windows machines
+
+2. go to /etc/samba/smb.conf
+# Do the required configurations
+# URL on the main website for samba configurations:
+https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html
+
+create shares by appending a configuration similar to below at the end of /etc/samba/smb.conf
+[exampleShare]
+path = /srv/shares/exampleShare
+available = yes
+browseable = yes
+writeable = yes
+guest ok = no
+valid users = sambauser
+write list = sambauser
+
+
+3. Modify SELinux
+sudo setsebool -P samba_enable_home_dirs on
+# check the applied configuration on SELinux:
+sudo getsebool samba_enable_home_dirs
+# Output of the above command:
+# samba_enable_home_dirs --> on
+
+4. Enable user:
+sudo smbpasswd -a <your-user>
+# The user name and password do not have to be same as the pairs of usernames and passwords of the Linux system
+# Get list of users and their details:
+sudo pdbedit -L -v
+# Remove a user:
+sudo smbpasswd -x <user-name>
+
+5. Start samba service:
+sudo systemctl enable --now smb # or smbd on some systems
+
+6. Confiugre the firewall:
+sudo firewall-cmd --add-service=samba --permanent
+sudo firewall-cmd --add-port={139/tcp,139/udp,445/tcp,445/udp} --permanent
+
+7. create 
+
+7.Access samba share from Windows
+
+## Linux client
+https://community.pyramidanalytics.com/t/q6h0f4g/how-to-access-a-windows-shared-folder-from-linux-using-the-command-line
+https://opensource.com/article/21/4/share-files-linux-windows
+
+
+mount.cifs //192.168.171.1/Ali /mnt/WindowsShare/Ali-PCMain/Ali -o user=Ali,uid=$UID
+
+
+list shares of the target samba
+smbclient -L  //192.168.171.1/ -U Ali%"passwd"
+connect to one of the shares ("Ali" share must be available, otherwise the error "tree connect failed: NT_STATUS_BAD_NETWORK_NAME" will be returned)
+smbclient -L  //192.168.171.1/Ali -U Ali%"passwd"
+
+``` RHEL Setup Windows Samba smb share to or from a Linux system:
+
+
+
+
+
+
+
+
+### Ubuntu Setup Windows Samba smb share to or from a Linux system:
+```
+## Linux Server
+https://ubuntu.com/tutorials/install-and-configure-samba#1-overview
+## Samba server:
+
+1.
+sudo apt-get update
+# for smb server
+apt install -y samba samba-common samba-common-bin
+
+
+2. Check if the installation was successful by locating the Samba binary
+whereis samba
+
+3. Create a directory for your Samba share
+mkdir /home/your_username/sambashare
+
+4. go to /etc/samba/smb.conf
+# Do the required configurations
+# URL on the main website for samba configurations:
+https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html
+
+5. create shares by appending a configuration similar to below at the end of /etc/samba/smb.conf
+[exampleShare]
+path = /srv/shares/exampleShare
+available = yes
+browseable = yes
+writeable = yes
+guest ok = no
+valid users = sambauser
+write list = sambauser
+
+6. Set up a Samba password for your user account
+sudo smbpasswd -a your_username
+
+
+7. Enable user:
+sudo smbpasswd -a <your-user>
+# The user name and password do not have to be same as the pairs of usernames and passwords of the Linux system
+# Get list of users and their details:
+sudo pdbedit -L -v
+# Remove a user:
+sudo smbpasswd -x <user-name>
+
+8. Start samba service:
+sudo systemctl enable --now smb # or smbd on some systems
+
+9. Confiugre the firewall:
+ 
+
+10.Access samba share from Windows
+
+
+
+## Linux client
+https://community.pyramidanalytics.com/t/q6h0f4g/how-to-access-a-windows-shared-folder-from-linux-using-the-command-line
+https://opensource.com/article/21/4/share-files-linux-windows
+
+# for smb client
+1.
+sudo apt-get update
+apt install -y samba-common samba-common-bin samba-client cifs-utils
+
+2. create the mount point
+sudo mkdir /mnt/windows_share
+
+3. Run the following. You will be prompted to enter the password for the Windows user account afterwards.
+# to unmount previously mounted:
+# sudo umount /mnt/windows_share
+# If you encounter an error stating that the device is busy, you can try using the lsof command to find out which process is using the mount point
+# lsof /mnt/windows_share
+
+# to unmount previously mounted:
+# sudo umount /backup
+# If you encounter an error stating that the device is busy, you can try using the lsof command to find out which process is using the mount point
+# lsof /backup
+
+sudo mount -t cifs -o username=username //WINDOWS_IP/SHARE_NAME /mnt/windows_share
+mount -t cifs -o username=RedgateMon@mofid.dc,uid=116,gid=122 //172.23.97.4/PostgreSQL /backup
+J2TCnLn$aAcP*W
+
+4. make the mount persistent
+sudo vi /etc/fstab
+
+5. Add the following line at the end of the file:
+//WINDOWS_IP/SHARE_NAME /mnt/windows_share cifs username=username,password=your_password,_netdev 0 0
+//172.23.97.4/PostgreSQL /backup cifs username=RedgateMon@mofid.dc,password=J2TCnLn$aAcP*W,uid=116,gid=122,_netdev 0 0
+
+6. test the configuration
+sudo mount -a
+
+
+list shares of the target samba
+smbclient -L  //192.168.171.1/ -U Ali%"passwd"
+connect to one of the shares ("Ali" share must be available, otherwise the error "tree connect failed: NT_STATUS_BAD_NETWORK_NAME" will be returned)
+smbclient -L  //192.168.171.1/Ali -U Ali%"passwd"
+
+``` Ubuntu Setup Windows Samba smb share to or from a Linux system:
+
+
+
+
+
+
+
+###special shell variables:
+```
+$0: The name of the script or shell that is currently running. It is often used to display the name of the script in error messages or usage instructions.
+$#: The number of arguments passed to the script or shell. It is often used to check if the correct number of arguments have been passed to the script.
+$*: A single string containing all the arguments passed to the script or shell. It is often used to pass all the arguments to another command or script.
+$@: An array containing all the arguments passed to the script or shell. It is often used to iterate over all the arguments in a loop.
+$1 to $9: The first nine arguments passed to the script or shell. They are often used to access specific arguments passed to the script.
+$?: The exit status of the last executed command. It is often used to check if the last command executed successfully.
+$!: The process ID of the last executed background command. It is often used to monitor the status of background jobs.
+$$: The process ID of the current shell. It is often used to create unique filenames for temporary files.
+$-: The current set of options in your current shell. It is often used to check the current shell options.
+~
+~ali: The home directory for "ali"
+
+
+$!
+stores the PID (Process ID) of the most recently executed background process. It is often used to 
+monitor the status of background jobs
+$$
+stores the PID of the current shell process. It is often used to create unique filenames for temporary files
+```
+
+
+ulimit
+pipe buffer size
+
+unbuffer command 
+disable the buffering.
+
+
+###install libfuse:
+```
+if meson in default repos is outdated, you can run the following:
+#pip3 install --user meson==0.51: this will only install in the user environment
+pip3 install meson==0.51
+tar xzf fuse-X.Y.Z.tar.gz; cd fuse-X.Y.Z
+mkdir build; cd build
+meson setup ..
+#ex:
+tar xzf fuse-3.16.2.tar.gz; cd fuse-3.16.2
+mkdir build; cd build
+meson setup ..
+
+
+```
+
+
+### resolve lock error for application managers
+```
+#sample error message:
+E: Could not get lock /var/lib/dpkg/lock-frontend - open (11: Resource temporarily unavailable)
+E: Unable to acquire the dpkg frontend lock (/var/lib/dpkg/lock-frontend), is another process using it?
+1. run one of the following corresponding to the error message. run all of them as a last resort.
+sudo rm /var/lib/apt/lists/lock
+sudo rm /var/cache/apt/archives/lock
+sudo rm /var/lib/dpkg/lock*
+```
+
+
+### Network configuration
+```
+## traceroute
+# install traceroute
+traceroute -i eth0 linuxconfig.org
+# remove interface:
+ip link delete dev bond1
+# adding ip configuration through command line:
+1. 
+sudo ip addr add <ip_address>/<prefix> dev ens33
+sudo ip addr add 192.168.171.205/24 dev ens33
+
+2. 
+sudo ip route add default via <gateway> dev ens33
+sudo ip route add default via 192.168.171.205 dev ens33
+```
+
+###install python manually:
+```
+
+
+wget https://www.python.org/ftp/python/3.9.0/Python-3.9.0.tgz
+
+tar xzf Python-3.9.0.tgz
+
+cd Python-3.9.0
+
+./configure
+
+make
+
+sudo make install
+
+sudo apt install python3-pip -y
+
+#install packages:
+python3 -m pip install pytest
+```
+
+### Unmasking a masked service:
+```
+sudo systemctl unmask fuse
+sudo systemctl enable --now fuse
+# If it failed:
+sudo rm /lib/systemd/system/fuse.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now fuse
+```
+
+iptables -L to list the firewall rules
+iptables -A to add a rule to allow the SST ports
+
+
+##install python specific version
+```
+1.aproach 1:
+sudo add-apt-repository ppa:deadsnakes/ppa
+sudo apt update
+sudo apt install python3.9
+
+2.approach 2:
+wget https://www.python.org/ftp/python/3.9.0/Python-3.9.0.tgz
+tar xzf Python-3.9.0.tgz
+cd Python-3.9.0
+./configure
+make
+sudo make install
+```
+
+
+
+### install LibreSSL:
+```
+
+```
+see the environment variables of a service:
+systemctl show -p Environment smbd
+sudo strings /proc/<PID>/environ
+
+
+
+sudo ip address add 192.168.1.10/24 dev ens3
+sudo ip address del 192.168.1.10/24 dev ens3
+sudo ip address add 192.168.1.10/24 via 192.168.1.1 dev ens3
+sudo ip route add 192.168.1.0/24 via 192.168.0.1 dev eth0
+sudo route add -net 192.168.1.0 netmask 255.255.255.0 gw 192.168.0.1 dev eth0
+# to change a route the following commands must be used:
+sudo ip route del 192.168.241.2/32 via 192.168.241.2 dev ens35
+sudo ip route add 0.0.0.0/0 via 192.168.241.2 dev ens35
+
+ubuntu package cache directory:
+/var/cache/apt/archives
+
+show network devices:
+lshw -C network
+lsusb or lspci to see the USB or PCI devices connected to your system
+enable interface:
+#bring enable interface up and down:
+sudo ip link set enp0s3 up
+#or:
+ifconfig enp0s3 up
+
+
+sudo apt -d install htop
+apt reinstall -d netplan.io
+sudo apt reinstall -d -o dir::cache=/user/desktop/blabla netplan.io
+sudo apt install ./*.deb !<package1> !<package2> ...
+sudo apt --download-only install htop
+sudo apt --download-only reinstall htop
+sudo apt --download-only reinstall -o dir::cache=/user/desktop/blabla htop
+apt-get --print-uris install htop
+
+#boot to firmware:
+sudo systemctl reboot --firmware-setup
+You can edit the /etc/apt/apt.conf file and add the line:
+Dir::Cache "/path/to/your/cache/directory";
+
+
+#find locate where a package binaries binary are installed:
+dpkg -L htop | grep -E '/s?bin/'
+rpm -ql htop | grep -E '/s?bin/'
+
+
+### configure network interfaces in RHEL 9 by editing NetworkManager connection profiles in keyfile format
+```
+command approach is done using nmcli or ip commands
+manual approach is done by editing the files in the following directory
+/etc/NetworkManager/system-connections/
+after you are done modifying these files, you should execute the following command
+to put the modifications into effect
+nmcli connection reload
+Sample nmconnection configuration file:
+##############################
+[connection]
+id=ens192
+uuid=9a10039f-1b50-3558-b7ff-5ef56bc8772a
+type=ethernet
+autoconnect-priority=-999
+interface-name=ens192
+
+[ethernet]
+
+[ipv4]
+address1=192.168.100.51/24,192.168.100.15 #gateway
+dns=192.168.100.10;
+dns-search=Home.local;
+method=manual
+
+[ipv6]
+addr-gen-mode=eui64
+method=auto
+
+[proxy]
+#method=http
+#http-proxy=192.168.100.15
+#http-proxy-port=10811
+#proxy.username=kjv0t20hgj20
+#proxy.password=7v8uDh5UPxUcBm
+####################################
+```
+
+
+### Install libfuse
+```
+mkdir libfuse; cd libfuse
+wget https://github.com/libfuse/libfuse/releases/download/fuse-3.16.2/fuse-3.16.2.tar.gz
+wget https://github.com/libfuse/libfuse/releases/download/fuse-3.16.2/fuse-3.16.2.tar.gz.sig
+
+#python3 -m ensurepip --default-pip
+#/usr/bin/python3: No module named ensurepip
+
+
+sudo apt install python3-pip -y
+
+python3 -m pip install pytest
+python3 -m pip install looseversion
+
+
+tar xzf fuse-3.16.2.tar.gz; cd fuse-3.16.2
+mkdir build; cd build
+meson setup ..
+
+
+ninja
+sudo python3 -m pytest test/
+sudo ninja install
+
+
+sudo chown root:root util/fusermount3
+sudo chmod 4755 util/fusermount3
+python3 -m pytest test/
+```
+
+
+### set proxy server for yum.conf/dnf.conf
+```
+###################################################
+[main]
+
+proxy=http://<Proxy-Server-IP-Address>:<Proxy_Port>
+proxy=socks://<Proxy-Server-IP-Address>:<Proxy_Port>
+proxy_username=<Proxy-User-Name>
+proxy_password=<Proxy-Password> 
+###################################################
+ex 1:
+###################################################
+[main]
+
+proxy=http://192.168.171.15:10811
+proxy_username=kjv0t20hgj20
+proxy_password=7v8uDh5UPxUcBm 
+###################################################
+ex 2:
+###################################################
+[main]
+
+proxy=http://172.27.144.1:18444
+proxy_username=kjv0t20hgj20
+proxy_password=7v8uDh5UPxUcBm 
+###################################################
+```
+
+
+
+
+### register subscribe RedHat Enterprise Linux (released directly by redhat) 9 installation
+```
+[ali@RHEL9 ~]$ subscription-manager register --username amomen --password <pass> --auto-attach
+You are attempting to run "subscription-manager" which requires administrative
+privileges, but more information is needed in order to do so.
+Authenticating as "root"
+Password: 
+Registering to: subscription.rhsm.redhat.com:443/subscription
+The system has been registered with ID: e699b167-dfc4-4366-9156-8cebed669de9
+The registered system name is: RHEL9
+Ignoring the request to auto-attach. Attaching subscriptions is disabled for organization "15091124" because Simple Content Access (SCA) is enabled.
+
+```
+
+
+### Automatically importing repo keys example:
+```
+[root@rockyfullserver ~]# rpm -i pgdg-redhat-repo-latest.noarch.rpm
+warning: pgdg-redhat-repo-latest.noarch.rpm: Header V4 DSA/SHA1 Signature, key I                                                                              D 442df0f8: NOKEY
+[root@rockyfullserver ~]# yum repolist
+repo id                                                repo name
+appstream                                              Rocky Linux 9 - AppStream
+baseos                                                 Rocky Linux 9 - BaseOS
+crb                                                    Rocky Linux 9 - CRB
+epel                                                   Extra Packages for Enterprise Linux 9 - x86_64
+epel-cisco-openh264                                    Extra Packages for Enterprise Linux 9 openh264 (From Cisco) - x86_64
+extras                                                 Rocky Linux 9 - Extras
+pgdg-common                                            PostgreSQL common RPMs for RHEL / Rocky 9 - x86_64
+pgdg11                                                 PostgreSQL 11 for RHEL / Rocky 9 - x86_64
+pgdg12                                                 PostgreSQL 12 for RHEL / Rocky 9 - x86_64
+pgdg13                                                 PostgreSQL 13 for RHEL / Rocky 9 - x86_64
+pgdg14                                                 PostgreSQL 14 for RHEL / Rocky 9 - x86_64
+pgdg15                                                 PostgreSQL 15 for RHEL / Rocky 9 - x86_64
+pgdg16                                                 PostgreSQL 16 for RHEL / Rocky 9 - x86_64
+[root@rockyfullserver ~]# yum search postgresql
+PostgreSQL common RPMs for RHEL / Rocky 9 - x86_64                                                                             66  B/s | 195  B     00:02
+PostgreSQL common RPMs for RHEL / Rocky 9 - x86_64                                                                            1.6 MB/s | 1.7 kB     00:00
+Importing GPG key 0x442DF0F8:
+ Userid     : "PostgreSQL RPM Building Project <pgsql-pkg-yum@postgresql.org>"
+ Fingerprint: 68C9 E2B9 1A37 D136 FE74 D176 1F16 D2E1 442D F0F8
+ From       : /etc/pki/rpm-gpg/RPM-GPG-KEY-PGDG
+Is this ok [y/N]:
+PostgreSQL common RPMs for RHEL / Rocky 9 - x86_64                                                                            118 kB/s | 552 kB     00:04
+PostgreSQL 16 for RHEL / Rocky 9 - x86_64                                                                                      67  B/s | 195  B     00:02
+PostgreSQL 16 for RHEL / Rocky 9 - x86_64                                                                                     1.6 MB/s | 1.7 kB     00:00
+Importing GPG key 0x442DF0F8:
+ Userid     : "PostgreSQL RPM Building Project <pgsql-pkg-yum@postgresql.org>"
+ Fingerprint: 68C9 E2B9 1A37 D136 FE74 D176 1F16 D2E1 442D F0F8
+ From       : /etc/pki/rpm-gpg/RPM-GPG-KEY-PGDG
+Is this ok [y/N]: y
+PostgreSQL 16 for RHEL / Rocky 9 - x86_64                                                                                      38 kB/s | 203 kB     00:05
+PostgreSQL 15 for RHEL / Rocky 9 - x86_64                                                                                      71  B/s | 195  B     00:02
+PostgreSQL 15 for RHEL / Rocky 9 - x86_64                                                                                     1.6 MB/s | 1.7 kB     00:00
+Importing GPG key 0x442DF0F8:
+ Userid     : "PostgreSQL RPM Building Project <pgsql-pkg-yum@postgresql.org>"
+ Fingerprint: 68C9 E2B9 1A37 D136 FE74 D176 1F16 D2E1 442D F0F8
+ From       : /etc/pki/rpm-gpg/RPM-GPG-KEY-PGDG
+Is this ok [y/N]: y
+PostgreSQL 15 for RHEL / Rocky 9 - x86_64                                                                                     101 kB/s | 411 kB     00:04
+PostgreSQL 14 for RHEL / Rocky 9 - x86_64                                                                                      59  B/s | 195  B     00:03
+PostgreSQL 14 for RHEL / Rocky 9 - x86_64                                                                                     1.6 MB/s | 1.7 kB     00:00
+Importing GPG key 0x442DF0F8:
+ Userid     : "PostgreSQL RPM Building Project <pgsql-pkg-yum@postgresql.org>"
+ Fingerprint: 68C9 E2B9 1A37 D136 FE74 D176 1F16 D2E1 442D F0F8
+ From       : /etc/pki/rpm-gpg/RPM-GPG-KEY-PGDG
+Is this ok [y/N]: y
+PostgreSQL 14 for RHEL / Rocky 9 - x86_64                                                                                     155 kB/s | 669 kB     00:04
+PostgreSQL 13 for RHEL / Rocky 9 - x86_64                                                                                      70  B/s | 195  B     00:02
+PostgreSQL 13 for RHEL / Rocky 9 - x86_64                                                                                     1.6 MB/s | 1.7 kB     00:00
+Importing GPG key 0x442DF0F8:
+ Userid     : "PostgreSQL RPM Building Project <pgsql-pkg-yum@postgresql.org>"
+ Fingerprint: 68C9 E2B9 1A37 D136 FE74 D176 1F16 D2E1 442D F0F8
+ From       : /etc/pki/rpm-gpg/RPM-GPG-KEY-PGDG
+Is this ok [y/N]: y
+PostgreSQL 13 for RHEL / Rocky 9 - x86_64                                                                                     134 kB/s | 636 kB     00:04
+PostgreSQL 12 for RHEL / Rocky 9 - x86_64                                                                                      68  B/s | 195  B     00:02
+PostgreSQL 12 for RHEL / Rocky 9 - x86_64                                                                                     1.6 MB/s | 1.7 kB     00:00
+Importing GPG key 0x442DF0F8:
+ Userid     : "PostgreSQL RPM Building Project <pgsql-pkg-yum@postgresql.org>"
+ Fingerprint: 68C9 E2B9 1A37 D136 FE74 D176 1F16 D2E1 442D F0F8
+ From       : /etc/pki/rpm-gpg/RPM-GPG-KEY-PGDG
+Is this ok [y/N]: y
+PostgreSQL 12 for RHEL / Rocky 9 - x86_64                                                                                     117 kB/s | 579 kB     00:04
+PostgreSQL 11 for RHEL / Rocky 9 - x86_64                                                                                      70  B/s | 195  B     00:02
+PostgreSQL 11 for RHEL / Rocky 9 - x86_64                                                                                     1.6 MB/s | 1.7 kB     00:00
+Importing GPG key 0x442DF0F8:
+ Userid     : "PostgreSQL RPM Building Project <pgsql-pkg-yum@postgresql.org>"
+ Fingerprint: 68C9 E2B9 1A37 D136 FE74 D176 1F16 D2E1 442D F0F8
+ From       : /etc/pki/rpm-gpg/RPM-GPG-KEY-PGDG
+Is this ok [y/N]: y
+PostgreSQL 11 for RHEL / Rocky 9 - x86_64                                                                                     105 kB/s | 542 kB     00:05
+============================================================= Name & Summary Matched: postgresql =============================================================
+postgresql.x86_64 : PostgreSQL client programs
+ansible-collection-community-postgresql.noarch : Manage PostgreSQL with Ansible
+asterisk-postgresql.x86_64 : Applications for Asterisk that use PostgreSQL
+collectd-postgresql.x86_64 : PostgreSQL plugin for collectd
+freeradius-postgresql.x86_64 : Postgresql support for freeradius
+kdb-driver-postgresql.x86_64 : Postgresql driver for kdb
+...
+```
+
+
+### cloud-generated netplan
+```
+# This file is generated from information provided by the datasource.  Changes
+# to it will not persist across an instance reboot.  To disable cloud-init's
+# network configuration capabilities, write a file
+# /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg with the following:
+# network: {config: disabled}
+network:
+    version: 2
+    ethernets:
+        eth0:
+            addresses:
+            - 2a01:4f8:1c1c:a366::1/64
+            dhcp4: true
+            gateway6: fe80::1
+            match:
+                macaddress: 96:00:01:c3:08:b8
+            nameservers:
+                addresses:
+                - 8.8.8.8
+                - 8.8.4.4
+                - 2a01:4ff:ff00::add:2
+                - 2a01:4ff:ff00::add:1
+            set-name: eth0
+
+```
+
+
+df -h		
+fdisk -l	# list the drives and their partitions
+
+
+sort and return only unique lines
+sort -u file
+awk '{!seen[$0]++};END{for(i in seen) if(seen[i]==1)print i}' file
+
+# show user home directory
+echo ~postgres
+/var/lib/pgsql
+
+
+
+[root@Ali-PCMain ali]# service status systemd
+The service command supports only basic LSB actions (start, stop, restart, try-restart, reload, reload-or-restart, try-reload-or-restart, force-reload, status, condrestart). For other actions, please try to use systemctl.
+
+
+copy directory tree only (faulty):
+rsync -av -f"+ */" -f"- *" /path/to/source /path/to/destination
+cd /path/to/source && find . -type d -exec mkdir -p -- /path/to/destination/{} \;
+
+
+
+### Other main package manangers for Ubuntu:
+```
+snap (preinstalled on Ubuntu)
+common commnads:
+snap find	# finds all the available packages without applying a search filter. find and search keywords are synonymous
+snap find package-name
+snap info package-name
+sudo snap install <package name>
+sudo snap remove <package name>
+snap refresh <package name>
+snap list
+# get download URL to a snap package (here the package "bare")
+curl -H 'Snap-Device-Series: 16' "http://api.snapcraft.io/v2/snaps/info/bare" | jq '.["channel-map"][] | select(.channel.name == "stable") | .download.url' | sort -u
+
+flatpak remove flathub <Fully Qualified package name>
+
+flatpak
+sudo apt install flatpak
+flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+A source says afterwards a reboot is required.
+```
+
+### Install midori
+```
+1. Use snap package manager
+sudo snap install midori
+2. Use flatpak package manager
+sudo apt install flatpak
+flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+reboot # is it required?
+flatpak install flathub org.midori_browser.Midori
+
+-- update midori:
+1. snap:
+sudo snap refresh midori
+2. flatpak:
+flatpak update
+
+# on rhel:
+https://snapcraft.io/install/midori/rhel
+sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm && \
+sudo dnf upgrade -y && \
+sudo yum install -y snapd && \
+sudo systemctl enable --now snapd.socket && \
+sudo ln -s /var/lib/snapd/snap /snap && \
+sudo snap install midori
+yum install -y https://dl.google.com/linux/direct/google-chrome-stable_current_x86_64.rpm
+
+
+```
+
+
+### Install Browsh
+```
+# Debian
+wget https://github.com/browsh-org/browsh/releases/download/v1.8.0/browsh_1.8.0_linux_amd64.deb
+sudo apt install ./browsh_1.8.0_linux_amd64.deb
+rm -f ./browsh_1.8.0_linux_amd64.deb
+browsh
+# RHEL
+curl -o browsh.rpm -L https://github.com/browsh-org/browsh/releases/download/v1.8.0/browsh_1.8.0_linux_amd64.rpm
+rpm -Uvh ./browsh.rpm
+rm -f ./browsh.rpm 
+browsh
+```
+
+
+
+
+
+### install GUI Xrdp graphical target:
+```
+## Ubuntu:
+1: Install Ubuntu desktop
+apt install -y <ubuntu-desktop or ubuntu-desktop-minimal>
+# on some Ubuntu distros like WSL:
+sudo apt-mark hold acpid acpi-support \
+&& sudo apt update && sudo apt upgrade -y && sudo apt install ubuntu-desktop-minimal -y 
+2: Install and config Xrdp in the server
+sudo apt install xrdp -y && sudo systemctl status xrdp
+addgroup tsusers
+addgroup tsadmins
+usermod -aG tsusers ali
+systemctl restart xrdp
+
+3: Configure ufw firewall
+ufw allow 3389
+ufw reload
+ufw status
+4.(#Optional) install midori or another browser
+reboot
+5: Access server using Remote Desktop Connection
+
+## Rocky Red-Hat
+https://techviewleo.com/vnc-and-xrdp-server-on-centos-almalinux-rhel/
+0.
+install epel
+1.
+sudo dnf groupinstall "Server with GUI" -y
+2.
+sudo dnf update
+3. Disable SELinux
+sudo vi /etc/sysconfig/selinux
+SELINUX=disabled
+4. Check it
+getenforce
+sestatus
+5. 
+reboot
+6.1
+sudo dnf install xrdp -y
+6.2 Change xrdp listening port if you wish
+
+7. Choose Graphical Env for RDP
+echo gnome-session >>~/.xsession
+echo kde-session >~/.xsession	# KDE must be installed
+8.
+sudo systemctl enable --now xrdp
+``` install GUI Xrdp graphical target
+
+### install gui and x2go
+```
+apt install -y software-properties-common
+apt-add-repository ppa:x2go/stable
+
+## X2Go server:
+sudo apt-add-repository ppa:x2go/stable
+sudo apt-get update
+sudo apt-get install x2goserver x2goserver-xsession
+sudo apt-get install x2gomatebindings  # if you use MATE/mubuntu
+sudo apt-get install x2golxdebindings  # if you use LXDE/lubuntu
+
+## x2goclient:
+sudo apt-add-repository ppa:x2go/stable
+sudo apt-get update
+sudo apt-get install x2goclient
+```
+
+
+### install and utilize x-ui
+```
+apt update && apt upgrade -y
+apt install curl socat -y
+bash <(curl -Ls https://raw.githubusercontent.com/vaxilu/x-ui/master/install.sh)
+``` install and utilize x-ui
+
+
+change default editor for bash (nano, ed, vim)
+#ubuntu
+update-alternatives --config editor
+update-alternatives --set editor /usr/bin/vim.basic
+#rhel
+export EDITOR=nano
+export VISUAL=nano
+## select-editor and sensible editor.
+# the following is for the very lightweight docker container which has no editor preinstalled
+-----------------------
+root@1d893dec0682:/# select-editor
+update-alternatives: error: no alternatives for editor
+root@1d893dec0682:/# sensible-editor
+/usr/bin/sensible-editor: 20: editor: not found
+/usr/bin/sensible-editor: 31: nano: not found
+/usr/bin/sensible-editor: 20: nano-tiny: not found
+/usr/bin/sensible-editor: 20: vi: not found
+Couldn't find an editor!
+Set the $EDITOR environment variable to your desired editor.
+-----------------------
+
+
+
+curl
+{
+-L: follow redirects
+-s: silent
+-S: show errors even if -s is specified
+-o: Write to file instead of stdout
+}
+
+bash <(curl -Ls https://raw.githubusercontent.com/vaxilu/x-ui/master/install.sh)
+
+
+### tee: read from standard input and write to standard output and files
+```
+tee > p.txt, tee p.txt
+start writing inside p.txt
+
+ls | tee files.txt
+ls | tee -a files.txt
+ls | tee processes.txt backup.txt
+echo "127.0.0.1 localhost" | sudo tee -a /etc/hosts
+ping google.com | tee ping.txt >/dev/null
+```
+
+lsattr /etc/resolv.conf
+If you see an i in the output, it means the file is immutable. To remove this attribute:
+chattr -i /etc/resolv.conf
+
+
+
+clear terminal bash shell
+sudo dnf install ncurses
+
+
+
+mv /root/Downloads/Win11_23H2_English_x64v2.iso /var/www/jdjkskfk/sdsda/113244fds/e096ik/Win11_23H2_English_x64v2.iso
+
+
+
+[root@Ali-PCMain Server with GUI]# sudo dnf group install --disablerepo=* --repofrompath=local,. "Server with GUI"
+Added local repo from .
+local                                                                                                                                                                         0.0  B/s |   0  B     00:00
+Errors during downloading metadata for repository 'local':
+  - Curl error (37): Couldn't read a file:// file for file:///mnt/d/Stateless/Applications Linux/RHEL/el9/groups/Server with GUI/repodata/repomd.xml [Couldn't open file /mnt/d/Stateless/Applications Linux/RHEL/el9/groups/Server with GUI/repodata/repomd.xml]
+Error: Failed to download metadata for repo 'local': Cannot download repomd.xml: Cannot download repodata/repomd.xml: All mirrors were tried
+
+
+show all environment variables
+printenv
+env
+
+
+# truncate/empty a file
+truncate -s 0 filename.txt
+> filename
+
+
+# find largest files in a directory recursively
+find /path/to/directory -type f -exec du -h {} + | sort -rh | head -n 10
+
+
+### snap clean packages
+```
+write a bash script like the following and regularly run it:
+#!/bin/bash
+# Removes old revisions of snaps
+# CLOSE ALL SNAPS BEFORE RUNNING THIS
+set -eu
+snap list --all | awk '/disabled/{print $1, $3}' | while read snapname revision; do
+snap remove "$snapname" --revision="$revision"
+done
+```
+
+
+
+### Show apt update downloaded list for packages and their versions
+find /var/lib/apt/lists/ -maxdepth 1 | grep pgdg | xargs -I{} cat {} | more
+
+
+view basearch and releasever variables:
+/usr/libexec/platform-python -c 'import dnf, json; db = dnf.dnf.Base(); print(json.dumps(db.conf.substitutions, indent=2))'
+
+
+
+### static permanent dns configuration
+```
+
+
+Even with static DNS servers configured, NetworkManager will occasionally delete all of them and leave none working. Also, it will change your DNS servers as network interfaces go up and down. There doesn't seem to be a way within NetoworkManager to turn off its dynamic management.
+
+An alternative solution is to disable dynamic management of DNS entirely. You can do this by deleting the /etc/resolv.conf symlink and replace it with a real file that is static. Something like this would work:
+
+nameserver 10.30.20.1
+nameserver 1.1.1.1
+nameserver 8.8.8.8
+
+There are other settings in this file that NetworkManager automatically adds, you might want to copy those as well.
+
+```
+
+
+#chmod permission codes
+# |	Permission				 |	rwx
+--|--------------------------|-----
+0 |	none					 |	000
+1 |	execute only			 |	001
+2 |	write only				 |	010
+3 |	write and execute		 |	011
+4 |	read only				 |	100
+5 |	read and execute		 |	101
+6 |	read and write			 |	110
+7 |	read, write, and execute |	111
+
+
+### install microsoft ms edge msedge ms-edge
+```
+##ubuntu:
+
+sudo apt update
+apt install -y xterm
+touch ~/.Xauthority
+sudo apt install -y xauth xorg openbox
+test purposes:
+###
+echo $DISPLAY
+sudo apt install x11-apps
+xeyes
+# Check if X11 forwarding is enabled in current session
+ss -tlnp | grep 6010  # Should show SSH listening on X11 port
+# Check Xauth entries
+xauth list
+# Check SSH client configuration on your local machine
+cat ~/.ssh/config  # Ensure no settings are disabling X11
+chmod 777 /root
+chmod 666 /root/.Xauthority
+su - alimomen
+export DISPLAY=:0  # Or whatever value root has (check with 'echo $DISPLAY' as root)
+export XAUTHORITY=/root/.Xauthority  # Might need to copy this file or adjust permissions
+
+###
+
+sudo wget -qO- https://packages.microsoft.com/keys/microsoft.asc | sudo gpg --dearmor > /etc/apt/trusted.gpg.d/microsoft.gpg
+sudo sh -c 'echo "deb [arch=amd64] https://packages.microsoft.com/repos/edge stable main" > /etc/apt/sources.list.d/microsoft-edge-dev.list'
+sudo apt install microsoft-edge-stable -y
+microsoft-edge 2> /dev/null &
+
+##rhel
+sudo wget https://packages.microsoft.com/config/rhel/8/packages-microsoft-prod.rpm
+sudo rpm -Uvh packages-microsoft-prod.rpm
+
+```
+
+
+
+root@Ali-PCMain:~# dpkg -i  /mnt/d/Stateless/Applications\ Linux/DEB/stable\ systemd\ 2204/*
+dpkg: error: dpkg frontend lock was locked by another process with pid 344135
+Note: removing the lock file is always wrong, and can end up damaging the
+locked area and the entire system. See <https://wiki.debian.org/Teams/Dpkg/FAQ>.
+
+
+
+# problem which causes slow boot on Ubuntu:
+# A start job is running for Wait for Network to be Configured (Imin sas / no limit)
+
+
+
+
+# supress wait in ubuntu boot: (A start job is running for Hait for Network to be Conf igured (46s / no limit))
+mkdir /etc/systemd/system/systemd-networkd-wait-online.service.d/
+touch /etc/systemd/system/systemd-networkd-wait-online.service.d/override.conf
+systemctl edit systemd-networkd-wait-online.service
+
+Edit the systemd-networkd-wait-online.service
+In the [Service] block:
+# From:
+[Service]
+Type=oneshot
+ExecStart=/lib/systemd/systemd-networkd-wait-online
+RemainAfterExit=yes
+# To:
+[Service]
+Type=oneshot
+ExecStart=/lib/systemd/systemd-networkd-wait-online
+RemainAfterExit=yes
+TimeoutStartSec=2sec
+
+
+
+
+#service masking:
+systemctl list-unit-files --state=masked
+#if the service does not get unmasked:
+navigate to /lib/systemd/system/ and see if the service file is a symlink to /dev/null
+remove the link
+Reload the systemd daemon:
+Check the status of the service:
+If it's not loaded and running, Reinstall the package:
+Reload the daemon again and check the status
+
+
+#if x11-common will not get started and returns the follwoing error:
+Failed to start LSB: set up the X server and ICE socket directories.
+#the /tmp/.X11-unix directory being mounted as a read-only file system.
+sudo mount -o remount,rw /tmp/.X11-unix
+sudo systemctl start x11-common.service
+
+
+
+
+##apache allow download of large files
+#Locate and edit your Apache configuration file (httpd.conf) or .htaccess file in the directory from which you're serving files.
+#increase the LimitRequestBody directive
+vi /etc/apache2/httpd.conf
+LimitRequestBody 53687091200	# 50GB
+#Find the Timeout directive in the httpd.conf file and increase its value
+Timeout 6000
+# Modify php settings (if applicable)
+vi /etc/php/<php version>/apache2/php.ini
+memory_limit = 1024M
+post_max_size = 50G
+upload_max_filesize = 2G
+max_execution_time = 3000
+# set permissions for the download file
+chown -R www—data:www—data /var/www/html
+chmcd 644 /var/www/html/download/mcr.microsoft.com-mssql-server.tar
+# Configure Nginx as a Reverse Proxy(if it is applicable, find how to do it)
+#restart apache
+systemctl restart apache2
+
+
+
+
+### linux display manager, window manager, GUI
+```
+•  GDM (GNOME Display Manager): The default display manager for GNOME desktop environments
+•  LightDM: A cross-desktop display manager that can use various front-ends written in any toolkithttps://www.slant.co/topics/2053/~best-linux-display-manager.
+•  SDDM (ex: KDE) (Simple Desktop Display Manager): A modern display manager for X11 and Wayland aiming to be fast, simple, and beautifulhttps://wiki.archlinux.org/title/Display_manager.
+•  XDM (X Display Manager): One of the oldest display managers, known for its simplicity and stabilityhttps://wiki.archlinux.org/title/Display_manager.
+•  LXDM: The LXDE display manager, which can be used independently of the LXDE desktop environmenthttps://wiki.archlinux.org/title/Display_manager.
+•  CDM (Console Display Manager): A login manager written in Bash, suitable for those who prefer a console-based approachhttps://wiki.archlinux.org/title/Display_manager.
+•  SLiM (Simple Login Manager): A lightweight and elegant graphical login solution, though it has been discontinued since 2013https://www.slant.co/topics/2053/~best-linux-display-manager.
+•  Ly: A TUI (ncurses-like) display manager for Linux and BSD that supports X and Wayland sessions
+•  greetd: A login daemon which supports both console and graphical greeters
+
+############################
+#figure out which linux GUI window manager I am using
+alternative 1 (better):
+echo $XDG_CURRENT_DESKTOP
+echo $GDMSESSION
+
+#other alternatives:
+#
+- sudo apt-get install -y wmctrl
+- wmctrl -m
+#
+- apt-get install pstree
+- pstree
+# after installing each of the following:
+- neofetch
+- screenfetch
+###########################
+``` linux display manager, window manager, GUI 
+
+
+
+
+
+When /etc/environment file is corrupt
+Last login: Mon Apr 15 21:01:07 2024 from 192.168.100.1
+-bash: groups: command not found
+Command 'lesspipe' is available in the following places
+ * /bin/lesspipe
+ * /usr/bin/lesspipe
+The command could not be located because '/usr/bin:/bin' is not included in the PATH environment variable.
+lesspipe: command not found
+Command 'dircolors' is available in the following places
+ * /bin/dircolors
+ * /usr/bin/dircolors
+The command could not be located because '/usr/bin:/bin' is not included in the PATH environment variable.
+dircolors: command not found
+
+
+
+iptables -L -nv
+
+
+
+### first character of the permission string:
+```
+•  -: A regular file.
+•  d: A directory.
+•  l: A symbolic link.
+•  c: A character special file (a device that handles data as a stream, like a terminal or modem).
+•  b: A block special file (a device that handles data in blocks, like a hard drive).
+•  s: A socket (used for IPC).
+•  p: A named pipe (FIFO).
+•  |: A FIFO (First In First Out) special file, also known as a pipe.
+•  =: A socket special file.
+•  @: A symbolic link (or that the file has extended attributes).
+•  >: A door (used for inter-process communication in some Unix systems).
+```
+
+
+
+root@ubu2204:~# apt install xterm -y
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+The following additional packages will be installed:
+  fontconfig-config fonts-dejavu-core libdrm-amdgpu1 libdrm-intel1 libdrm-nouveau2 libdrm-radeon1 libfontconfig1 libfontenc1 libgl1 libgl1-amber-dri
+  libgl1-mesa-dri libglapi-mesa libglvnd0 libglx-mesa0 libglx0 libice6 libllvm15 libpciaccess0 libsensors-config libsensors5 libsm6 libx11-xcb1 libxaw7
+  libxcb-dri2-0 libxcb-dri3-0 libxcb-glx0 libxcb-present0 libxcb-randr0 libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-xfixes0 libxcomposite1 libxfixes3 libxft2
+  libxi6 libxinerama1 libxkbfile1 libxmu6 libxpm4 libxrandr2 libxrender1 libxshmfence1 libxt6 libxtst6 libxv1 libxxf86dga1 libxxf86vm1 x11-common x11-utils
+  xbitmaps
+Suggested packages:
+  lm-sensors mesa-utils xfonts-cyrillic
+The following NEW packages will be installed:
+  fontconfig-config fonts-dejavu-core libdrm-amdgpu1 libdrm-intel1 libdrm-nouveau2 libdrm-radeon1 libfontconfig1 libfontenc1 libgl1 libgl1-amber-dri
+  libgl1-mesa-dri libglapi-mesa libglvnd0 libglx-mesa0 libglx0 libice6 libllvm15 libpciaccess0 libsensors-config libsensors5 libsm6 libx11-xcb1 libxaw7
+  libxcb-dri2-0 libxcb-dri3-0 libxcb-glx0 libxcb-present0 libxcb-randr0 libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-xfixes0 libxcomposite1 libxfixes3 libxft2
+  libxi6 libxinerama1 libxkbfile1 libxmu6 libxpm4 libxrandr2 libxrender1 libxshmfence1 libxt6 libxtst6 libxv1 libxxf86dga1 libxxf86vm1 x11-common x11-utils
+  xbitmaps xterm
+
+
+
+
+### terminal shortcuts:
+delete rest of the line:
+ctrl+k
+
+delete to the beginning of the line:
+ctrl+u
+
+reverse search
+ctrl+r
+
+delete the previous/next word
+ctrl+w/alt+d
+
+move to the beginning of the line (home)
+ctrl+a
+
+delete one character forwards/backwards
+ctrl+d/h
+
+clear terminal
+ctrl+l
+
+delete the whole contents of the line
+ctrl+n
+
+move the entire word forwards
+alt+t
+
+capitalize/lowercase and move forwards
+alt+u/l
+
+jump to the next/last word
+alt+f/b
+
+move forward and capitalize/lowercase the beginning of every word
+alt+c/l
+
+
+
+### install sql server on Ubuntu 22.04
+```
+curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | sudo gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg	# in case of an error, run the following:
+curl https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc
+curl -fsSL https://packages.microsoft.com/config/ubuntu/22.04/mssql-server-2022.list | sudo tee /etc/apt/sources.list.d/mssql-server-2022.list
+sudo apt-get update
+sudo apt-get install -y mssql-server
+sudo /opt/mssql/bin/mssql-conf setup
+systemctl status mssql-server --no-pager
+/opt/mssql/bin/mssql-conf set sqlagent.enabled true
+systemctl restart mssql-server	# on docker: docker restart container_id
+
+# change default port. it can also be changed in /var/opt/mssql/mssql.conf
+sudo /opt/mssql/bin/mssql-conf set network.tcpport 33333
+systemctl restart mssql-server
+
+# config files:
+/var/opt/mssql/mssql.conf
+/etc/security/limits.d/99-mssql-server.conf
+
+# change default dac port
+no solution found!
+
+#Notes
+sqlservr binary is in the following location (either container or main os)
+/opt/mssql/bin/sqlservr
+/opt/mssql/bin/mssql-conf
+
+# default error log location
+/var/opt/mssql/log/
+
+```
+
+
+
+
+### Shared profile directory/files
+```
+/etc/skel
+
+```
+
+
+The /usr/share/ directory is a part of the Unix-like operating systems' file hierarchy, and it's used to store architecture-independent (shared) data
+
+
+# terminal disk/storage space/free space analyzer
+ncdu
+## ncdu export and view
+# export:
+ncdu -o /path/to/export.json
+# view:
+ncdu -f /path/to/export.json
+
+
+
+
+### Zip, compression
+```
+zip myarchive.zip myfile1.txt myfile2.txt myfile3.txt
+zip -r myarchive.zip directory1/ directory2/
+zip -r myarchive.zip mydirectory/ -x *.mp4 # Exclude files
+zip -e myarchive.zip myfile.txt # set password for the archive
+zip -9 myarchive.zip myfile.txt # set compression level (-0 no compression, -9 best compression. default is -6)
+```
+
+
+## cut, sed , awk
+command | cut -d' ' -f2-
+command | cut -d' ' -f1-3
+command | awk '{print $1, $2, $3}'
+command | awk '{$1=""; print $0}'
+command | cut -d',' --complement -f2
+command | rev | cut -d"delimiter" -f2- | rev
+
+
+
+([ -f ".bashrcc" ] && echo "file exists") || echo "file does not exist"
+
+
+# setup password-less/passwordless sudo
+sudo visudo
+username ALL=(ALL) NOPASSWD: ALL
+# Or for specific commands:
+ username ALL=(ALL) NOPASSWD: /usr/sbin/ip addr add, /usr/sbin/ip addr del
+#shell prepared command
+# the following is wrong and will not work. because the redirection operator (>>) is interpreted by the shell before sudo is applied
+# sudo echo >> /etc/sudoers && echo "username ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+# Correct syntax:
+echo 'your_text_here' | sudo tee -a /etc/sudoers > /dev/null
+(-a: append, /dev/null: prevent tee from outputting to the screen)
+echo 'mofid\a.momen ALL=(ALL) NOPASSWD: ALL' | sudo tee -a /etc/sudoers > /dev/null
+
+
+### Change mount point options and remount it
+```
+1.
+sudo vi /etc/fstab
+
+2. Locate the line that mounts the /tmp directory. It might look something like this
+UUID=... /tmp    tmpfs   defaults,noexec,nosuid,nodev 0 0
+
+3. Do the desired alteration to the file. For example, remove the noexec option
+
+4. Save the file and close
+
+5. Remount the /tmp directory to apply the changes immediately without rebooting
+sudo mount -o remount /tmp
+
+
+```
+
+
+
+### install chrome-remote-desktop b=on Ubuntu
+```
+apt install -y 
+https://dl.google.com/linux/direct/chrome-remote-desktop_current_amd64.deb
+
+``` install chrome-remote-desktop b=on Ubuntu
+
+
+chrome-remote-desktop depends on xvfb; however:
+  Package xvfb is not installed.
+ chrome-remote-desktop depends on xserver-xorg-video-dummy (>= 1:0.3.8-1); however:
+  Package xserver-xorg-video-dummy is not installed.
+ chrome-remote-desktop depends on xbase-clients; however:
+  Package xbase-clients is not installed.
+ chrome-remote-desktop depends on python3-packaging; however:
+  Package python3-packaging is not installed.
+ chrome-remote-desktop depends on python3-psutil; however:
+  Package python3-psutil is not installed.
+
+
+
+### delete/clear/truncate history
+```
+# execute this in a sudoer user
+sudo truncate -s 0 ~root/.bash_history
+sudo cat ~root/.bash_history
+sudo truncate -s 0 ~postgres/.bash_history
+sudo cat ~postgres/.bash_history
+
+sudo truncate -s 0 ~postgres/.psql_history
+sudo cat ~postgres/.psql_history
+``` delete/clear history
+
+
+### lsblk types
+```
+•  disk: Represents an entire disk device which can contain partitions.
+•  part: Indicates a partition on a disk.
+•  lvm: Stands for Logical Volume Manager; it represents a logical volume.
+•  rom: Denotes read-only memory, often used for CD-ROM drives.
+•  loop: Refers to loopback devices, which are often used for mounting disk image files.
+•  crypt: Indicates encrypted volumes.
+•  raid: Represents RAID (Redundant Array of Independent Disks) devices.
+```
+
+
+
+
+### Service logging
+```
+[Service]
+ExecStart=/path/to/your/service
+StandardOutput=journal
+StandardError=journal+console
+
+#----------------------
+
+#!/bin/bash
+
+# Define the log function
+log() {
+if [[ "$1" == "ERROR" ]]; then
+echo "[$(date)] - $1 - $2" >&2
+else
+echo "[$(date)] - $1 - $2"
+fi
+}
+
+# Start your service logic here
+if ! /path/to/your/service-command; then
+# Log an error message if the service command fails
+log "ERROR" "Service failed to start due to an error."
+exit 1
+else
+# Log a success message if the service command succeeds
+log "INFO" "Service started successfully."
+fi
+```
+
+
+
+## get the ip addresses of an interface by name except the loopback:
+ip -4 addr show ens160 | grep -oP '(?<=inet\s)\d+(\.\d+){3}'
+## get ip address of the first found interface
+ip -4 addr show $(ip -br link | awk '$1 != "lo" {print $1}' | tail -1) | grep -oP '(?<=inet\s)\d+(\.\d+){3}'
+## get ip address  of the first found interface except the loopback that its name starts with the character 'e'
+ip -4 addr show $(ip -br link | awk '$1 != "lo" {print $1}' | grep ^e) | grep -oP '(?<=inet\s)\d+(\.\d+){3}'
+## get ip addresses of all interfaces except the loopback
+ip -br link | awk '$1 != "lo" {print $1}' | xargs -I{} ip -4 addr show {} | grep -oP '(?<=inet\s)\d+(\.\d+){3}'
+
+
+### auditd
+```
+#fetch the following error in linux no matter what user/service is receiving it:
+#cannot access '<file/directory name>': No such file or directory
+
+sudo apt-get install auditd -y
+sudo yum install audit -y
+
+# Add a watch for all files and directories
+sudo auditctl -a always,exit -F arch=b64 -S open,openat -F exit=-ENOENT -k no-such-file
+# The -F exit=-ENOENT flag specifically filters for the error number associated with the "No such file or directory" error
+
+# Search the audit logs
+sudo ausearch -k no-such-file | grep 'No such file or directory'
+```
+
+
+### Clear caches for scripts:
+```
+sudo sync
+sudo sysctl vm.drop_caches=3
+exec $SHELL -l
+type your_script_name
+``` Clear caches for scripts:
+
+
+### Delete an interface
+```
+1. Bring the Interface Down:
+sudo ip link set <interface_name> down
+
+2. Delete the Interface:
+sudo ip link delete <interface_name>
+
+#ex:
+sudo ip link set ens35 down
+sudo ip link delete ens35
+``` Delete an interface
+
+
+
+
+
+### Some common test flags used in shell scripts:
+```
+String Tests
+•  -n STRING: True if the string is not empty.
+•  -z STRING: True if the string is empty.
+File Tests
+•  -e FILE: True if the file exists.
+•  -f FILE: True if the file exists and is a regular file.
+•  -d FILE: True if the file exists and is a directory.
+•  -r FILE: True if the file exists and is readable.
+•  -w FILE: True if the file exists and is writable.
+•  -x FILE: True if the file exists and is executable.
+•  -s FILE: True if the file exists and is not empty.
+Numeric Tests
+•  -eq: True if two numbers are equal.
+•  -ne: True if two numbers are not equal.
+•  -lt: True if the first number is less than the second number.
+•  -le: True if the first number is less than or equal to the second number.
+•  -gt: True if the first number is greater than the second number.
+•  -ge: True if the first number is greater than or equal to the second number.
+Example Usage
+Here's an example of using some of these flags in a script:
+file="example.txt"
+if [ -e "$file" ]; then
+echo "File exists."
+if [ -f "$file" ]; then
+echo "File is a regular file."
+fi
+if [ -r "$file" ]; then
+echo "File is readable."
+fi
+if [ -w "$file" ]; then
+echo "File is writable."
+fi
+if [ -x "$file" ]; then
+echo "File is executable."
+fi
+else
+echo "File does not exist."
+fi
+```
+
+
+### create dummy large/big files:
+# fill the file with zero
+dd if=/dev/zero of=bigfile.img bs=1M count=1024
+# Only alocate disk space
+fallocate -l 1G bigfile.img
+
+
+### Alpine-Linux
+```
+vi /etc/apk/repositories
+
+https://dl-cdn.alpinelinux.org/alpine/v3.19/main
+https://dl-cdn.alpinelinux.org/alpine/v3.19/community
+https://dl-cdn.alpinelinux.org/alpine/edge/testing
+https://dl-cdn.alpinelinux.org/alpine/edge/main
+https://dl-cdn.alpinelinux.org/alpine/edge/community
+http://mirror.yandex.ru/mirrors/alpine/v3.20/main/x86_64/APKINDEX.tar.gz
+
+
+sudo nano /etc/network/interfaces
+auto eth0
+iface eth0 inet static
+   address 192.168.171.39
+   netmask 255.255.255.0
+   gateway 192.168.171.2
+   dns-nameservers 8.8.8.8 8.8.4.4
+also manually fill /etc/resolv.conf with the following:
+nameserver 8.8.8.8
+
+make user superuser:
+sudo apk add sudo
+sudo addgroup username wheel
+sudo visudo
+# %wheel ALL=(ALL) ALL
+
+Install systemd (However, keep in mind that installing systemd on Alpine Linux is not officially supported and might lead to unexpected issues. It's generally recommended to use OpenRC for managing services on Alpine Linux.):
+sudo apk update
+sudo apk add --no-cache build-base linux-headers musl-dev linux-pam
+git clone https://github.com/systemd/systemd.git
+cd systemd
+./bootstrap -DENABLE_SAMBA=TRUE
+./configure --without-selinux --without-bash --without-udev
+make
+sudo make install
+sudo rc-update add systemd default
+sudo rc-status
+sudo systemctl start systemd
+sudo systemctl enable systemd
+
+## Install PostgreSQL (Latest Version)
+#(edge/main repository contains the latest PostgreSQL installation
+sudo apk update
+sudo apk add postgresql17 postgresql17-contrib
+sudo pg_ctl initdb -D /var/lib/postgresql/data
+sudo rc-update add postgresql boot
+sudo rc-service postgresql start
+sudo -u postgres psql
+sudo rc-status postgresql
+##
+
+
+
+## mount existing cdrom device
+``
+sudo mkdir -p /mnt/cdrom
+# One of the below should work, the importance is the correct device name not the format of the command as they differ in the following 2 commands:
+1. sudo mount /dev/cdrom /mnt/cdrom
+2. sudo mount -t iso9660 -o ro /dev/sr0 /mnt/cdrom
+
+mount | grep cdrom
+cd /mnt/cdrom
+ls
+sudo umount /mnt/cdrom
+
+``
+##
+
+## Install VMWare-Tools:
+
+sudo apk add open-vm-tools open-vm-tools-guestinfo open-vm-tools-deploypkg
+sudo rc-service open-vm-tools start
+sudo rc-update add open-vm-tools boot
+sudo rc-status open-vm-tools
+
+##
+
+## Install KDE
+echo "http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories
+sudo apk update
+sudo apk add plasma-desktop-meta
+sudo apk add kde-applications
+sudo apk add xf86-video-intel # Example for Intel graphics
+sudo apk add xf86-video-vmware # Example for VMWare Virtual graphics
+
+sudo apk add xfce4 xorg-server xf86-video-vmware dbus xfce4-terminal
+
+sudo rc-service x11 restart
+sudo adduser your_username
+sudo reboot
+
+##
+
+``` Alpine-Linux
+
+
+
+### install vmware tools for Ubuntu 24.04
+```
+C:\Program Files (x86)\VMware\VMware Workstation\linux.iso
+
+```
+
+### disable automatic session lock timeout for ubuntu
+gsettings set org.gnome.desktop.screensaver lock-delay 0
+
+
+sudo apt install sssd-tools
+sudo apt update --fix-missing
+#apt upgrade --fix-broken
+sudo apt install -f
+
+Ubuntu:
+apt install ubuntu-desktop-minimal
+RockyLinux:
+yum group install "Server with GUI" -y
+yum group install "KDE Plasma Workspaces" -y
+sudo systemctl stop gdm
+sudo systemctl start sddm
+
+
+
+### Manually add a Virtual Network Interface
+```
+1. Load the Dummy Kernel Module
+sudo modprobe dummy
+2. Create the Virtual Interface
+sudo ip link add eth0 type dummy
+
+```
+
+
+## get display adapter information
+lspci | grep -i vga
+sudo lshw -class display
+inxi -G
+glxinfo | grep -i vendor
+xrandr
+
+
+
+## Test Figlet fonts in terminal
+find /usr/share/figlet -maxdepth 1 -type f -name "*.flf" | xargs -I{} bash -c 'echo {}:; figlet -f {} "SampleT"'
+
+
+# how can i run a command in linux shell which is detached from that shell and is not a child of that shell
+ so that when the shell ends, that command will not get killed
+nohup my_long_running_command > /dev/null 2>&1 &
+# Examples:
+nohup bash -c 'export PGPASSWORD=dF84Avedaq6wJm7WoqBA4Kb8ae7reWw && /usr/lib/postgresql/15/bin/pg_basebackup -h 172.23.138.24 -p 5432 -U payam -D /var/lib/postgresql/15/main/ -Xs -P' > /dev/null 2>&1 &
+nohup microsoft-edge > /dev/null 2>&1 &
+
+### prometheus
+```
+#Signal prometheus to reload its configurations:
+curl -X POST http://localhost:9090/-/reload
+
+# Use the `delete_series` API endpoint to delete specific time series. For example:
+curl -X POST -g 'http://localhost:9090/api/v1/admin/tsdb/delete_series?match[]={instance="your_instance"}'
+
+
+```
+
+###create volume and mount it to a mount point:
+```
+lsblk -f
+sudo umount /dev/sdX1  # Replace "X1" with your partition (e.g., sdb1, nvme0n1p1)
+#Using parted (for GPT or MBR)
+sudo parted /dev/sdX
+#Step 4: Format the Partition
+sudo mkfs.ext4 /dev/sdX1        # For ext4
+sudo mkfs.ntfs /dev/sdX1        # For NTFS
+sudo mkfs.vfat -F32 /dev/sdX1   # For FAT32
+#Step 5: Mount the Formatted Device
+sudo mkdir /mnt/mydrive
+sudo mount /dev/sdX1 /mnt/mydrive
+echo "/dev/sdX1 /mnt/mydrive ext4 defaults 0 2" | sudo tee -a /etc/fstab
+```
+
+ssh-keygen -t ed25519 -b 4096 -f /home/ali/keys/my_private_key -H -m PEM -C "my-key"
+ssh-keygen -t rsa -b 4096 -f "C:\Users\Ali\keys\my_private_key" -m PEM -C "ali@customhost"
+ssh-keygen -t ed25519 -f "C:\Users\Ali\.ssh\rootauth" -m PEM -C ""
+
+-t ed25519 → Specifies the key type (ed25519 for strong security).
+-b 4096 → Key length (not required for ed25519, but essential for RSA).
+-f /home/ali/keys/my_private_key → Defines the absolute path for private key storage.
+-H → Hashes hostnames in the known_hosts file for security.
+-m PEM → Outputs the private key in the PEM format (useful for compatibility).
+-C "my-key" → Adds a comment for easier identification. By default it is user@hostname
+
+SSH:
+Match User alimomen
+    PasswordAuthentication no
+DenyUsers alice bob charlie
+
+# check correct configurations for sshd_config
+sudo sshd -t
+
+# if restarting ssh service does not put sshd_config modifications into effect:
+sudo systemctl disable --now ssh.socket
+sudo systemctl restart ssh
+
+### resolve VMWare Workstation error on the first launch
+```
+If this is the error message:
+"
+VMware Kernel Module Updater
+Before you can run VMware, several modules must be compiled and loaded
+into the running kernel.
+GCC
+GNU C Compiler (gcc) version 1 1.2.0, was not found. If you installed it in a
+norFdefault path you can specify the path below. Otherwise refer to your
+distribution's documentation for installation instructors and click Refresh
+to search again in default locations.
+"
+apt install gcc-<version> -y
+# give the dialog the following address:
+/usr/bin/gcc-11
+# If error is below:
+"
+C header files matching your running kernel were not found. Refer to your
+distribution's documentation for installation instructions.
+"
+sudo apt-get update && sudo apt-get install linux-headers-$(uname -r)
+# or for WSL the result of uname -r is something like '6.6.87.1-microsoft-standard-WSL2' but you cannot
+# use this to download the kernel headers. Instead, find a compatible 'uname -r' string and manually
+# put it in the apt command. If you cannot find a package version corresponding to your kernel's version
+# you should update your kernel. For example:
+6.6.87.1-generic
+sudo apt-get install linux-headers-6.6.87.1-generic
+sudo apt-get install linux-headers-6.8.0-31-generic
+#
+```
+
+``` Install firefox
+snap install firefox
+
+# If got the following error:
+MoTTY X11 proxy: No authorisation provided
+Error: cannot open display: localhost:11.0
+# run:
+sudo snap connect firefox:x11
+sudo snap connect firefox:desktop
+sudo snap connect firefox:desktop-legacy
+
+export XAUTHORITY=$HOME/.Xauthority
+firefox
+
+
+``` Install firefox
+
+
+
+
+### Aliases
+```
+echo "
+alias st='systemctl start'
+alias sts='systemctl status'
+alias rest='systemctl restart'
+alias rel='systemctl reload'
+alias sto='systemctl stop'
+alias da='systemctl daemon-reload'
+alias lsu='systemctl list-units'
+alias pat='patronictl -c /etc/patroni/config.yml'
+" >> ~/.bashrc && source ~/.bashrc
+
+```
+
+### Modified bashrc
+```
+
+alias update='ssh -i ~/.ssh/rootauth root@localhost -p"$(echo "${SSH_CLIENT:-22}" | awk '"'"'{print (NF>=3 ? $3 : 22)}'"'"')" '"'"'apt update && apt upgrade -y'"'"
+
+
+```
+
+# find shell nesting level:
+SHLVL
+BASH_SUBSHELL
+
+
+### create SSH reverse tunnel
+```
+1. On remote server (Server R): 
+a. autossh (Critical for tunnel stability)
+# Install autossh
+sudo apt update && sudo apt install autossh -y
+# Generate dedicated SSH key (no passphrase for automation)
+ssh-keygen -t ed25519 -f ~/.ssh/tunnel_key -C ""
+# Copy key to YOUR server (Server-P)
+ssh-copy-id -p 22    -i ~/.ssh/tunnel_key.pub user@your-server-P.com
+ssh-copy-id  -p 9011 -i ~/.ssh/tunnel_key.pub root@87.248.150.140
+
+b. Service
+/etc/systemd/system/autossh-tunnel.service
+# Sample:
+###########################################
+[Unit]
+Description=AutoSSH Tunnel to The Primary Server P
+After=network.target
+
+[Service]
+User=ubuntu
+ExecStart=/usr/bin/autossh -M 0 -N \
+  -o "ExitOnForwardFailure=yes" \
+  -o "ServerAliveInterval 30" \
+  -o "ServerAliveCountMax 3" \
+  -R <server P socat port>:localhost:<Server R ssh port> \
+  -i /home/ubuntu/.ssh/tunnel_key \
+  user@server-p.com -p<server p ssh port>
+
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+###########################################
+
+
+sudo tee /etc/systemd/system/autossh-tunnel.service > /dev/null << 'EOF'
+###########################################
+[Unit]
+Description=AutoSSH Tunnel to The Primary Server P
+After=network.target
+
+[Service]
+User=root
+ExecStart=/usr/bin/autossh -M 0 -N \
+  -o "ExitOnForwardFailure=yes" \
+  -o "ServerAliveInterval 30" \
+  -o "ServerAliveCountMax 3" \
+  -R 54545:localhost:4430 \
+  -i /root/.ssh/tunnel_key \
+  root@87.248.150.140 -p9011
+
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+###########################################
+EOF
+
+
+c. Enable service:
+sudo systemctl daemon-reload
+sudo systemctl enable autossh-tunnel
+sudo systemctl restart autossh-tunnel
+
+2. On primary server (Server P)
+# Expose tunnel publicly:
+a. vi /etc/ssh/sshd_config
+GatewayPorts yes  # Change from 'no' to 'yes'
+# Then restart SSH:
+sshd -t
+sudo systemctl restart ssh
+
+b. install/update socat
+apt install socat -y
+
+c. Create Port-Forwarding Service (Alternative to manual SSH -L):
+/etc/systemd/system/public-tunnel.service
+# Sample:
+#########################################
+[Unit]
+Description=Expose Tunnel on Public Port for Server P
+After=network.target
+
+[Service]
+ExecStart=/bin/sh -c "socat TCP-LISTEN:<server P expose port>,reuseaddr,fork TCP:localhost:<server P socat port>"
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+#########################################
+
+sudo tee /etc/systemd/system/public-tunnel.service > /dev/null << 'EOF'
+#########################################
+[Unit]
+Description=Expose Tunnel on Public Port for Server P
+After=network.target
+
+[Service]
+ExecStart=/bin/sh -c "socat TCP-LISTEN:22,reuseaddr,fork TCP:localhost:54545"
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+#########################################
+EOF
+
+# c. Enable service
+sudo systemctl daemon-reload
+sudo systemctl enable public-tunnel
+sudo systemctl restart public-tunnel
+
+3. Firewall Server P
+# Allow SSH traffic only from trusted IPs
+sudo ufw allow from 192.168.1.0/24 to any port 2222
+sudo ufw enable
+
+4. Now "Client":
+ssh -p <server P expose port> server-r-user@server-p
+
+
+``` create SSH reverse tunnel
+
+
+
+Finish ■
