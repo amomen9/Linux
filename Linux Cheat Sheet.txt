@@ -3575,7 +3575,8 @@ sudo ufw enable
 
 4. Now "Client":
 ssh -p <server P expose port> server-r-user@server-p
-
+ssh -p 22 ord_j30jgn0230sdd@87.248.150.140
+p/yj[S(3to?+%JMnV8[<
 
 ``` create SSH reverse tunnel
 
