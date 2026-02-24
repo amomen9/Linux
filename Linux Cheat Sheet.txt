@@ -2647,6 +2647,7 @@ export XAUTHORITY=/root/.Xauthority  # Might need to copy this file or adjust pe
 
 sudo wget -qO- https://packages.microsoft.com/keys/microsoft.asc | sudo gpg --dearmor > /etc/apt/trusted.gpg.d/microsoft.gpg
 sudo sh -c 'echo "deb [arch=amd64] https://packages.microsoft.com/repos/edge stable main" > /etc/apt/sources.list.d/microsoft-edge-dev.list'
+apt update
 sudo apt install microsoft-edge-stable -y
 microsoft-edge 2> /dev/null &
 
