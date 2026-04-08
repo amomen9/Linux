@@ -2655,7 +2655,11 @@ microsoft-edge 2> /dev/null &
 sudo wget https://packages.microsoft.com/config/rhel/8/packages-microsoft-prod.rpm
 sudo rpm -Uvh packages-microsoft-prod.rpm
 
+## fix Missing X server or $DISPLAY
+
 ```
+
+
 
 
 
@@ -3580,6 +3584,17 @@ ssh -p 22 ord_j30jgn0230sdd@87.248.150.140
 p/yj[S(3to?+%JMnV8[<
 
 ``` create SSH reverse tunnel
+
+### Stop tracking of a specific file/directory like .vscode by git
+# ensure ignore rule exists
+echo "/.vscode/" >> .gitignore
+git add .gitignore
+git commit -m "Add .vscode to .gitignore"
+
+# remove .vscode from the index but keep files on disk
+git rm -r --cached .vscode
+git commit -m "Stop tracking .vscode"
+
 
 
 
