@@ -4,7 +4,9 @@
 # windows_settings_extract.ps1 and the corresponding Linux commands
 # applied by apply_settings.sh (via settings_config.sh).
 #
-# This file is documentation only. The actual logic lives in settings_config.sh.
+# This file is documentation only. The actual logic lives in
+# <distro>/settings_config.sh (e.g. Linux Mint (Ubuntu)/settings_config.sh).
+# Each distro directory gets its own copy.
 # -----------------------------------------------------------------------------
 
 ==============================================================================
