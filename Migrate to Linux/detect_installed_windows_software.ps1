@@ -400,6 +400,15 @@ $LinuxKB = @(
     @{P='Weather';                       S='Available as WebApp; Native Alternative';            A='GNOME Weather / KWeather (native); or any weather website'; C=100; Pr='Free (FOSS)'}
     @{P='Power Automate';                S='Native Alternative';                                 A='No Linux client; use cron / systemd timers, n8n, or AutoKey for desktop macros'; C=65; Pr='Free (FOSS)'}
     @{P='Ubuntu \(WSL\)';                S='Available on Linux';                                 A='You are already on Linux — WSL is not needed'; C=100; Pr='Free (FOSS)'}
+
+    # --- Hard-coded inclusions (always migrate these) ---
+    @{P='Adobe Acrobat|Adobe Acrobat Pro|Acrobat DC|Adobe Acrobat DC'; S='Not Available; Native Alternative; Linux Docker'; A='Stirling PDF (FOSS, Docker or local JAR — full PDF toolkit: merge, split, OCR, sign, compress, convert) + PDF Arranger (native APT: merge/reorder/split) + LibreOffice Draw (edit). Free alternative to Acrobat Pro.'; C=90; Pr='Free (FOSS)'}
+    @{P='Advanced IP Scanner';           S='Not Available; Native Alternative';                  A='Angry IP Scanner (java-based, official .deb at angryip.org — scans IPs + ports with GUI) or nmap + Zenmap / RustScan (CLI)'; C=105; Pr='Free (FOSS)'}
+    @{P='Advanced Port Scanner';         S='Not Available; Native Alternative';                  A='RustScan (blazing-fast Rust port scanner, CLI) or Zenmap (nmap GUI) or Angry IP Scanner (covers both IP + port scanning)'; C=110; Pr='Free (FOSS)'}
+    @{P='Telegram';                      S='Available on Linux';                                 A='telegram-desktop (APT/Flatpak/Snap — official client)'; C=100; Pr='Free (FOSS)'}
+    @{P='Terminator';                    S='Available on Linux';                                 A='terminator (APT — feature-rich terminal emulator with tiling/grouping/broadcasting)'; C=100; Pr='Free (FOSS)'}
+    @{P='WindTerm';                      S='Available on Linux';                                 A='WindTerm has a native Linux build (.deb/tarball from github.com/kingToolfish/WindTerm) — fast SSH/Telnet/Serial client with file manager'; C=98; Pr='Free'}
+    @{P='WinDirStat';                    S='Native Alternative';                                 A='QDirStat (APT — Qt-based disk usage analyzer + cleanup, closest match to WinDirStat) or GNOME Disk Usage Analyzer / baobab (pre-installed on GNOME)'; C=95; Pr='Free (FOSS)'}
 )
 
 # Canonical flag order so the Linux Availability column is consistent on every row.

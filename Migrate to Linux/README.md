@@ -160,6 +160,24 @@ sudo ./"Linux Mint (Ubuntu)/install_must_have_software.sh"
 The installer is **unattended and idempotent**, with a clean progress display,
 auto-detection of the target machine (codename + architecture), and two log files.
 
+At the end of the automated installation, the script **prompts** the user to import
+fonts from a directory. The font import mechanism:
+
+1. Asks for a directory path containing font files (read from `/dev/tty`).
+2. Recursively finds all font files in that directory (supports **all common font formats**:
+   `.ttf`, `.otf`, `.ttc`, `.woff`, `.woff2`, `.pfa`, `.pfb`, `.afm`, `.pfm`, `.dfont`,
+   `.otb`, `.bdf`, `.pcf`, `.gsf`, `.otc`, `.abf`, `.chr`, `.fnt`, `.mxf` —
+   covering Windows, macOS, and Linux font types).
+3. Copies them to `/usr/local/share/fonts/user-import/`.
+4. Runs `fc-cache` to rebuild the font cache so applications (including Wine) see them.
+5. Records the result (OK/SKIP/FAIL) in the results log.
+
+Error handling:
+- Non-existent or unreadable directory → reprompt or type `skip`.
+- Directory contains no matching font files → warn and reprompt.
+- Individual file copy failures → skip that file, continue with the rest.
+- No tty (non-interactive environment) → skip silently.
+
 ---
 
 ## Installing on Linux — Settings
