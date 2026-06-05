@@ -1,0 +1,249 @@
+===============================================================================
+ MIGRATE TO LINUX — REPRODUCIBILITY INSTRUCTIONS
+===============================================================================
+
+PURPOSE
+-------
+This file is a self-contained specification. An AI engine (or a human) should be
+able to read ONLY this file — and
+regenerate, with the latest up-to-date data:
+
+  1. detect_installed_windows_software.ps1   (Windows inventory + Linux rating)
+  2. installed_windows_software.csv          (the report the script produces)
+  3. <Target OS>/install_must_have_software.sh   (one unattended installer per
+                                                  target-OS subdirectory)
+
+Everything below reflects exactly what these artifacts must do. When data such as
+"the best Linux alternative", version numbers, repository URLs or package names is
+required, RESEARCH IT FRESH FROM THE WEB at generation time (the values baked into
+the current files were researched in June 2026 and will drift).
+
+
+DIRECTORY LAYOUT
+----------------
+  Migrate to Linux/
+    instructions.txt                      <- this file (the spec)
+    README.md                             <- human-facing overview
+    detect_installed_windows_software.ps1 <- the inventory script (Windows)
+    installed_windows_software.csv        <- generated report
+    <Target OS>/                          <- one folder per intended target OS
+        install_must_have_software.sh     <- generated installer for that OS
+
+  Each subdirectory is named after the intended target host OS, e.g.
+  "Linux Mint (Ubuntu)". Add a new target by creating a new subdirectory and
+  generating an installer in it per the INSTALLER SPEC below.
+
+
+WORKFLOW (IMPORTANT — the human runs the PowerShell step)
+---------------------------------------------------------
+Step 1  The AI generates / updates detect_installed_windows_software.ps1.
+Step 2  The HUMAN runs that .ps1 on the Windows machine being migrated:
+            powershell -ExecutionPolicy Bypass -File detect_installed_windows_software.ps1
+        (optionally with -Online). This produces installed_windows_software.csv.
+        The AI must NOT fabricate the machine-derived rows; they come from this run.
+Step 3  The HUMAN tells the AI to proceed with the CSV.
+Step 4  The AI reads installed_windows_software.csv and generates / updates the
+        per-target-OS installer (<Target OS>/install_must_have_software.sh) from the
+        rows whose "Must be included on Linux" = yes, following the INSTALLER SPEC.
+Step 5  The HUMAN runs the installer as root on the target OS.
+
+
+===============================================================================
+ PART A — POWERSHELL INVENTORY SCRIPT SPEC
+ (file: detect_installed_windows_software.ps1)
+===============================================================================
+
+GOAL
+  Produce a clean, de-duplicated inventory of all REAL installed Windows software
+  and rate each app for migration to Linux. Output installed_windows_software.csv
+  beside the script (UTF-8, -NoTypeInformation).
+
+PARAMETERS
+  -OutputPath <path>            default: installed_windows_software.csv beside script
+  -MustIncludeThreshold <int>   default: 70   (see "Must be included" below)
+  -IncludeSystemComponents      switch, default off
+  -IncludeStoreApps <bool>      default: $true
+  -Online                       switch, default off (live Repology lookups)
+
+COLLECTION (machine-derived; read live, never hand-authored)
+  Win32 apps: enumerate these registry uninstall hives —
+      HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*
+      HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*
+      HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*   (do not omit HKCU)
+    Keep rows with a non-empty DisplayName, and drop rows where SystemComponent=1,
+    or ParentKeyName/ParentDisplayName is set, or it is an orphaned MSI row.
+    Capture: Name=DisplayName, Version=DisplayVersion, Publisher, Source='Win32'.
+  Store/UWP apps (when -IncludeStoreApps): Get-AppxPackage, dropping IsFramework,
+    SignatureKind='System', NonRemovable, and a noise regex covering runtimes,
+    media/image/speech extensions, vendor control panels, and OS plumbing.
+    Make names human-friendly (e.g. Microsoft.WindowsCalculator -> "Windows
+    Calculator") via a small override map plus a CamelCase splitter.
+
+NOISE REMOVAL (the user's "no redundant entries" rule)
+  Exclude Windows updates/hotfixes: KB numbers (also cross-check Get-HotFix),
+    "Security Update", "Hotfix", "Service Pack", "Cumulative Update", "Update for".
+  Unless -IncludeSystemComponents, also exclude redistributables, runtimes,
+    drivers, and SDK/installer fragments (Visual C++ Redistributable, .NET runtimes,
+    *Driver*, chipset/serial, ODBC/OLE DB drivers, WinFsp, OpenAL, VS Installer,
+    Help Viewer, maintenance services, etc.). Keep these patterns in clearly-named,
+    editable variables.
+
+NAME CLEANING + DE-DUPLICATION
+  Clean display names: strip "(remove only)", "(User)", trailing architecture
+    parentheticals "(x64)/(64-bit)/(64 bit)" and trailing bare arch words.
+  De-dup KEY keeps version digits (so genuinely distinct versions — e.g. three
+    Python installs — remain separate) but drops vendor prefix, parentheticals and
+    punctuation, so cosmetic Win32-vs-Store duplicates collapse. Prefer the Win32
+    record when a collision occurs.
+
+THE 9 CSV COLUMNS (exact header text, in this order)
+  Name                        (machine)
+  Version                     (machine)
+  Publisher                   (machine)
+  Source                      (machine: Win32 | Store)
+  Linux Availability          (curated; flags — see below)
+  Best Linux Alternative      (curated; see paid->free rule below)
+  Alternative Competency      (curated; e.g. "100%", may exceed 100%)
+  Pricing model               (curated; Free (FOSS) | Free | Freemium | Shareware | Paid)
+  Must be included on Linux   (DERIVED in code; yes | no)
+
+LINUX AVAILABILITY FLAGS — a cell may hold several, ALWAYS normalised to this order:
+  Available on Linux ; Not Available ; Native Alternative ;
+  Available as WebApp ; Linux Docker ; Windows Emulator (Wine/Proton)
+  (Unknown apps get "Needs Review".)
+
+ALTERNATIVE COMPETENCY
+  Rough % estimate of how the recommended Linux app/alternative performs vs the
+  Windows original. 100% = on par; <100% weaker; >100% the Linux option is better.
+  MUST be filled for natively-available apps too (~100%, higher if Linux wins).
+
+PRICING MODEL
+  Pricing of the RECOMMENDED Linux option (native app or the named alternative).
+
+PAID -> FREE RULE (do not omit)
+  If a row's Pricing model is "Paid", the Best Linux Alternative cell must also name
+  the best FREE alternative, appended right after the paid one, e.g.
+    "...; free alternative: <free option>".
+
+"MUST BE INCLUDED ON LINUX" (computed by the script, not hand-set)
+  yes when ALL hold:
+    * installable on Linux: Linux Availability contains "Available on Linux" OR
+      "Native Alternative" (web-only / not-available => no, nothing to install);
+    * Alternative Competency >= -MustIncludeThreshold (default 70);
+    * it is the single most-competent build of that product — collapse duplicate
+      installs of one product to ONE yes (identity key = name minus version, arch
+      and generic suffix words; pick highest competency, Win32 preferred).
+
+KNOWLEDGE BASE ($LinuxKB) — the single place curated data lives
+  An ordered array; first matching pattern wins (specific before generic). Each row:
+    @{ P='<regex matched against Name>';
+       S='<availability flags>';
+       A='<best alternative text>';
+       C=<competency integer>;
+       Pr='<pricing model>';
+       F='<free alternative — only needed when Pr=Paid>' }
+  To rate a new/unknown app: research the current best Linux option on the web and
+  add an entry. Re-running the script regenerates the CSV; never hand-edit the
+  machine columns in the CSV.
+
+OPTIONAL ONLINE MODE (-Online)
+  For apps with no $LinuxKB match, query the Repology API
+  (https://repology.org/api/v1/project/<slug>, custom User-Agent, be polite) to
+  detect Linux packaging; cache results next to the CSV. This is the live
+  "scrape the internet for latest data" path for unknowns.
+
+OUTPUT + SUMMARY
+  Export the 9 columns to CSV (UTF-8). Print totals: apps listed, excluded as
+  noise, count of "yes", and a breakdown by availability category.
+
+
+===============================================================================
+ PART B — CSV CONSUMPTION
+ (file: installed_windows_software.csv)
+===============================================================================
+  Treat the CSV as the source of truth for what to install on a target OS.
+  The installer is built from rows where "Must be included on Linux" = yes,
+  installing the native Linux app when "Linux Availability" includes "Available on
+  Linux", otherwise the product named in "Best Linux Alternative".
+
+
+===============================================================================
+ PART C — PER-TARGET-OS INSTALLER SPEC
+ (file: <Target OS>/install_must_have_software.sh)
+===============================================================================
+
+SCOPE
+  One installer per target-OS subdirectory. It installs the Linux counterpart of
+  EVERY CSV row flagged "Must be included on Linux" = yes. The example target is
+  "Linux Mint (Ubuntu)" (Ubuntu/APT base + Flatpak). For a different target OS,
+  translate the same intent to that OS's package managers and repositories.
+
+EXECUTION MODEL
+  * Bash, assumed to run as ROOT (verify EUID 0; exit otherwise).
+  * Fully unattended (DEBIAN_FRONTEND=noninteractive on Debian/Ubuntu).
+  * Idempotent: if an app is already installed, run its UPDATE path instead of
+    reinstalling.
+  * Never abort the whole run on one failure — wrap each install, record
+    OK/FAIL/SKIP, and print a summary at the end.
+
+SOURCE-OF-PACKAGE PRIORITY (per the user's rule)
+  1. The distro's NATIVE package repositories (APT on Mint/Ubuntu).
+  2. The VENDOR's APT repo / .deb / official binary when the app is absent from the
+     native repos OR the vendor ships a newer version.
+  3. Flatpak (Flathub) only where neither of the above gives a clean result.
+  Always install the LATEST available version.
+
+DEPENDENCIES
+  Install build/runtime deps that package managers won't pull automatically — in
+  particular the kernel-module build chain for VMware:
+    build-essential, gcc, make, dkms, linux-headers-$(uname -r), default-jdk (for
+    Java-based tools such as LanguageTool), unzip, curl, wget, gnupg, gdebi, flatpak.
+
+POSTGRESQL (explicit requirement)
+  Add the official PostgreSQL PGDG repository from postgresql.org
+  (apt.postgresql.org, suite "<codename>-pgdg") and install the latest postgresql
+  + postgresql-client.
+
+MANUAL / LOGIN-GATED DOWNLOADS (must come LAST)
+  Some apps can't be fetched non-interactively (e.g. VMware Workstation needs a
+  Broadcom login; SpotPlayer is a site download; Gurobi is license-gated; RStudio
+  if its direct URL fails). For each, AFTER all automated installs:
+    * print where to download it and the exact path to save it to;
+    * loop, prompting the user, reading from /dev/tty, accepting "yes" (proceed only
+      once the file exists) or "skip"; then install from the provided file.
+  Put ALL such apps at the very end so the unattended part finishes first.
+
+MAPPING GUIDANCE (research current packages/URLs at generation time)
+  * Native APT app exists  -> apt install it (browsers' deps, git, cmake, vlc,
+    gimp, calibre, qbittorrent, flameshot, obs-studio, goldendict, thunderbird,
+    libreoffice, r-base, python3, openssh, putty, proxychains4, remmina, etc.).
+  * Vendor APT repo        -> Google Chrome, Microsoft Edge, VS Code, Docker,
+    PostgreSQL (PGDG), pgAdmin, DBeaver CE, AnyDesk, Proton VPN, NodeSource, and
+    Microsoft "prod" feed for PowerShell + .NET SDK.
+  * Vendor .deb            -> Discord, Zoom, Parsec, GitKraken (GitHub Desktop alt).
+  * Script/binary          -> rclone (rclone.org install.sh), Miniconda (Anaconda
+    ecosystem), LanguageTool (stable zip).
+  * Flatpak (Flathub)      -> RealVNC Viewer, Teams (teams-for-linux), WhatsApp
+    (ZapZap), LocalSend (Quick/Nearby Share), Planify (Microsoft To Do alt).
+  * MANUAL (end)           -> VMware Workstation, SpotPlayer, Gurobi (optional),
+    RStudio (auto URL first, manual fallback).
+  Detect the Ubuntu base codename even on Mint via UBUNTU_CODENAME in /etc/os-release
+  and use it for codename-specific repos (Docker, PGDG, pgAdmin, Microsoft prod).
+
+POST-INSTALL
+  Enable services (ssh, postgresql, docker) and add the invoking $SUDO_USER to the
+  docker group. Recommend a reboot at the end (kernel modules, group changes).
+
+
+===============================================================================
+ REGENERATION CHECKLIST (for the AI)
+===============================================================================
+  [ ] Re-research current best Linux alternatives, repo URLs, package names and
+      versions from the web; update $LinuxKB and the installer accordingly.
+  [ ] (Re)generate detect_installed_windows_software.ps1 per PART A.
+  [ ] Ask the human to run it (PART, WORKFLOW step 2) and hand back the CSV.
+  [ ] From the CSV's "yes" rows, (re)generate <Target OS>/install_must_have_software.sh
+      per PART C for each target-OS subdirectory.
+  [ ] Update README.md to match.
+  [ ] Validate: PowerShell parses (AST), bash installer passes `bash -n`.
+===============================================================================
