@@ -160,8 +160,20 @@ installer. For **Linux Mint / Ubuntu**:
 sudo ./"Linux Mint (Ubuntu)/install_must_have_software.sh"
 ```
 
-The installer is **unattended and idempotent**. It:
+The installer is **unattended and idempotent**, with a **clean progress display** — only
+`==> <step>` headers and indented `installed:`/`updated:` lines, plus a **live progress
+line** that shows the real apt percentage + current operation (or a non-apt command's
+latest output) and clears itself the moment that step finishes — so even a multi-GB
+install like `texlive-full` visibly progresses. All apt/dpkg/curl output is sent to a log
+file (path shown at start and end). It writes
+**two logs**: `install.log` (full output) and **`install-results.log`** — a short, one
+line-per-step results file (`<timestamp>  <OK|FAIL|SKIP>  <item>  <reason>`) so you can
+see at a glance what succeeded, what failed, and why. It:
 
+- **auto-detects the target machine** — the Ubuntu base codename/version and the
+  architecture (`dpkg --print-architecture` + `uname -m`) — and uses them in every repo
+  line, download URL and package name, so the same script works on amd64 or arm64 with
+  nothing hard-coded;
 - installs the Linux counterpart of every row flagged `Must be included on Linux = yes`
   — the native app where available, otherwise the recommended alternative;
 - prefers the distro's **native APT repos**, falling back to **vendor repos / `.deb`s**

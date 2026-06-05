@@ -185,6 +185,82 @@ EXECUTION MODEL
     reinstalling.
   * Never abort the whole run on one failure — wrap each install, record
     OK/FAIL/SKIP, and print a summary at the end.
+  * CLEAN TERMINAL UI: save the real terminal on a spare fd (exec 3>&1 4>&2) and
+    redirect everything else to a log file (exec >>"$LOG" 2>&1). Print ONLY the
+    curated lines to fd 3 — "==> <step>" headers and indented "installed:/updated:"
+    detail — so package-manager noise never reaches the screen. Prompts and the final
+    summary also go to fd 3; show the log path at start and end.
+  * LIVE PROGRESS (not just a spinner): while a step runs, show a SINGLE transient
+    line on fd 3 that updates in place with real progress, and CLEAR it the moment that
+    step's process terminates (leaving only its "installed:" result). For apt, get the
+    actual percentage + current operation from APT::Status-Fd (run apt-get with
+    -o APT::Status-Fd=9 redirected to a temp file and tail it). For non-apt commands
+    (curl/conda/unzip/…), show the command's latest output line. This is essential for
+    very long installs (e.g. texlive-full) so the user can see it is progressing.
+  * TWO LOG FILES (both printed at the end):
+      - install.log         : the full, verbose command output (for deep debugging).
+      - install-results.log : a SHORT results log — one tab-separated line per step,
+        "<timestamp> <status> <item> <reason>", where status is OK / FAIL / SKIP and
+        <reason> is a concise failure reason. Capture the reason by teeing each step's
+        output to a temp file inside the spinner helper and, on non-zero exit, pulling
+        the last error-looking line (grep -iE 'error|unable|^E:|curl:|dpkg:' | tail).
+        For a grouped package step, list the failed package(s) + their reason. End the
+        results file with a totals line (OK / manual / skipped / failed counts).
+
+AUTO-DETECT THE TARGET ENVIRONMENT (nothing hard-coded)
+  Detect at runtime, on the machine the script is executing on, and use these
+  everywhere a repo line, download URL or package name needs them — never hard-code
+  amd64/x86_64 or a distro release:
+    * Distro/base release codename + version: parse /etc/os-release; on Linux Mint use
+      UBUNTU_CODENAME (fallback VERSION_CODENAME) and map it to the Ubuntu x.y number
+      (e.g. jammy=22.04, noble=24.04) for codename/version-specific repos
+      (Docker, PGDG, pgAdmin, Microsoft "prod").
+    * Debian/apt architecture:  DEB_ARCH = `dpkg --print-architecture`
+      (amd64 | arm64 | armhf | i386) — use in every apt "[arch=...]" source line and in
+      vendor .deb URLs (Zoom zoom_${DEB_ARCH}.deb, GitKraken gitkraken-${DEB_ARCH}.deb,
+      RStudio rstudio-latest-${DEB_ARCH}.deb, etc.).
+    * Kernel/tarball architecture:  KARCH = `uname -m` (x86_64 | aarch64 | ...), mapped
+      as needed for non-.deb assets (e.g. Miniconda Miniconda3-latest-Linux-${KARCH}.sh).
+  If an app has no build for the detected architecture (some amd64-only vendor apps),
+  let its download fail gracefully and be recorded as skipped (don't abort).
+
+TRUSTED SOURCES ONLY (hard rule)
+  Every package, repository, key, .deb, script, and binary fetched by the installer
+  MUST come from an absolutely trusted, verifiable source. Apply these checks to
+  every source before including it in the generated .sh script:
+
+    a) Official first-party domain — the source MUST be the software's OWN official
+       domain (e.g. google.com for Chrome, microsoft.com for Edge/VS Code/PS/.NET,
+       docker.com for Docker, postgresql.org for PostgreSQL/PGDG/pgAdmin, dbeaver.io
+       for DBeaver, zoom.us for Zoom, discord.com for Discord, parsec.app for Parsec,
+       gitkraken.com for GitKraken, rclone.org for rclone, anaconda.com for Miniconda,
+       languagetool.org for LanguageTool, flathub.org for Flatpak, nodesource.com for
+       Node.js, protonvpn.com for Proton VPN).
+
+    b) HTTPS mandatory — all downloads, repos, and key URLs MUST use HTTPS. Reject
+       any source that is HTTP-only or redirects to HTTP. (Exception: the distro's
+       own APT repos which are GPG-signed and use trusted mirrors.)
+
+    c) GPG signature verification — every third-party APT repo MUST add its keyring
+       via `signed-by=/etc/apt/keyrings/<name>.gpg` in the sources.list line. Fetch
+       keys over HTTPS with `curl -fsSL` and verify the key fingerprint against a
+       documented expected value where the vendor publishes one.
+
+    d) No curl-pipe-bash from untrusted domains — `curl ... | bash` is acceptable
+       ONLY from absolutely trusted first-party domains (e.g. rclone.org). Never pipe
+       to bash from third-party sites, shortened URLs, or redirect services.
+
+    e) Manual downloads (login-gated) — the script MUST print the EXACT official URL
+       the user should visit, not a search suggestion or a third-party mirror. The
+       URL must resolve to the vendor's own domain.
+
+    f) SpotPlayer — this app is distributed from spotplayer.ir, a domain that cannot
+       be verified as a trusted first-party source by the standards above. It MUST
+       remain in the MANUAL section and the user MUST be warned that they are
+       responsible for verifying the download's authenticity before installing it.
+
+    g) Any source that cannot satisfy (a)–(c) MUST NOT be included in the automated
+       section. Move it to MANUAL with a clear warning about verifying authenticity.
 
 SOURCE-OF-PACKAGE PRIORITY (per the user's rule)
   1. The distro's NATIVE package repositories (APT on Mint/Ubuntu).
@@ -192,7 +268,6 @@ SOURCE-OF-PACKAGE PRIORITY (per the user's rule)
      native repos OR the vendor ships a newer version.
   3. Flatpak (Flathub) only where neither of the above gives a clean result.
   Always install the LATEST available version.
-
 DEPENDENCIES
   Install build/runtime deps that package managers won't pull automatically — in
   particular the kernel-module build chain for VMware:
@@ -218,9 +293,10 @@ MAPPING GUIDANCE (research current packages/URLs at generation time)
     gimp, calibre, qbittorrent, flameshot, obs-studio, goldendict, thunderbird,
     libreoffice, r-base, python3, openssh, putty, proxychains4, remmina, etc.).
   * Vendor APT repo        -> Google Chrome, Microsoft Edge, VS Code, Docker,
-    PostgreSQL (PGDG), pgAdmin, DBeaver CE, AnyDesk, Proton VPN, NodeSource, and
-    Microsoft "prod" feed for PowerShell + .NET SDK.
-  * Vendor .deb            -> Discord, Zoom, Parsec, GitKraken (GitHub Desktop alt).
+    PostgreSQL (PGDG), pgAdmin, DBeaver CE, AnyDesk, Proton VPN, NodeSource,
+    WineHQ (Wine — winehq.org), and Microsoft "prod" feed for PowerShell + .NET SDK.
+  * Vendor .deb            -> Discord, Zoom, Parsec, GitKraken (GitHub Desktop alt),
+    XDM (Xtreme Download Manager — GitHub releases, github.com/subhra74/xdm).
   * Script/binary          -> rclone (rclone.org install.sh), Miniconda (Anaconda
     ecosystem), LanguageTool (stable zip).
   * Flatpak (Flathub)      -> RealVNC Viewer, Teams (teams-for-linux), WhatsApp
@@ -228,7 +304,8 @@ MAPPING GUIDANCE (research current packages/URLs at generation time)
   * MANUAL (end)           -> VMware Workstation, SpotPlayer, Gurobi (optional),
     RStudio (auto URL first, manual fallback).
   Detect the Ubuntu base codename even on Mint via UBUNTU_CODENAME in /etc/os-release
-  and use it for codename-specific repos (Docker, PGDG, pgAdmin, Microsoft prod).
+  and use it (plus DEB_ARCH/KARCH from "AUTO-DETECT THE TARGET ENVIRONMENT" above) for
+  every codename- and architecture-specific repo line, download URL and package name.
 
 POST-INSTALL
   Enable services (ssh, postgresql, docker) and add the invoking $SUDO_USER to the
@@ -245,5 +322,7 @@ POST-INSTALL
   [ ] From the CSV's "yes" rows, (re)generate <Target OS>/install_must_have_software.sh
       per PART C for each target-OS subdirectory.
   [ ] Update README.md to match.
+  [ ] Confirm the installer hard-codes NO architecture or release — codename, DEB_ARCH
+      and KARCH are all auto-detected on the target and used in every repo/URL/package.
   [ ] Validate: PowerShell parses (AST), bash installer passes `bash -n`.
 ===============================================================================
