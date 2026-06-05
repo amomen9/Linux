@@ -81,6 +81,13 @@ if (-not $OutputPath) {
 # 0. HELPERS  (defined before use)
 # ---------------------------------------------------------------------------
 
+# Safely access a property that may not exist (needed because try/catch
+# cannot be used directly inside Where-Object script blocks in pwsh 7+).
+function Safe-Property {
+    param($Obj, [string] $Name, $Default = $null)
+    try { $Obj.$Name } catch { $Default }
+}
+
 # Turn a UWP package id into a readable name:
 #   "Microsoft.WindowsCalculator" -> "Windows Calculator"
 function Get-FriendlyAppxName {
@@ -170,12 +177,12 @@ $rawItems = try {
 } catch { @() }
 $win32 = $rawItems |
     Where-Object {
-        try { $dn = $_.DisplayName } catch { $null = $dn }
+        $dn = Safe-Property $_ 'DisplayName'
         $dn -and $dn.Trim() -ne '' -and
-        -not (try { $_.SystemComponent } catch { $false }) -and
-        -not (try { $_.ParentKeyName } catch { $false }) -and
-        -not (try { $_.ParentDisplayName } catch { $false }) -and
-        ( (try { $_.WindowsInstaller } catch { 0 }) -ne 1 -or (try { $_.UninstallString } catch { $false }) )
+        -not (Safe-Property $_ 'SystemComponent' $false) -and
+        -not (Safe-Property $_ 'ParentKeyName' $false) -and
+        -not (Safe-Property $_ 'ParentDisplayName' $false) -and
+        ( (Safe-Property $_ 'WindowsInstaller' 0) -ne 1 -or (Safe-Property $_ 'UninstallString' $false) )
     } |
     Select-Object @{N='Name';      E={$_.DisplayName}},
                   @{N='Version';   E={$_.DisplayVersion}},
@@ -206,10 +213,10 @@ if ($IncludeStoreApps) {
     } catch { @() }
     $store = $rawAppx |
         Where-Object {
-            -not (try { $_.IsFramework } catch { $false }) -and
-            (try { $_.SignatureKind } catch { '' }) -ne 'System' -and
-            (try { $_.NonRemovable } catch { $false }) -ne $true -and
-            (try { $_.Name } catch { '' }) -notmatch $appxNoise
+            -not (Safe-Property $_ 'IsFramework' $false) -and
+            (Safe-Property $_ 'SignatureKind' '') -ne 'System' -and
+            (Safe-Property $_ 'NonRemovable' $false) -ne $true -and
+            (Safe-Property $_ 'Name' '') -notmatch $appxNoise
         } |
         Select-Object @{N='Name';      E={ try { Get-FriendlyAppxName $_.Name } catch { '' }}},
                       @{N='Version';   E={try { $_.Version } catch { '' }}},
@@ -386,7 +393,7 @@ $LinuxKB = @(
     @{P='^Photos$|Windows Photos';       S='Native Alternative';                                 A='Shotwell, gThumb, GNOME Loupe, or digiKam'; C=100; Pr='Free (FOSS)'}
     @{P='Zune Music|Groove|Media Player';S='Native Alternative';                                 A='Rhythmbox, Lollypop, Elisa, or VLC'; C=110; Pr='Free (FOSS)'}
     @{P='Alarms';                        S='Native Alternative';                                 A='GNOME Clocks (or KDE Clock widget)'; C=100; Pr='Free (FOSS)'}
-    @{P='PowerToys';                     S='Not Available; Native Alternative';                  A='Text Extractor: Frog (tenderowl.com/frog — shortcut-triggered OCR, select→extract, FOSS). Keyboard accents: ibus-typing-booster or Compose key (built-in). Color Picker: gpick / KColorChooser (shortcut→click to pick hex). File Locksmith: fuser / lsof (CLI) or GNOME File Locksmith. Find My Mouse: GNOME "Show Pointer Location" or KDE "Track Mouse". Image Resizer: right-click in Nautilus + nautilus-image-converter, or ImageMagick `convert`. Mouse Without Borders: Barrier / Input Leap (software KVM, FOSS). ZoomIt: KMag / Zoom (GNOME) or screen-recorder. Shortcut Guide: GNOME Super key overlay or KDE shortcuts cheat sheet'; C=95; Pr='Free (FOSS)'}
+    @{P='PowerToys';                     S='Not Available; Native Alternative';                  A='Text Extractor: Frog (tenderowl.com/frog - shortcut-triggered OCR, select->extract, FOSS). Keyboard accents: ibus-typing-booster or Compose key (built-in). Color Picker: gpick / KColorChooser (shortcut->click to pick hex). File Locksmith: fuser / lsof (CLI) or GNOME File Locksmith. Find My Mouse: GNOME "Show Pointer Location" or KDE "Track Mouse". Image Resizer: right-click in Nautilus + nautilus-image-converter, or ImageMagick `convert`. Mouse Without Borders: Barrier / Input Leap (software KVM, FOSS). ZoomIt: KMag / Zoom (GNOME) or screen-recorder. Shortcut Guide: GNOME Super key overlay or KDE shortcuts cheat sheet'; C=95; Pr='Free (FOSS)'}
     @{P='Power ?Shell';                  S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'}
     @{P='Windows Store|Microsoft Store';  S='Native Alternative';                                A="Your distro's software center (GNOME Software / KDE Discover) + Flathub"; C=100; Pr='Free (FOSS)'}
     @{P='Bing';                          S='Available as WebApp';                                A='bing.com in any browser (or DuckDuckGo / Google)'; C=95; Pr='Free'}
