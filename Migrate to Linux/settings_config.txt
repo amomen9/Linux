@@ -1,0 +1,118 @@
+# settings_config.txt
+# -----------------------------------------------------------------------------
+# Human-readable reference of the Windows settings extracted by
+# windows_settings_extract.ps1 and the corresponding Linux commands
+# applied by apply_settings.sh (via settings_config.sh).
+#
+# This file is documentation only. The actual logic lives in settings_config.sh.
+# -----------------------------------------------------------------------------
+
+==============================================================================
+1. POWER SETTINGS — Lid-close action (battery / AC)
+==============================================================================
+
+Windows extract:
+  - Read from active power plan GUID via WMI (Win32_PowerSettingDataIndex)
+  - Registry fallback: HKLM\SYSTEM\CurrentControlSet\Control\Power\User\...
+  - Produces: "sleep", "do nothing", "hibernate", "shut down", "turn off display"
+
+Linux apply (→ /etc/systemd/logind.conf):
+  Windows "do nothing"         → HandleLidSwitch=ignore
+  Windows "sleep"              → HandleLidSwitch=suspend
+  Windows "hibernate"          → HandleLidSwitch=hibernate
+  Windows "shut down"          → HandleLidSwitch=poweroff
+  Windows "turn off display"   → HandleLidSwitch=lock
+
+  Config keys:
+    lid_close_on_battery  → HandleLidSwitch
+    lid_close_on_ac       → HandleLidSwitchExternalPower
+
+  Also writes a drop-in: /etc/systemd/logind.conf.d/50-migrate-lid.conf
+  Restarts systemd-logind after writing.
+
+==============================================================================
+2. DISPLAY RESOLUTION & SCALING
+==============================================================================
+
+Windows extract:
+  - Resolution from CIM_VideoController (CurrentHorizontalResolution ×
+    CurrentVerticalResolution), e.g. "1920x1080"
+  - Scaling from HKCU\Control Panel\Desktop LogPixels / AppliedDPI,
+    e.g. "125%" or "100%"
+
+Linux apply:
+  - Resolution: xrandr --output <primary> --mode <WxH> (if mode exists)
+  - Scaling:
+      gsettings set org.gnome.desktop.interface text-scaling-factor <factor>
+      gsettings set org.gnome.desktop.interface scaling-factor <int>
+    Integer scaling thresholds: ≥175% → 2, ≥250% → 3, ≥350% → 4.
+
+==============================================================================
+3. KEYBOARD LAYOUT & SHORTCUTS
+==============================================================================
+
+Windows extract:
+  - Current culture: [System.Globalization.CultureInfo]::CurrentCulture
+  - Installed input languages: Get-WinUserLanguageList → LanguageTag
+  - Also notes standard Windows shortcuts (Win+E, Win+L, etc.)
+
+Linux apply:
+  - Language tag → XKB layout mapping (en-US→us, fa-IR→ir, de-DE→de, ...)
+  - localectl set-x11-keymap <layout_string>
+  - setxkbmap <layout_string> (for current session)
+  - Shortcuts: prints informational reference mapping Win → GNOME equivalents
+    (Win+E→Super+E, Win+L→Super+L, Win+R→Alt+F2, etc.)
+
+==============================================================================
+4. DISABLE TELEMETRY; LIMIT LOCATION
+==============================================================================
+
+Windows extract:
+  - Telemetry: HKLM\...\Policies\DataCollection AllowTelemetry
+    (0=Security, 1=Basic, 2=Enhanced, 3=Full)
+  - Location: HKLM\...\CapabilityAccessManager\ConsentStore\location Value
+
+Linux apply (telemetry):
+  - systemctl stop/disable/mask: whoopsie, apport, apt-daily.timer,
+    apt-daily-upgrade.timer, motd-news.timer, packagekit, geoclue
+  - Disable Ubuntu Pro ESM hook in /etc/apt/apt.conf.d/20apt-esm-hook.conf
+  - Disable apport crash reporting (/etc/default/apport)
+  - Disable MOTD news (/etc/default/motd-news)
+  - Purge packages: ubuntu-report, popularity-contest
+
+Linux apply (location):
+  - systemctl stop/disable/mask: geoclue
+  - gsettings set org.gnome.system.location enabled false
+  - Enable Wi-Fi MAC randomization in NetworkManager
+
+==============================================================================
+5. AUTO-UPDATE SERVICE FILES
+==============================================================================
+
+Windows extract:
+  - Placeholder: notes that system_update.service + system_update.timer
+    must be installed.
+
+Linux apply:
+  - Copies from repo source:
+      Scheduled systemd Automatic Update/Debian/service files/
+        system_update.service → /etc/systemd/system/
+        system_update.timer   → /etc/systemd/system/
+  - systemctl daemon-reload
+  - systemctl enable --now system_update.timer
+
+==============================================================================
+WORKFLOW SUMMARY
+==============================================================================
+
+  Step 1 (Windows):  powershell -ExecutionPolicy Bypass -File windows_settings_extract.ps1
+                     → produces windows_configs.csv
+
+  Step 2 (copy):     Copy windows_configs.csv to the Migrate to Linux/ directory
+                     on your Linux machine.
+
+  Step 3 (Linux):    sudo ./apply_settings.sh
+                     (inside Migrate to Linux/Linux Mint (Ubuntu)/)
+
+  Step 4 (verify):   Check the summary output. Reboot to apply display scaling
+                     and logind changes.

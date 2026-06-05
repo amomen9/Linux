@@ -27,7 +27,7 @@
 #
 # CSV "yes" row  ->  what this script installs
 #   Google Chrome=google-chrome-stable; Edge=microsoft-edge-stable; Firefox=firefox
-#   Discord/Zoom/Parsec/GitKraken(.deb); Teams/WhatsApp/LocalSend/Planify(flatpak)
+#   Discord/Zoom/GitKraken(.deb); Teams/WhatsApp/LocalSend/Planify(flatpak)
 #   RealVNC=vendor .deb (not on Flathub)
 #   Dropbox=nautilus-dropbox; Google Drive=rclone; OneDrive=onedrive(abraunegg)
 #   VS Code=code; .NET=dotnet-sdk; PowerShell=powershell; Docker=docker-ce
@@ -36,12 +36,14 @@
 #   Git/CMake/ninja/OpenSSH/OpenSSL/PuTTY/Perl/Pandoc/wkhtmltopdf (APT); MiKTeX=texlive-full
 #   AnyDesk(repo); Hotspot/Psiphon=Proton VPN(repo); OpenVPN=openvpn
 #   KMPlayer/Zune=vlc,mpv,rhythmbox; oCam/Camtasia=obs-studio,kdenlive,simplescreenrecorder
-#   Lightshot=flameshot; WinRAR=p7zip; uTorrent=qbittorrent; IDM=uget/XDM(.deb)
-#   Notepad++=notepadqq/geany; Windows Emulator=Wine(WineHQ repo)
+#   Lightshot=flameshot; WinRAR=p7zip+PeaZip; uTorrent=qbittorrent; IDM=uget/XDM+IDM via Wine
+#   Notepad++=notepadqq/geany+Wine; Windows Emulator=Wine(WineHQ repo)+Multipass
 #   Office=libreoffice; Grammarly=LanguageTool; dictionaries=goldendict; Outlook=thunderbird
 #   Paint=gimp,krita,pinta; Photos=shotwell,gthumb; Sticky=sticky; Alarms=gnome-clocks
 #   MobaXterm=remmina; Bitvise=openssh; Proxifier=proxychains4; Rufus=gnome-disk-utility
 #   Gurobi=MANUAL(+free glpk/cbc); VMware=MANUAL; VirtualBox=Oracle repo; SpotPlayer=MANUAL
+#
+#   Parsec is EXCLUDED per user request — not installed.
 # -----------------------------------------------------------------------------
 
 set -uo pipefail
@@ -56,6 +58,8 @@ DOTNET_SDK="dotnet-sdk-9.0"
 # we also need the dotnet/backports PPA (or use the MS dotnet-install script).
 NODE_MAJOR="22"
 XDM_VERSION="8.0.29"                        # XDM release tag on GitHub
+IDM_VERSION="6.42.58"                       # IDM version (for Wine install)
+WINRAR_VERSION="7.13"                       # WinRAR version (for Wine install)
 SPIN='-\|/'
 LAST_ERR=""                                 # short failure reason from the last run_spin
 
@@ -226,44 +230,242 @@ flatpak_app() {  # flatpak_app APPID
   fi
 }
 
-# Download and install Notepad++ Windows installer under Wine (idempotent).
-# Official source: notepad-plus-plus.org/downloads (HTTPS).
-NPP_VERSION="8.7.9"
-NPP_EXE="$DOWNLOAD_DIR/npp.${NPP_VERSION}.Installer.exe"
-NPP_INSTALL_DIR="C:\\Program Files\\Notepad++"
-_install_notepadpp() {
-  # Only re-install if Notepad++ isn't already present in the Wine prefix.
+# =============================================================================
+# WINE HELPER — run a command as the real (non-root) user under their Wine prefix
+# =============================================================================
+_wine_cmd() {  # _wine_cmd "description" command...
+  local desc="$1"; shift
   if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
     local USER_HOME
     USER_HOME="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
-    local NPP_CHECK="${USER_HOME}/.wine/drive_c/Program Files/Notepad++/notepad++.exe"
-    if [ -f "$NPP_CHECK" ]; then
-      info "already installed: Notepad++ via Wine (${NPP_CHECK})"
+    run_spin "$desc" bash -c "export HOME='$USER_HOME' WINEARCH=win64 WINEPREFIX='\${HOME}/.wine'; wineboot -u 2>/dev/null || true; $*"
+  else
+    run_spin "$desc" bash -c "export WINEARCH=win64 WINEPREFIX='\${HOME}/.wine'; wineboot -u 2>/dev/null || true; $*"
+  fi
+}
+
+# =============================================================================
+# GENERAL WINE FONT FIX — Replace the Windows font registry keys so Wine uses
+# readable fonts (Tahoma 8pt as default, Segoe UI 9pt for menus). This runs ONCE
+# after Wine is installed and shared by every subsequent Wine-based installer.
+# =============================================================================
+_configure_wine_fonts() {
+  local font_fix_done="$DOWNLOAD_DIR/.wine-fonts-done"
+  if [ -f "$font_fix_done" ]; then
+    info "Wine fonts already configured (skipping)"
+    return 0
+  fi
+  if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    local USER_HOME
+    USER_HOME="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
+    _wine_cmd "configuring Wine font substitutions (Tahoma/Segoe UI)" sh -c "
+      wineboot -u 2>/dev/null || true
+      # Force Wine to use readable font sizes and faces.
+      #   FontSmoothing       = 2 (sub-pixel)
+      #   FontSmoothingOrientation = 1 (BGR typical for LCD)
+      #   FontSmoothingType   = 2 (ClearType)
+      wine reg add 'HKCU\\Software\\Wine\\Fonts\\Replacements'  /v 'MS Shell Dlg'      /t REG_SZ /d 'Tahoma'               /f
+      wine reg add 'HKCU\\Software\\Wine\\Fonts\\Replacements'  /v 'MS Shell Dlg 2'    /t REG_SZ /d 'Tahoma'               /f
+      wine reg add 'HKCU\\Software\\Wine\\Fonts\\Replacements'  /v 'MS Sans Serif'     /t REG_SZ /d 'Tahoma'               /f
+      wine reg add 'HKCU\\Software\\Wine\\Fonts\\Replacements'  /v 'Microsoft Sans Serif' /t REG_SZ /d 'Tahoma'           /f
+      wine reg add 'HKCU\\Software\\Wine\\Fonts\\Replacements'  /v 'Arial'             /t REG_SZ /d 'Liberation Sans'     /f
+      wine reg add 'HKCU\\Software\\Wine\\Fonts\\Replacements'  /v 'Times New Roman'   /t REG_SZ /d 'Liberation Serif'    /f
+      wine reg add 'HKCU\\Software\\Wine\\Fonts\\Replacements'  /v 'Courier New'       /t REG_SZ /d 'Liberation Mono'     /f
+      # Menu / UI font face and size — sets the default Wine dialog font to Tahoma 8pt
+      # which is close to Windows' default (Tahoma 8 / Segoe UI 9).
+      wine reg add 'HKCU\\Control Panel\\Desktop\\WindowMetrics' /v 'MenuFont'         /t REG_SZ /d 'Tahoma'              /f
+      wine reg add 'HKCU\\Control Panel\\Desktop\\WindowMetrics' /v 'MenuFontSize'     /t REG_DWORD /d 0x00000008        /f
+      wine reg add 'HKCU\\Control Panel\\Desktop\\WindowMetrics' /v 'MessageFont'      /t REG_SZ /d 'Tahoma'              /f
+      wine reg add 'HKCU\\Control Panel\\Desktop\\WindowMetrics' /v 'MessageFontSize'  /t REG_DWORD /d 0x00000008        /f
+      wine reg add 'HKCU\\Control Panel\\Desktop\\WindowMetrics' /v 'StatusFont'       /t REG_SZ /d 'Tahoma'              /f
+      wine reg add 'HKCU\\Control Panel\\Desktop\\WindowMetrics' /v 'StatusFontSize'   /t REG_DWORD /d 0x00000008        /f
+      wine reg add 'HKCU\\Control Panel\\Desktop\\WindowMetrics' /v 'CaptionFont'      /t REG_SZ /d 'Tahoma'              /f
+      wine reg add 'HKCU\\Control Panel\\Desktop\\WindowMetrics' /v 'CaptionFontSize'  /t REG_DWORD /d 0x00000009        /f
+      wine reg add 'HKCU\\Control Panel\\Desktop\\WindowMetrics' /v 'SmCaptionFont'    /t REG_SZ /d 'Tahoma'              /f
+      wine reg add 'HKCU\\Control Panel\\Desktop\\WindowMetrics' /v 'SmCaptionFontSize'/t REG_DWORD /d 0x00000008        /f
+      # Font smoothing (ClearType-like)
+      wine reg add 'HKCU\\Control Panel\\Desktop' /v FontSmoothing             /t REG_SZ    /d '2'                 /f
+      wine reg add 'HKCU\\Control Panel\\Desktop' /v FontSmoothingOrientation  /t REG_DWORD /d 0x00000001          /f
+      wine reg add 'HKCU\\Control Panel\\Desktop' /v FontSmoothingType         /t REG_DWORD /d 0x00000002          /f
+    "
+    touch "$font_fix_done" 2>/dev/null || true
+    info "configured: Wine font substitutions + smoothing (Tahoma 8pt, ClearType)"
+  else
+    _wine_cmd "configuring Wine font substitutions" sh -c "
+      wine reg add 'HKCU\\Software\\Wine\\Fonts\\Replacements' /v 'MS Shell Dlg' /t REG_SZ /d 'Tahoma' /f
+    " || true
+    info "configured: Wine basic font substitutions"
+  fi
+}
+
+# Download and install a Windows .exe under Wine (idempotent — checks install dir first).
+# Usage: _install_wine_app "Label" "check_file_in_wine_prefix" "download_url" "exe_filename" [extra_silent_flags]
+_install_wine_app() {
+  local label="$1" check_path="$2" dl_url="$3" exe_name="$4" extra_flags="${5:-}"
+  local exe_path="$DOWNLOAD_DIR/${exe_name}"
+  if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    local USER_HOME
+    USER_HOME="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
+    local full_check="${USER_HOME}/${check_path}"
+    if [ -f "$full_check" ] || [ -d "$full_check" ]; then
+      info "already installed: $label (found: $full_check)"
       return 0
     fi
   fi
-  local url="https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v${NPP_VERSION}/npp.${NPP_VERSION}.Installer.exe"
-  if run_spin "downloading Notepad++ installer" curl -fsSL --retry 3 -o "$NPP_EXE" "$url"; then
+  if run_spin "downloading $label" curl -fsSL --retry 3 -o "$exe_path" "$dl_url"; then
     if have_cmd wine; then
       if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-        run_spin "installing Notepad++ under Wine" \
-          sudo -u "$SUDO_USER" env HOME="$(getent passwd "$SUDO_USER" | cut -d: -f6)" \
-            wine "$NPP_EXE" /S /D="$NPP_INSTALL_DIR" || true
+        local USER_HOME
+        USER_HOME="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
+        run_spin "installing $label under Wine" \
+          bash -c "export HOME='$USER_HOME' WINEARCH=win64 WINEPREFIX='\${HOME}/.wine'; wineboot -u 2>/dev/null || true; wine '$exe_path' $extra_flags /S" || true
       else
-        run_spin "installing Notepad++ under Wine" \
-            wine "$NPP_EXE" /S /D="$NPP_INSTALL_DIR" || true
+        run_spin "installing $label under Wine" \
+          bash -c "export WINEARCH=win64 WINEPREFIX='\${HOME}/.wine'; wineboot -u 2>/dev/null || true; wine '$exe_path' $extra_flags /S" || true
       fi
+      info "installed: $label via Wine"
     else
-      warn "Wine not found on PATH — skipping Notepad++ installation"
+      warn "Wine not found on PATH — skipping $label installation"
       return 1
     fi
-    info "installed: Notepad++ via Wine (v${NPP_VERSION})"
   else
-    warn "download failed: Notepad++ v${NPP_VERSION}"
+    warn "download failed: $label"
     return 1
   fi
 }
 
+# =============================================================================
+# INTERNET DOWNLOAD MANAGER (IDM) under Wine
+# Official download: https://www.internetdownloadmanager.com/ (HTTPS).
+# Install IDM silently under Wine, using /S + /D=<path> flags.
+# Also open the browser extension pages so the user can install the IDM
+# browser integration add-ons for Chrome, Edge, and Firefox.
+# =============================================================================
+_install_idm_wine() {
+  local USER_HOME check
+  if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    USER_HOME="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
+    check="${USER_HOME}/.wine/drive_c/Program Files/Internet Download Manager/IDMan.exe"
+    if [ -f "$check" ]; then
+      info "already installed: IDM via Wine ($check)"
+      return 0
+    fi
+  fi
+
+  local idm_url="https://mirror2.internetdownloadmanager.com/idman${IDM_VERSION//./}.exe"
+  local idm_exe="$DOWNLOAD_DIR/idman_${IDM_VERSION}.exe"
+  if run_spin "downloading IDM" curl -fsSL --retry 3 -o "$idm_exe" "$idm_url"; then
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+      run_spin "installing IDM under Wine" \
+        bash -c "export HOME='$USER_HOME' WINEARCH=win64 WINEPREFIX='\${HOME}/.wine'; wineboot -u 2>/dev/null || true; wine '$idm_exe' /S /D='C:\\Program Files\\Internet Download Manager'" || true
+    else
+      run_spin "installing IDM under Wine" \
+        bash -c "export WINEARCH=win64 WINEPREFIX='\${HOME}/.wine'; wineboot -u 2>/dev/null || true; wine '$idm_exe' /S /D='C:\\Program Files\\Internet Download Manager'" || true
+    fi
+    info "installed: IDM (Internet Download Manager) via Wine"
+  else
+    warn "download failed: IDM — trying fallback URL"
+    # Fallback: try the main download page URL format
+    local idm_fallback="https://mirror2.internetdownloadmanager.com/idman627build18.exe"
+    if run_spin "IDM fallback download" curl -fsSL --retry 3 -o "$idm_exe" "$idm_fallback"; then
+      if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        run_spin "installing IDM under Wine (fallback)" \
+          bash -c "export HOME='$USER_HOME' WINEARCH=win64 WINEPREFIX='\${HOME}/.wine'; wineboot -u 2>/dev/null || true; wine '$idm_exe' /S /D='C:\\Program Files\\Internet Download Manager'" || true
+      fi
+      info "installed: IDM via Wine (fallback build)"
+    else
+      warn "IDM download failed — manual install needed"
+      return 1
+    fi
+  fi
+
+  # Open browser extension/add-on pages so the user can install IDM integration.
+  log "Opening IDM browser extension pages"
+  if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    local BROWSERS="google-chrome microsoft-edge firefox"
+    for br in $BROWSERS; do
+      if have_cmd "$br" 2>/dev/null || have_cmd "$(echo "$br" | sed 's/-/ /')"; then :
+      else continue; fi
+      case "$br" in
+        google-chrome|google-chrome-stable)
+          # Chrome Web Store — IDM Integration Module
+          sudo -u "$SUDO_USER" xdg-open "https://chromewebstore.google.com/detail/idm-integration-module/ngpampappnmepgilojfohadhhmbhlaek" >/dev/null 2>&1 || true
+          info "opened Chrome Web Store: IDM Integration Module" ;;
+        microsoft-edge|microsoft-edge-stable)
+          # Edge Add-ons — IDM Integration Module
+          sudo -u "$SUDO_USER" xdg-open "https://microsoftedge.microsoft.com/addons/detail/idm-integration-module/llbjbkhnmlidjebalopleeepgdfgcpec" >/dev/null 2>&1 || true
+          info "opened Edge Add-ons: IDM Integration Module" ;;
+        firefox)
+          # Firefox Add-ons — IDM Integration (third-party, but linked from IDM's official site)
+          sudo -u "$SUDO_USER" xdg-open "https://addons.mozilla.org/en-US/firefox/addon/idm-integration/" >/dev/null 2>&1 || true
+          info "opened Firefox Add-ons: IDM Integration" ;;
+      esac
+    done
+    sleep 2  # let the browser tabs settle
+  fi
+}
+
+# =============================================================================
+# WINRAR under Wine
+# Official download: https://www.win-rar.com/ (HTTPS, rarlab.com CDN).
+# WinRAR is the reference RAR archiver. The native Linux CLI `rar`/`unrar`
+# and GUI `PeaZip` are also installed below as complementary RAR-support apps.
+# =============================================================================
+_install_winrar_wine() {
+  local USER_HOME check wrar_url wrar_exe
+  if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    USER_HOME="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
+    check="${USER_HOME}/.wine/drive_c/Program Files/WinRAR/WinRAR.exe"
+    if [ -f "$check" ]; then
+      info "already installed: WinRAR via Wine ($check)"
+      return 0
+    fi
+  fi
+
+  # WinRAR uses a locale-specific URL. Fall back to the English installer.
+  wrar_exe="$DOWNLOAD_DIR/winrar-${WINRAR_VERSION}.exe"
+  # Primary: official rarlab.com download (en-US, HTTPS)
+  wrar_url="https://www.win-rar.com/fileadmin/winrar-versions/winrar/winrar-${WINRAR_VERSION//./}-x64-english.exe"
+  if run_spin "downloading WinRAR (English)" curl -fsSL --retry 3 -o "$wrar_exe" "$wrar_url"; then :; else
+    # Fallback: rarlab.com direct
+    warn "primary WinRAR URL failed — trying rarlab.com fallback"
+    local rarlab_url="https://www.rarlab.com/rar/winrar-x64-${WINRAR_VERSION//./}.exe"
+    if ! run_spin "downloading WinRAR (rarlab fallback)" curl -fsSL --retry 3 -o "$wrar_exe" "$rarlab_url"; then
+      warn "WinRAR download failed — manual install needed"
+      return 1
+    fi
+  fi
+
+  if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    run_spin "installing WinRAR under Wine" \
+      bash -c "export HOME='$USER_HOME' WINEARCH=win64 WINEPREFIX='\${HOME}/.wine'; wineboot -u 2>/dev/null || true; wine '$wrar_exe' /S" || true
+  else
+    run_spin "installing WinRAR under Wine" \
+      bash -c "export WINEARCH=win64 WINEPREFIX='\${HOME}/.wine'; wineboot -u 2>/dev/null || true; wine '$wrar_exe' /S" || true
+  fi
+  info "installed: WinRAR via Wine (v${WINRAR_VERSION})"
+
+  # Create a .desktop shortcut for WinRAR under Wine so it appears in the menu
+  if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    local apps_dir="${USER_HOME}/.local/share/applications"
+    mkdir -p "$apps_dir"
+    cat > "${apps_dir}/wine-winrar.desktop" <<WINRAR_DESK
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=WinRAR (Wine)
+Comment=File archiver for RAR and ZIP archives
+Icon=package-x-generic
+Exec=env WINEPREFIX="${USER_HOME}/.wine" wine "C:\\Program Files\\WinRAR\\WinRAR.exe"
+Terminal=false
+Categories=Utility;Archiving;Compression;
+StartupWMClass=winrar.exe
+WINRAR_DESK
+    chmod 0755 "${apps_dir}/wine-winrar.desktop"
+    chown "${SUDO_USER}:${SUDO_USER}" "${apps_dir}/wine-winrar.desktop" 2>/dev/null || true
+    info "created menu entry: WinRAR (Wine)"
+  fi
+}
 # Set Wine DPI to 192 so fonts/UI are readable on high-DPI displays.
 # Uses 'wine reg add' to write LogPixels to the default user prefix.
 _configure_wine_dpi() {
@@ -344,7 +546,7 @@ case "$KARCH" in
 esac
 ARCH="$DEB_ARCH"
 info "Target: Ubuntu $CODENAME ($UBU_VER); dpkg arch=$DEB_ARCH, kernel arch=$KARCH"
-[ "$DEB_ARCH" != "amd64" ] && warn "Non-amd64: some amd64-only vendor apps (Discord, Parsec, XDM, VMware) may be skipped."
+[ "$DEB_ARCH" != "amd64" ] && warn "Non-amd64: some amd64-only vendor apps (Discord, VMware) may be skipped."
 
 # =============================================================================
 # 1. BASE SYSTEM + BUILD DEPENDENCIES (incl. VMware kernel-module deps)
@@ -385,7 +587,6 @@ dpkg --add-architecture i386 || true   # Wine needs 32-bit support
 add_repo winehq         https://dl.winehq.org/wine-builds/winehq.key \
   "deb [signed-by=/etc/apt/keyrings/winehq.gpg] https://dl.winehq.org/wine-builds/ubuntu/ ${CODENAME} main" || true
 # Oracle VirtualBox: official Oracle Linux repo (virtualbox.org, HTTPS, signed-by keyring).
-# Trusted first-party source over HTTPS.
 add_repo virtualbox     https://www.virtualbox.org/download/oracle_vbox_2016.asc \
   "deb [arch=$ARCH signed-by=/etc/apt/keyrings/virtualbox.gpg] https://download.virtualbox.org/virtualbox/debian ${CODENAME} contrib" || true
 info "added: chrome, edge, vscode, docker, pgdg, pgadmin, dbeaver, anydesk, protonvpn, nodesource, winehq, virtualbox"
@@ -432,13 +633,118 @@ step "AnyDesk"                   apt_pkgs anydesk
 step "Proton VPN (Hotspot/Psiphon alt)" apt_pkgs proton-vpn-gnome-desktop
 step "Node.js (LTS)"             apt_pkgs nodejs
 step "Wine (Windows emulator)"   apt_pkgs --install-recommends winehq-stable
-step "Oracle VirtualBox"         apt_pkgs virtualbox-7.1
 
-# Notepad++ native Windows installer under Wine (replaces the Linux clone notepadqq).
-step "Notepad++ (via Wine)" _install_notepadpp
-
-# Force Wine DPI to 192 so fonts are readable on high-DPI screens.
+# =============================================================================
+# 3B. WINE FONT + DPI CONFIGURATION (font face/size substitution + high-DPI)
+#     Must run AFTER Wine is installed and BEFORE any Wine-based app installs.
+# =============================================================================
+step "Wine font substitution (Tahoma 8pt / ClearType)" _configure_wine_fonts
 step "Wine DPI scaling (192)" _configure_wine_dpi
+
+# =============================================================================
+# 3C. WINE-BASED WINDOWS APPS (installed under Wine with font fixes applied)
+# =============================================================================
+
+# Notepad++ native Windows installer under Wine.
+NPP_VERSION="8.7.9"
+NPP_EXE="$DOWNLOAD_DIR/npp.${NPP_VERSION}.Installer.exe"
+NPP_INSTALL_DIR="C:\\Program Files\\Notepad++"
+_notepadpp_wine() {
+  if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    local USER_HOME
+    USER_HOME="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
+    local NPP_CHECK="${USER_HOME}/.wine/drive_c/Program Files/Notepad++/notepad++.exe"
+    if [ -f "$NPP_CHECK" ]; then
+      info "already installed: Notepad++ via Wine (${NPP_CHECK})"
+      return 0
+    fi
+  fi
+  local url="https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v${NPP_VERSION}/npp.${NPP_VERSION}.Installer.exe"
+  if run_spin "downloading Notepad++ installer" curl -fsSL --retry 3 -o "$NPP_EXE" "$url"; then
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+      local USER_HOME
+      USER_HOME="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
+      run_spin "installing Notepad++ under Wine" \
+        bash -c "export HOME='$USER_HOME' WINEARCH=win64 WINEPREFIX='\${HOME}/.wine'; wineboot -u 2>/dev/null || true; wine '$NPP_EXE' /S /D='$NPP_INSTALL_DIR'" || true
+    else
+      run_spin "installing Notepad++ under Wine" \
+        bash -c "export WINEARCH=win64 WINEPREFIX='\${HOME}/.wine'; wineboot -u 2>/dev/null || true; wine '$NPP_EXE' /S /D='$NPP_INSTALL_DIR'" || true
+    fi
+    info "installed: Notepad++ via Wine (v${NPP_VERSION})"
+  else
+    warn "download failed: Notepad++ v${NPP_VERSION}"
+    return 1
+  fi
+}
+step "Notepad++ (via Wine)" _notepadpp_wine
+
+# Internet Download Manager under Wine (with corrected fonts from step 3B).
+step "IDM via Wine (Internet Download Manager)" _install_idm_wine
+
+# WinRAR under Wine (with corrected fonts from step 3B).
+step "WinRAR via Wine" _install_winrar_wine
+
+# =============================================================================
+# 3D. MULTIPASS (replaces WSL — Canonical's lightweight VM manager)
+#     Official snap from Canonical: https://multipass.run (HTTPS).
+#     Multipass provides a WSL-like experience on Linux: instant Ubuntu VMs.
+# =============================================================================
+step "Multipass (Canonical VM manager, WSL replacement)" bash -c '
+  if snap list 2>/dev/null | grep -q "^multipass "; then
+    echo "multipass already installed (refreshing)"; snap refresh multipass || true
+  elif have_cmd multipass; then
+    echo "multipass already installed via package manager"
+  elif have_cmd snap; then
+    snap install multipass --classic && echo "installed: multipass" || echo "WARN: snap install failed"
+  else
+    echo "Installing snapd first..."
+    apt_get install -y snapd 2>/dev/null || true
+    sleep 2
+    snap wait system seed.loaded 2>/dev/null || true
+    snap install multipass --classic && echo "installed: multipass" || echo "WARN: multipass install via snap failed"
+  fi
+'
+
+# =============================================================================
+# 3E. PEAPACKER (additional rar-support native app alongside p7zip/unrar)
+#     PeaZip is a FOSS archiver GUI that handles RAR, 7z, ZIP, and more.
+#     Installed as a complementary RAR handler to the WinRAR-in-Wine above.
+# =============================================================================
+log "PeaZip (native RAR-support archiver, complements WinRAR via Wine)"
+PEAZIP_URL="https://github.com/peazip/PeaZip/releases/latest/download/peazip_11.4.0.LINUX.GTK2-1_amd64.deb"
+PEAZIP_DEB="$DOWNLOAD_DIR/peazip.deb"
+if deb_installed peazip 2>/dev/null; then
+  info "PeaZip already installed (skipping)"
+  mark_ok "PeaZip"
+else
+  if run_spin "downloading PeaZip" curl -fsSL --retry 3 -o "$PEAZIP_DEB" "$PEAZIP_URL"; then
+    if apt_run "installing PeaZip" install "$PEAZIP_DEB"; then
+      info "installed: PeaZip (native RAR/ZIP/7z GUI)"
+      mark_ok "PeaZip"
+    else
+      warn "PeaZip .deb install failed — trying Flatpak"
+      if flatpak_app io.github.peazip.PeaZip; then
+        info "installed: PeaZip via Flatpak"
+        mark_ok "PeaZip"
+      else
+        mark_fail "PeaZip" "$LAST_ERR"
+      fi
+    fi
+  else
+    warn "PeaZip download failed — trying Flatpak"
+    if flatpak_app io.github.peazip.PeaZip; then
+      info "installed: PeaZip via Flatpak"
+      mark_ok "PeaZip"
+    else
+      mark_fail "PeaZip (download+flatpak)" "$LAST_ERR"
+    fi
+  fi
+fi
+
+# =============================================================================
+# 4. NATIVE / REPO PACKAGES (continued)
+# =============================================================================
+step "Oracle VirtualBox"         apt_pkgs virtualbox-7.1
 step "Developer CLI tools"       apt_pkgs git cmake ninja-build openssh-client openssh-server \
                                           openssl putty perl cpanminus pandoc wkhtmltopdf \
                                           python3 python3-pip python3-venv r-base r-base-dev \
@@ -447,7 +753,8 @@ step "Free solvers (Gurobi alt)" apt_pkgs glpk-utils coinor-cbc
 step "Media & utilities"         apt_pkgs vlc mpv rhythmbox qbittorrent flameshot obs-studio \
                                           kdenlive simplescreenrecorder p7zip-full p7zip-rar unrar \
                                           file-roller gimp krita shotwell gthumb goldendict \
-                                          thunderbird calibre anki uget notepadqq geany libreoffice
+                                          thunderbird calibre anki uget notepadqq geany libreoffice \
+                                          uget aria2
 # Pinta was removed from the Ubuntu 24.04 repos; install via Flatpak instead.
 step "Pinta (Flatpak)" flatpak_app com.github.PintaProject.Pinta
 step "Desktop apps (small)"      apt_pkgs gnome-clocks gnome-sound-recorder cheese gnome-weather \
@@ -470,26 +777,28 @@ log "TeX Live (texlive-full — large; please wait)"
 if apt_run "installing texlive-full" install texlive-full; then info "installed: texlive-full"; mark_ok "TeX Live"; else mark_fail "TeX Live" "$LAST_ERR"; fi
 
 # =============================================================================
-# 4. VENDOR .deb DOWNLOADS  (architecture-aware URLs)
+# 5. VENDOR .deb DOWNLOADS  (architecture-aware URLs)
 # =============================================================================
 step "Discord"  install_deb_url "Discord" "https://discord.com/api/download?platform=linux&format=deb"
 step "Zoom"     install_deb_url "Zoom"    "https://zoom.us/client/latest/zoom_${DEB_ARCH}.deb"
-step "Parsec"   install_deb_url "Parsec"  "https://builds.parsec.app/package/parsec-linux.deb"
+# PARSEC — explicitly EXCLUDED per user request. Not installed.
+info "Parsec: SKIPPED (per user request — not installed)"
+mark_skip "Parsec (user-requested exclusion)"
 step "GitKraken (GitHub Desktop alt)" install_deb_url "GitKraken" "https://release.gitkraken.com/linux/gitkraken-${DEB_ARCH}.deb"
 # XDM (Xtreme Download Manager): open-source (GitHub 7.8k stars), .deb from official GitHub releases.
-# Trusted first-party source: github.com/subhra74/xdm (HTTPS, verified commits).
+# Complements uGet (already installed as APT) and IDM (installed under Wine above).
 step "XDM (Xtreme Download Manager)" install_deb_url "XDM" \
   "https://github.com/subhra74/xdm/releases/download/${XDM_VERSION}/xdman_gtk_${XDM_VERSION}_amd64.deb"
 
 # =============================================================================
-# 5. VENDOR .deb DOWNLOADS (no Flatpak or APT available)
+# 6. VENDOR .deb DOWNLOADS (no Flatpak or APT available)
 # =============================================================================
 # RealVNC Viewer: distributed as a vendor .deb (not on Flathub, not in APT).
-# Official first-party download URL (HTTPS) from realvnc.com.
 step "RealVNC Viewer" install_deb_url "RealVNC Viewer" \
   "https://downloads.realvnc.com/download/file/viewer.files/VNC-Viewer-7.15.1-Linux-${ARCH}.deb"
+
 # =============================================================================
-# 6. FLATPAK FALLBACKS
+# 7. FLATPAK FALLBACKS
 # =============================================================================
 step "Microsoft Teams" flatpak_app com.github.IsmaelMartinez.teams_for_linux
 step "WhatsApp (ZapZap)" flatpak_app com.rtosta.zapzap
@@ -497,7 +806,7 @@ step "LocalSend (Quick/Nearby Share)" flatpak_app org.localsend.localsend_app
 step "Planify (Microsoft To Do alt)" flatpak_app io.github.alainm23.planify
 
 # =============================================================================
-# 7. SCRIPT / BINARY INSTALLERS
+# 8. SCRIPT / BINARY INSTALLERS
 # =============================================================================
 log "rclone (Google Drive)"
 if run_spin "installing rclone" bash -c 'curl -fsSL https://rclone.org/install.sh | bash || rclone selfupdate'; then
@@ -528,21 +837,28 @@ EOF
 else mark_fail "LanguageTool (download)" "$LAST_ERR"; fi
 
 # =============================================================================
-# 7B. WEB-APP DESKTOP SHORTCUTS
-# For apps that only have a web version (no native Linux client), create
-# .desktop shortcuts on the first non-root user's desktop so they're easily
-# discoverable. Uses the user's default browser.
+# 9. WEB-APP .desktop SHORTCUTS  (searchable in the app menu)
+#    For apps that only have a web version (no native Linux client), create
+#    .desktop shortcuts in ~/.local/share/applications/ so they appear in the
+#    system menu AND are searchable via the launcher, plus symlinked to the
+#    desktop for convenience. Runs under the real (non-root) SUDO_USER.
 # =============================================================================
 
-# Create a .desktop shortcut that opens a URL in the default browser.
-# _webapp_desktop "Label" "URL" "icon-name"
+# Create a .desktop shortcut in ~/.local/share/applications/ (menu-searchable)
+# and also symlink it to ~/Desktop for visibility.
 _webapp_desktop() {
   local label="$1" url="$2" icon="${3:-web-browser}"
+  local apps_dir="${USER_HOME}/.local/share/applications"
   local desktop_dir="${USER_HOME}/Desktop"
-  local desktop_file="${desktop_dir}/${label// /_}.desktop"
-  mkdir -p "$desktop_dir" || return 1
+  local desktop_file="${apps_dir}/${label// /_}.desktop"
+  mkdir -p "$apps_dir" "$desktop_dir" 2>/dev/null || return 1
   if [ -f "$desktop_file" ]; then
-    info "desktop shortcut already exists: $label"
+    info "desktop shortcut already exists (menu): $label"
+    # Still ensure a Desktop symlink exists
+    if [ ! -e "${desktop_dir}/${label// /_}.desktop" ]; then
+      ln -sf "$desktop_file" "${desktop_dir}/${label// /_}.desktop" 2>/dev/null || true
+      chown -h "${SUDO_USER}:${SUDO_USER}" "${desktop_dir}/${label// /_}.desktop" 2>/dev/null || true
+    fi
     return 0
   fi
   cat > "$desktop_file" <<DESK_EOF
@@ -557,16 +873,19 @@ Terminal=false
 Categories=Network;WebBrowser;
 StartupWMClass=${label// /_}
 DESK_EOF
-  chmod 0755 "$desktop_file"
+  chmod 0644 "$desktop_file"
   chown "${SUDO_USER}:${SUDO_USER}" "$desktop_file" 2>/dev/null || true
-  info "created desktop shortcut: $label -> $url"
+  # Symlink to Desktop for visibility
+  ln -sf "$desktop_file" "${desktop_dir}/${label// /_}.desktop" 2>/dev/null || true
+  chown -h "${SUDO_USER}:${SUDO_USER}" "${desktop_dir}/${label// /_}.desktop" 2>/dev/null || true
+  info "created web-app shortcut (menu + desktop): $label -> $url"
 }
 
 # Only create shortcuts if we have a real non-root SUDO_USER.
 if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
   USER_HOME="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
   if [ -d "$USER_HOME" ]; then
-    log "Creating web-app desktop shortcuts for $SUDO_USER"
+    log "Creating web-app desktop shortcuts for $SUDO_USER (menu-searchable)"
     # Microsoft 365 / Office — web-only, no native Linux version
     _webapp_desktop "Microsoft 365"        "https://www.office.com"           "libreoffice-writer" || true
     _webapp_desktop "Microsoft Word"       "https://www.office.com/launch/word"       "libreoffice-writer" || true
@@ -578,11 +897,78 @@ if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
     _webapp_desktop "Copilot"              "https://copilot.microsoft.com"    "assistant"          || true
     _webapp_desktop "Claude AI"            "https://claude.ai"                "assistant"          || true
     _webapp_desktop "Reverso"              "https://www.reverso.net"          "accessories-dictionary" || true
+
+    # Update the desktop database so the menu picks them up immediately
+    if have_cmd update-desktop-database 2>/dev/null; then
+      run_spin "updating desktop database" update-desktop-database "${USER_HOME}/.local/share/applications" || true
+    fi
   fi
 fi
 
 # =============================================================================
-# 8. POST-INSTALL CONFIG
+# 9B. BING WALLPAPER — daily Bing image as desktop background
+#     Equivalent to the Windows Bing Wallpaper app.
+#     Primary: GNOME Shell extension (neffo/bing-wallpaper-gnome-extension)
+#              from extensions.gnome.org — FOSS, pulls daily Bing image.
+#     Fallback: bing-wall Snap (snapcraft.io) — standalone daemon that works
+#               on any desktop environment, not just GNOME.
+# =============================================================================
+step "Bing Wallpaper (daily Bing desktop background)" bash -c '
+  if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    USER_HOME="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
+
+    # Check if already installed via extension or snap
+    if [ -d "${USER_HOME}/.local/share/gnome-shell/extensions/BingWallpaper@ineffable-gmail.com" ] 2>/dev/null; then
+      echo "Bing Wallpaper GNOME extension already installed"
+      exit 0
+    fi
+    if snap list 2>/dev/null | grep -q "^bing-wall "; then
+      echo "bing-wall Snap already installed"
+      exit 0
+    fi
+
+    # Attempt 1: Install the GNOME Shell extension (neffo/bing-wallpaper-gnome-extension).
+    # Official source: https://github.com/neffo/bing-wallpaper-gnome-extension (HTTPS, FOSS).
+    # This is the closest equivalent to the Windows Bing Wallpaper app.
+    EXT_DIR="${USER_HOME}/.local/share/gnome-shell/extensions/BingWallpaper@ineffable-gmail.com"
+    mkdir -p "$EXT_DIR"
+    if curl -fsSL --retry 3 -o /tmp/bing-wallpaper-extension.zip \
+       "https://github.com/neffo/bing-wallpaper-gnome-extension/releases/latest/download/BingWallpaper@ineffable-gmail.com.shell-extension.zip"; then
+      if unzip -q -o /tmp/bing-wallpaper-extension.zip -d "$EXT_DIR" 2>/dev/null; then
+        chown -R "${SUDO_USER}:${SUDO_USER}" "${USER_HOME}/.local/share/gnome-shell/extensions/BingWallpaper@ineffable-gmail.com"
+        rm -f /tmp/bing-wallpaper-extension.zip
+        echo "installed: Bing Wallpaper GNOME extension"
+        echo "Enable it via: gnome-extensions enable BingWallpaper@ineffable-gmail.com"
+        # Try to enable it immediately
+        if have_cmd gnome-extensions 2>/dev/null; then
+          sudo -u "$SUDO_USER" gnome-extensions enable BingWallpaper@ineffable-gmail.com 2>/dev/null || true
+        fi
+        echo "NOTE: Restart GNOME Shell (Alt+F2, r, Enter) or log out/in for the extension to take effect."
+        exit 0
+      fi
+    fi
+
+    # Attempt 2: Fallback — install bing-wall via Snap (works on all desktops).
+    echo "GNOME extension install failed — trying snap fallback..."
+    if have_cmd snap 2>/dev/null; then
+      snap install bing-wall && echo "installed: bing-wall (Snap)" && exit 0
+    else
+      echo "Installing snapd first..."
+      apt_get install -y snapd 2>/dev/null || true
+      sleep 2
+      snap wait system seed.loaded 2>/dev/null || true
+      snap install bing-wall && echo "installed: bing-wall (Snap)" && exit 0
+    fi
+    echo "WARN: Could not install Bing Wallpaper — manual install needed"
+    exit 1
+  else
+    echo "No SUDO_USER — skipping (runs per-user)"
+    exit 0
+  fi
+'
+
+# =============================================================================
+# 10. POST-INSTALL CONFIG
 # =============================================================================
 log "Post-install configuration"
 systemctl enable --now ssh        || true
@@ -597,7 +983,7 @@ fi
 info "enabled services: ssh, postgresql, docker"
 
 # =============================================================================
-# 9. MANUAL / LOGIN-GATED DOWNLOADS  (always LAST)
+# 11. MANUAL / LOGIN-GATED DOWNLOADS  (always LAST)
 # =============================================================================
 log "Manual downloads (handled last)"
 
@@ -649,7 +1035,7 @@ if prompt_for_file "Gurobi" "$GUROBI_TGZ" \
 fi
 
 # =============================================================================
-# 10. SUMMARY  (appended to the results log AND printed to the terminal)
+# 12. SUMMARY  (appended to the results log AND printed to the terminal)
 # =============================================================================
 {
   echo
