@@ -165,13 +165,17 @@ $uninstallPaths = @(
     'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*'
 )
 
-$win32 = Get-ItemProperty $uninstallPaths -ErrorAction SilentlyContinue |
+$rawItems = try {
+    Get-ItemProperty $uninstallPaths -ErrorAction SilentlyContinue
+} catch { @() }
+$win32 = $rawItems |
     Where-Object {
-        $_.DisplayName -and $_.DisplayName.Trim() -ne '' -and
-        -not $_.SystemComponent -and
-        -not $_.ParentKeyName -and
-        -not $_.ParentDisplayName -and
-        ($_.WindowsInstaller -ne 1 -or $_.UninstallString)
+        try { $dn = $_.DisplayName } catch { $null = $dn }
+        $dn -and $dn.Trim() -ne '' -and
+        -not (try { $_.SystemComponent } catch { $false }) -and
+        -not (try { $_.ParentKeyName } catch { $false }) -and
+        -not (try { $_.ParentDisplayName } catch { $false }) -and
+        ( (try { $_.WindowsInstaller } catch { 0 }) -ne 1 -or (try { $_.UninstallString } catch { $false }) )
     } |
     Select-Object @{N='Name';      E={$_.DisplayName}},
                   @{N='Version';   E={$_.DisplayVersion}},
@@ -197,16 +201,19 @@ if ($IncludeStoreApps) {
         'StorePurchaseApp','WidgetsPlatform','BingWallpaper'
     ) -join '|'
 
-    $store = Get-AppxPackage -ErrorAction SilentlyContinue |
+    $rawAppx = try {
+        Get-AppxPackage -ErrorAction SilentlyContinue
+    } catch { @() }
+    $store = $rawAppx |
         Where-Object {
-            -not $_.IsFramework -and
-            $_.SignatureKind -ne 'System' -and
-            $_.NonRemovable -ne $true -and
-            $_.Name -notmatch $appxNoise
+            -not (try { $_.IsFramework } catch { $false }) -and
+            (try { $_.SignatureKind } catch { '' }) -ne 'System' -and
+            (try { $_.NonRemovable } catch { $false }) -ne $true -and
+            (try { $_.Name } catch { '' }) -notmatch $appxNoise
         } |
-        Select-Object @{N='Name';      E={ Get-FriendlyAppxName $_.Name }},
-                      @{N='Version';   E={$_.Version}},
-                      @{N='Publisher'; E={ ($_.Publisher -replace '^CN=','' -replace ',.*$','') }},
+        Select-Object @{N='Name';      E={ try { Get-FriendlyAppxName $_.Name } catch { '' }}},
+                      @{N='Version';   E={try { $_.Version } catch { '' }}},
+                      @{N='Publisher'; E={ try { ($_.Publisher -replace '^CN=','' -replace ',.*$','') } catch { '' }}},
                       @{N='Source';    E={'Store'}}
 }
 
@@ -379,7 +386,7 @@ $LinuxKB = @(
     @{P='^Photos$|Windows Photos';       S='Native Alternative';                                 A='Shotwell, gThumb, GNOME Loupe, or digiKam'; C=100; Pr='Free (FOSS)'}
     @{P='Zune Music|Groove|Media Player';S='Native Alternative';                                 A='Rhythmbox, Lollypop, Elisa, or VLC'; C=110; Pr='Free (FOSS)'}
     @{P='Alarms';                        S='Native Alternative';                                 A='GNOME Clocks (or KDE Clock widget)'; C=100; Pr='Free (FOSS)'}
-    @{P='PowerToys';                     S='Not Available; Native Alternative';                  A='No single equivalent: Ulauncher/Albert (Run), KWin/PaperWM (FancyZones), Kando (gestures), KDE built-ins'; C=90; Pr='Free (FOSS)'}
+    @{P='PowerToys';                     S='Not Available; Native Alternative';                  A='Text Extractor: Frog (tenderowl.com/frog — shortcut-triggered OCR, select→extract, FOSS). Keyboard accents: ibus-typing-booster or Compose key (built-in). Color Picker: gpick / KColorChooser (shortcut→click to pick hex). File Locksmith: fuser / lsof (CLI) or GNOME File Locksmith. Find My Mouse: GNOME "Show Pointer Location" or KDE "Track Mouse". Image Resizer: right-click in Nautilus + nautilus-image-converter, or ImageMagick `convert`. Mouse Without Borders: Barrier / Input Leap (software KVM, FOSS). ZoomIt: KMag / Zoom (GNOME) or screen-recorder. Shortcut Guide: GNOME Super key overlay or KDE shortcuts cheat sheet'; C=95; Pr='Free (FOSS)'}
     @{P='Power ?Shell';                  S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'}
     @{P='Windows Store|Microsoft Store';  S='Native Alternative';                                A="Your distro's software center (GNOME Software / KDE Discover) + Flathub"; C=100; Pr='Free (FOSS)'}
     @{P='Bing';                          S='Available as WebApp';                                A='bing.com in any browser (or DuckDuckGo / Google)'; C=95; Pr='Free'}

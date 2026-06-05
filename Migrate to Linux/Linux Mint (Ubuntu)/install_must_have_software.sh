@@ -455,7 +455,16 @@ step "Desktop apps (small)"      apt_pkgs gnome-clocks gnome-sound-recorder chee
                                           gnome-disk-utility usb-creator-gtk nautilus-dropbox \
                                           smartmontools nvme-cli openvpn network-manager-openvpn-gnome
 step "OneDrive (abraunegg)"      apt_pkgs onedrive
-step "PowerToys-ish (launcher)"  apt_pkgs ulauncher
+step "PowerToys: launcher (Run)"           apt_pkgs ulauncher
+step "PowerToys: OCR (Text Extractor)"     flatpak_app com.tenderowl.frog
+step "PowerToys: color picker"             apt_pkgs gpick
+step "PowerToys: image resizer via Nautilus" apt_pkgs nautilus-image-converter imagemagick
+step "PowerToys: mouse sharing (KVM)"      flatpak_app com.github.debauchee.barrier
+step "PowerToys: screen zoom"              apt_pkgs kmag
+step "PowerToys: find mouse"               info "Use GNOME Settings > Mouse > Show Pointer Location (Ctrl to locate)"
+step "PowerToys: keyboard accents"         apt_pkgs ibus-typing-booster
+step "PowerToys: GNOME shortcut overlay"   info "Press Super key for shortcut guide (built into GNOME)"
+step "PowerToys: file locksmith"           apt_pkgs lsof
 
 log "TeX Live (texlive-full — large; please wait)"
 if apt_run "installing texlive-full" install texlive-full; then info "installed: texlive-full"; mark_ok "TeX Live"; else mark_fail "TeX Live" "$LAST_ERR"; fi

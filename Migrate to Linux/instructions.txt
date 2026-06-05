@@ -5,8 +5,7 @@
 PURPOSE
 -------
 This file is a self-contained specification. An AI engine (or a human) should be
-able to read ONLY this file — and
-regenerate, with the latest up-to-date data:
+able to read ONLY this file — and regenerate, with the latest up-to-date data:
 
   1. detect_installed_windows_software.ps1   (Windows inventory + Linux rating)
   2. installed_windows_software.csv          (the report the script produces)
@@ -64,6 +63,24 @@ PARAMETERS
   -IncludeSystemComponents      switch, default off
   -IncludeStoreApps <bool>      default: $true
   -Online                       switch, default off (live Repology lookups)
+
+ERROR HANDLING (critical — must not crash on missing properties)
+  Some registry keys returned by Get-ItemProperty and some Appx packages returned by
+  Get-AppxPackage can lack properties that the script expects (e.g. a registry key
+  with no values has only PS* provider properties, no DisplayName). Accessing a
+  non-existent property can throw PropertyNotFoundException under certain PowerShell
+  configurations. Therefore:
+    * Wrap Get-ItemProperty and Get-AppxPackage calls in try/catch that returns @()
+      on failure.
+    * Every property access inside Where-Object and Select-Object blocks MUST be
+      guarded with try/catch:
+        try { $_.DisplayName } catch { $null = $dn }
+        try { $_.IsFramework } catch { $false }
+        try { $_.SignatureKind } catch { '' }
+        ...and so on for every property accessed on objects from these cmdlets.
+    * This applies to: DisplayName, SystemComponent, ParentKeyName, ParentDisplayName,
+      WindowsInstaller, UninstallString, DisplayVersion, Publisher (Win32);
+      IsFramework, SignatureKind, NonRemovable, Name, Version, Publisher (Appx).
 
 COLLECTION (machine-derived; read live, never hand-authored)
   Win32 apps: enumerate these registry uninstall hives —
@@ -146,6 +163,36 @@ KNOWLEDGE BASE ($LinuxKB) — the single place curated data lives
   add an entry. Re-running the script regenerates the CSV; never hand-edit the
   machine columns in the CSV.
 
+  IMPORTANT — PowerToys KB entry rules:
+    PowerToys is NOT a single app on Linux. Its KB must list each feature's separate
+    Linux replacement, with competency set to cover the overall replacement quality.
+    The individual features and their Linux equivalents (researched June 2026):
+      * Text Extractor (OCR)  -> Frog (tenderowl.com/frog, Flatpak: com.tenderowl.frog)
+                                  shortcut-triggered OCR, select a screen region →
+                                  extract text. This is the most important feature.
+      * Keyboard accents      -> ibus-typing-booster (APT) or the Compose key (built-in)
+      * Color Picker          -> gpick (APT) or KColorChooser — shortcut→click to pick hex
+      * File Locksmith        -> fuser / lsof (APT) — CLI; GNOME File Locksmith for GUI
+      * Find My Mouse         -> GNOME Settings > Mouse > "Show Pointer Location"
+                                  (shake Ctrl to locate); KDE "Track Mouse" feature
+      * Image Resizer         -> nautilus-image-converter (APT, right-click in Nautilus)
+                                  or ImageMagick `convert` (CLI)
+      * Mouse Without Borders -> Barrier / Input Leap (Flatpak: com.github.debauchee.barrier)
+                                  — software KVM, share keyboard+mouse across PCs
+      * ZoomIt                -> KMag (APT) or GNOME built-in zoom (Super+scroll)
+      * Shortcut Guide        -> GNOME Super key overlay (hold Super) or KDE shortcuts
+                                  cheat sheet
+      * Run (launcher)        -> Ulauncher (APT, official PPA for Ubuntu 24.04)
+    Set C=95 and Pr='Free (FOSS)' for PowerToys overall. The A field should concisely
+    list each feature→replacement pair.
+
+  IMPORTANT — Notepad++ KB entry rules:
+    Notepad++ is classified as "Native Alternative; Windows Emulator (Wine/Proton)".
+    The A field must list both native alternatives (notepadqq, geany, kate, VS Code)
+    AND mention that the REAL Notepad++ runs well under Wine. The installer will
+    install BOTH the native alternatives AND the real Notepad++ Windows installer
+    under Wine. C=95.
+
 OPTIONAL ONLINE MODE (-Online)
   For apps with no $LinuxKB match, query the Repology API
   (https://repology.org/api/v1/project/<slug>, custom User-Agent, be polite) to
@@ -164,7 +211,9 @@ OUTPUT + SUMMARY
   Treat the CSV as the source of truth for what to install on a target OS.
   The installer is built from rows where "Must be included on Linux" = yes,
   installing the native Linux app when "Linux Availability" includes "Available on
-  Linux", otherwise the product named in "Best Linux Alternative".
+  Linux", otherwise the product named in "Best Linux Alternative" — noting that
+  some entries (like PowerToys and Notepad++) name MULTIPLE alternatives that the
+  installer must install individually.
 
 
 ===============================================================================
@@ -218,11 +267,20 @@ AUTO-DETECT THE TARGET ENVIRONMENT (nothing hard-coded)
     * Debian/apt architecture:  DEB_ARCH = `dpkg --print-architecture`
       (amd64 | arm64 | armhf | i386) — use in every apt "[arch=...]" source line and in
       vendor .deb URLs (Zoom zoom_${DEB_ARCH}.deb, GitKraken gitkraken-${DEB_ARCH}.deb,
-      RStudio rstudio-latest-${DEB_ARCH}.deb, etc.).
+      RStudio rstudio-latest-${DEB_ARCH}.deb, RealVNC .deb, etc.).
     * Kernel/tarball architecture:  KARCH = `uname -m` (x86_64 | aarch64 | ...), mapped
       as needed for non-.deb assets (e.g. Miniconda Miniconda3-latest-Linux-${KARCH}.sh).
+      Use CONDA_ARCH for Miniconda, mapped from KARCH.
   If an app has no build for the detected architecture (some amd64-only vendor apps),
   let its download fail gracefully and be recorded as skipped (don't abort).
+
+PPA / BACKPORTS FOR NEWER UBUNTU RELEASES
+  On Ubuntu 24.04 (noble) specifically, some packages need extra PPAs because the
+  vendor repos or main archives lag. Detect the codename and conditionally add:
+    * dotnet/backports PPA — the Microsoft prod repo only carries .NET 8.0 on noble;
+      .NET 9.0 SDK (dotnet-sdk-9.0) needs the ppa:dotnet/backports PPA added first.
+    * Ulauncher PPA — ulauncher is not in the default noble repos; add
+      ppa:agornostal/ulauncher via add-apt-repository.
 
 TRUSTED SOURCES ONLY (hard rule)
   Every package, repository, key, .deb, script, and binary fetched by the installer
@@ -235,7 +293,8 @@ TRUSTED SOURCES ONLY (hard rule)
        for DBeaver, zoom.us for Zoom, discord.com for Discord, parsec.app for Parsec,
        gitkraken.com for GitKraken, rclone.org for rclone, anaconda.com for Miniconda,
        languagetool.org for LanguageTool, flathub.org for Flatpak, nodesource.com for
-       Node.js, protonvpn.com for Proton VPN).
+       Node.js, protonvpn.com for Proton VPN, anydesk.com for AnyDesk, winehq.org for
+       WineHQ, virtualbox.org for Oracle VirtualBox, realvnc.com for RealVNC Viewer).
 
     b) HTTPS mandatory — all downloads, repos, and key URLs MUST use HTTPS. Reject
        any source that is HTTP-only or redirects to HTTP. (Exception: the distro's
@@ -243,8 +302,8 @@ TRUSTED SOURCES ONLY (hard rule)
 
     c) GPG signature verification — every third-party APT repo MUST add its keyring
        via `signed-by=/etc/apt/keyrings/<name>.gpg` in the sources.list line. Fetch
-       keys over HTTPS with `curl -fsSL` and verify the key fingerprint against a
-       documented expected value where the vendor publishes one.
+       keys over HTTPS with `curl -fsSL` and store in /etc/apt/keyrings/. The
+       sources.list entry must use [signed-by=...] pointing to this keyring.
 
     d) No curl-pipe-bash from untrusted domains — `curl ... | bash` is acceptable
        ONLY from absolutely trusted first-party domains (e.g. rclone.org). Never pipe
@@ -261,6 +320,9 @@ TRUSTED SOURCES ONLY (hard rule)
 
     g) Any source that cannot satisfy (a)–(c) MUST NOT be included in the automated
        section. Move it to MANUAL with a clear warning about verifying authenticity.
+       Include a prominent "TRUSTED SOURCES GUARANTEE" comment block at the top of
+       the generated script, after the header comment, stating that every source
+       meets these criteria.
 
 SOURCE-OF-PACKAGE PRIORITY (per the user's rule)
   1. The distro's NATIVE package repositories (APT on Mint/Ubuntu).
@@ -268,16 +330,79 @@ SOURCE-OF-PACKAGE PRIORITY (per the user's rule)
      native repos OR the vendor ships a newer version.
   3. Flatpak (Flathub) only where neither of the above gives a clean result.
   Always install the LATEST available version.
+
 DEPENDENCIES
   Install build/runtime deps that package managers won't pull automatically — in
   particular the kernel-module build chain for VMware:
     build-essential, gcc, make, dkms, linux-headers-$(uname -r), default-jdk (for
     Java-based tools such as LanguageTool), unzip, curl, wget, gnupg, gdebi, flatpak.
+  Also install apt-transport-https, ca-certificates, lsb-release, software-properties-common.
 
 POSTGRESQL (explicit requirement)
   Add the official PostgreSQL PGDG repository from postgresql.org
   (apt.postgresql.org, suite "<codename>-pgdg") and install the latest postgresql
   + postgresql-client.
+
+WINE + NOTEPAD++ (explicit requirements)
+  * Install WineHQ from the official winehq.org repository (add i386 architecture first).
+  * After Wine is installed, additionally install the real Notepad++ Windows
+    installer under Wine using the official GitHub release .exe (silent install
+    with /S flag). Check for an existing Notepad++.exe in the Wine prefix first;
+    skip re-installation if present (idempotent).
+  * After Wine is configured, force Wine DPI to 192 (LogPixels = 0xC0) via
+    `wine reg add` so fonts and UI are readable on high-DPI displays. Run this as
+    the $SUDO_USER so it writes to their ~/.wine prefix.
+  * The native Linux alternatives (notepadqq, geany) are also installed via APT.
+
+POWERTOYS REPLACEMENTS (explicit requirements)
+  PowerToys maps to MULTIPLE separate Linux packages, each covering one feature:
+    * Text Extractor (OCR)     -> Frog          Flatpak: com.tenderowl.frog
+    * Launcher (Run)           -> Ulauncher     APT (via PPA on noble)
+    * Color Picker             -> gpick         APT
+    * Image Resizer            -> nautilus-image-converter + imagemagick  APT
+    * Mouse Without Borders    -> Barrier       Flatpak: com.github.debauchee.barrier
+    * Screen Zoom (ZoomIt)     -> KMag          APT
+    * Keyboard Accents         -> ibus-typing-booster  APT
+    * File Locksmith           -> lsof          APT
+    * Find My Mouse            -> info-only (GNOME Settings > Mouse > Show Pointer Location)
+    * Shortcut Guide           -> info-only (press Super key — built into GNOME)
+  Install EACH of these as individual steps, with descriptive labels like
+  "PowerToys: OCR (Text Extractor)". For the info-only features, use `info` to
+  print the configuration instructions.
+
+WEB-APP DESKTOP SHORTCUTS
+  For apps that have NO native Linux client and are web-app only (Microsoft 365 suite,
+  Outlook web, OneDrive, Microsoft To Do, Copilot, Claude, Reverso), create .desktop
+  shortcut files on the first non-root user's Desktop. Each .desktop file should:
+    * Exec=xdg-open <URL> to open in the default browser
+    * Use a relevant icon name from the system theme
+    * Be owned by the SUDO_USER
+  These go in their own section after LanguageTool, function name _webapp_desktop.
+  Shortcuts to create:
+    Microsoft 365              -> https://www.office.com
+    Microsoft Word             -> https://www.office.com/launch/word
+    Microsoft Excel            -> https://www.office.com/launch/excel
+    Microsoft PowerPoint       -> https://www.office.com/launch/powerpoint
+    Microsoft Outlook          -> https://outlook.live.com
+    Microsoft OneDrive         -> https://onedrive.live.com
+    Microsoft To Do            -> https://to-do.microsoft.com
+    Copilot                    -> https://copilot.microsoft.com
+    Claude AI                  -> https://claude.ai
+    Reverso                    -> https://www.reverso.net
+
+REALVNC VIEWER (vendor .deb, not Flatpak)
+  RealVNC Viewer is installed directly from the vendor's official .deb at
+  realvnc.com (not on Flathub, not in APT). Use install_deb_url with the
+  architecture-aware URL (downloads.realvnc.com, HTTPS).
+
+PINTA (Flatpak on Ubuntu 24.04)
+  Pinta was removed from the Ubuntu 24.04 (noble) APT repos. Install it via Flatpak
+  (com.github.PintaProject.Pinta) instead of APT.
+
+RSTUDIO (auto URL first, manual fallback)
+  Try fetching RStudio from the direct vendor URL first (rstudio.org, HTTPS,
+  architecture- and codename-aware). If that download fails (e.g. login-gated
+  or URL changed), fall back to the manual prompt. Do NOT fail hard.
 
 MANUAL / LOGIN-GATED DOWNLOADS (must come LAST)
   Some apps can't be fetched non-interactively (e.g. VMware Workstation needs a
@@ -289,23 +414,50 @@ MANUAL / LOGIN-GATED DOWNLOADS (must come LAST)
   Put ALL such apps at the very end so the unattended part finishes first.
 
 MAPPING GUIDANCE (research current packages/URLs at generation time)
-  * Native APT app exists  -> apt install it (browsers' deps, git, cmake, vlc,
-    gimp, calibre, qbittorrent, flameshot, obs-studio, goldendict, thunderbird,
-    libreoffice, r-base, python3, openssh, putty, proxychains4, remmina, etc.).
-  * Vendor APT repo        -> Google Chrome, Microsoft Edge, VS Code, Docker,
-    PostgreSQL (PGDG), pgAdmin, DBeaver CE, AnyDesk, Proton VPN, NodeSource,
-    WineHQ (Wine — winehq.org), and Microsoft "prod" feed for PowerShell + .NET SDK.
-  * Vendor .deb            -> Discord, Zoom, Parsec, GitKraken (GitHub Desktop alt),
-    XDM (Xtreme Download Manager — GitHub releases, github.com/subhra74/xdm).
-  * Script/binary          -> rclone (rclone.org install.sh), Miniconda (Anaconda
-    ecosystem), LanguageTool (stable zip).
-  * Flatpak (Flathub)      -> RealVNC Viewer, Teams (teams-for-linux), WhatsApp
-    (ZapZap), LocalSend (Quick/Nearby Share), Planify (Microsoft To Do alt).
-  * MANUAL (end)           -> VMware Workstation, SpotPlayer, Gurobi (optional),
-    RStudio (auto URL first, manual fallback).
+  * Native APT app exists  -> apt install it (firefox, git, cmake, ninja-build, vlc,
+    mpv, rhythmbox, gimp, krita, shotwell, gthumb, calibre, anki, qbittorrent,
+    flameshot, obs-studio, kdenlive, simplescreenrecorder, p7zip-full, p7zip-rar,
+    unrar, goldendict, thunderbird, libreoffice, r-base, r-base-dev, python3,
+    python3-pip, python3-venv, openssh-client, openssh-server, openssl, putty, perl,
+    cpanminus, pandoc, wkhtmltopdf, proxychains4, remmina (+ plugins),
+    gnome-clocks, gnome-sound-recorder, cheese, gnome-weather, gnome-calculator,
+    gnome-terminal, gedit, sticky, gnome-disk-utility, usb-creator-gtk,
+    nautilus-dropbox, smartmontools, nvme-cli, openvpn, network-manager-openvpn-gnome,
+    glpk-utils, coinor-cbc, onedrive (abraunegg), notepadqq, geany, texlive-full).
+  * Vendor APT repo        -> google-chrome-stable (dl.google.com), microsoft-edge-stable
+    (packages.microsoft.com/repos/edge), code (VS Code — packages.microsoft.com/repos/code),
+    docker-ce + plugins (download.docker.com), PostgreSQL + postgresql-client (PGDG —
+    apt.postgresql.org), pgadmin4-desktop (ftp.postgresql.org), dbeaver-ce (dbeaver.io),
+    anydesk (deb.anydesk.com), proton-vpn-gnome-desktop (repo.protonvpn.com), nodejs
+    (NodeSource — deb.nodesource.com), winehq-stable (dl.winehq.org), virtualbox-7.1
+    (download.virtualbox.org), powershell + dotnet-sdk-9.0 (Microsoft prod repo —
+    packages.microsoft.com/config/ubuntu/<ver>/packages-microsoft-prod.deb).
+  * Vendor .deb            -> Discord (discord.com), Zoom (zoom.us, arch-aware URL),
+    Parsec (builds.parsec.app), GitKraken (release.gitkraken.com, arch-aware),
+    XDM (Xtreme Download Manager — github.com/subhra74/xdm releases,
+    version pinned), RealVNC Viewer (downloads.realvnc.com, arch-aware).
+  * Script/binary          -> rclone (rclone.org install.sh via curl|bash — trusted),
+    Miniconda (repo.anaconda.com, KARCH-aware installer to /opt/miniconda3),
+    LanguageTool (stable .zip from languagetool.org to /opt/languagetool, with
+    a wrapper script at /usr/local/bin/languagetool).
+  * Flatpak (Flathub)      -> Enable Flathub first. Install:
+      com.tenderowl.frog (PowerToys Text Extractor)
+      com.github.debauchee.barrier (PowerToys Mouse Without Borders)
+      com.github.IsmaelMartinez.teams_for_linux (Teams)
+      com.rtosta.zapzap (WhatsApp)
+      org.localsend.localsend_app (LocalSend — Quick/Nearby Share)
+      io.github.alainm23.planify (Microsoft To Do alt)
+      com.github.PintaProject.Pinta (Pinta — for Ubuntu 24.04+)
+  * MANUAL (end)           -> VMware Workstation Pro (.bundle from Broadcom —
+    support.broadcom.com, free account), SpotPlayer (.deb from spotplayer.ir with
+    explicit warning about unverified source), Gurobi (commercial .tar.gz from
+    gurobi.com, optional — free solvers glpk/cbc already installed), RStudio
+    (fallback prompt if the direct URL failed).
+
   Detect the Ubuntu base codename even on Mint via UBUNTU_CODENAME in /etc/os-release
-  and use it (plus DEB_ARCH/KARCH from "AUTO-DETECT THE TARGET ENVIRONMENT" above) for
-  every codename- and architecture-specific repo line, download URL and package name.
+  and use it (plus DEB_ARCH/KARCH/CONDA_ARCH from "AUTO-DETECT THE TARGET ENVIRONMENT"
+  above) for every codename- and architecture-specific repo line, download URL and
+  package name.
 
 POST-INSTALL
   Enable services (ssh, postgresql, docker) and add the invoking $SUDO_USER to the
@@ -317,12 +469,25 @@ POST-INSTALL
 ===============================================================================
   [ ] Re-research current best Linux alternatives, repo URLs, package names and
       versions from the web; update $LinuxKB and the installer accordingly.
+  [ ] Ensure every property access in the PS1 script's Where-Object / Select-Object
+      blocks on Get-ItemProperty and Get-AppxPackage results is guarded with
+      try/catch to prevent PropertyNotFoundStrict crashes.
   [ ] (Re)generate detect_installed_windows_software.ps1 per PART A.
   [ ] Ask the human to run it (PART, WORKFLOW step 2) and hand back the CSV.
   [ ] From the CSV's "yes" rows, (re)generate <Target OS>/install_must_have_software.sh
-      per PART C for each target-OS subdirectory.
+      per PART C for each target-OS subdirectory. Ensure:
+        - Notepad++ Windows installer under Wine + Wine DPI 192
+        - PowerToys split into 10 individual steps (Frog, Ulauncher, gpick, etc.)
+        - Web-app desktop shortcuts (Microsoft 365, Outlook, OneDrive, To Do, Copilot, Claude, Reverso)
+        - RealVNC as vendor .deb (not Flatpak)
+        - Pinta via Flatpak (removed from noble APT repos)
+        - RStudio auto-URL first, manual fallback
+        - Conditional PPAs for noble (dotnet/backports, Ulauncher)
+        - Trusted Sources Guarantee comment block at top of script
   [ ] Update README.md to match.
   [ ] Confirm the installer hard-codes NO architecture or release — codename, DEB_ARCH
       and KARCH are all auto-detected on the target and used in every repo/URL/package.
   [ ] Validate: PowerShell parses (AST), bash installer passes `bash -n`.
+  [ ] Confirm SpotPlayer remains MANUAL only with explicit user warning about
+      unverified source.
 ===============================================================================
