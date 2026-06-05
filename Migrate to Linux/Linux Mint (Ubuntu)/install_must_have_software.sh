@@ -41,6 +41,8 @@
 #   Office=libreoffice; Grammarly=LanguageTool; dictionaries=goldendict; Outlook=thunderbird
 #   Paint=gimp,krita,pinta; Photos=shotwell,gthumb; Sticky=sticky; Alarms=gnome-clocks
 #   MobaXterm=remmina; Bitvise=openssh; Proxifier=proxychains4; Rufus=gnome-disk-utility
+#   Acrobat Pro=Stirling PDF(Docker)+PDF Arranger(APT); Advanced IP Scanner=Angry IP Scanner(.deb); Advanced Port Scanner=RustScan+Zenmap(nmap GUI)
+#   Telegram=telegram-desktop(APT/Flatpak); Terminator=terminator(APT); WindTerm=.deb from GitHub; WinDirStat=qdirstat+baobab(APT)
 #   Gurobi=MANUAL(+free glpk/cbc); VMware=MANUAL; VirtualBox=Oracle repo; SpotPlayer=MANUAL
 #
 #   Parsec is EXCLUDED per user request — not installed.
@@ -773,6 +775,79 @@ step "PowerToys: keyboard accents"         apt_pkgs ibus-typing-booster
 step "PowerToys: GNOME shortcut overlay"   info "Press Super key for shortcut guide (built into GNOME)"
 step "PowerToys: file locksmith"           apt_pkgs lsof
 
+# --- Hard-coded inclusions ---
+# Adobe Acrobat Pro alternative: PDF Arranger (native APT) + Stirling PDF (Docker)
+step "Acrobat Pro alt: PDF Arranger (merge/split/reorder PDFs)" apt_pkgs pdfarranger
+log "Stirling PDF (full PDF toolkit — Docker, runs on port 8080)"
+if have_cmd docker 2>/dev/null; then
+  docker rm -f stirling-pdf 2>/dev/null || true
+  if run_spin "pulling Stirling PDF" docker pull stirlingtools/stirling-pdf:latest; then
+    if run_spin "starting Stirling PDF" docker run -d --name stirling-pdf -p 8080:8080 --restart unless-stopped stirlingtools/stirling-pdf:latest; then
+      info "installed: Stirling PDF at http://localhost:8080 (merge, split, OCR, sign, compress, convert)"; mark_ok "Stirling PDF"
+    else mark_fail "Stirling PDF (docker run)" "$LAST_ERR"; fi
+  else mark_fail "Stirling PDF (docker pull)" "$LAST_ERR"; fi
+else warn "Docker not available — Stirling PDF skipped (install Docker first)"; mark_skip "Stirling PDF" "Docker not available"; fi
+
+# Advanced IP Scanner alternative: Angry IP Scanner (.deb from angryip.org)
+ANGRY_IP_DEB="$DOWNLOAD_DIR/angry_ip_scanner.deb"
+if deb_installed angryipscanner 2>/dev/null || have_cmd ipscan 2>/dev/null; then
+  info "Angry IP Scanner already installed"; mark_ok "Angry IP Scanner"
+else
+  if run_spin "downloading Angry IP Scanner" curl -fsSL --retry 3 -o "$ANGRY_IP_DEB" "https://github.com/angryip/ipscan/releases/latest/download/ipscan_${DEB_ARCH}.deb"; then
+    if apt_run "installing Angry IP Scanner" install "$ANGRY_IP_DEB"; then
+      info "installed: Angry IP Scanner (network scanner, GUI)"; mark_ok "Angry IP Scanner"
+    else mark_fail "Angry IP Scanner (install)" "$LAST_ERR"; fi
+  else
+    warn "Angry IP Scanner download failed — installing nmap as fallback"; apt_pkgs nmap && info "installed: nmap (CLI network scanner)" && mark_ok "Angry IP Scanner (nmap fallback)" || mark_fail "Angry IP Scanner" "$LAST_ERR"
+  fi
+fi
+
+# Advanced Port Scanner alternative: nmap + Zenmap GUI + RustScan (fast port scanner)
+step "Port Scanner alt: nmap + Zenmap + RustScan" bash -c '
+  rc=0
+  apt_pkgs nmap || rc=1
+  # Zenmap is the official nmap GUI; RustScan is a blazing-fast Rust port scanner
+  if ! deb_installed zenmap 2>/dev/null; then
+    apt_pkgs zenmap 2>/dev/null || warn "Zenmap not in APT (install via: snap install zenmap-kbx or flatpak install org.nmap.Zenmap)"
+  fi
+  # Install RustScan from official GitHub .deb
+  RUSTSCAN_DEB="'"$DOWNLOAD_DIR"'/rustscan.deb"
+  if ! have_cmd rustscan 2>/dev/null; then
+    if curl -fsSL --retry 3 -o "$RUSTSCAN_DEB" "https://github.com/RustScan/RustScan/releases/latest/download/rustscan_'"${DEB_ARCH}"'.deb" 2>/dev/null; then
+      apt_get install -y "$RUSTSCAN_DEB" 2>/dev/null && info "installed: RustScan (fast port scanner)" || warn "RustScan .deb install failed"
+    else warn "RustScan download failed (skip)"; fi
+  else info "RustScan already installed"; fi
+  [ $rc -eq 0 ] && info "installed: nmap + port scan tools" || warn "partial install — see above"
+'
+
+# Telegram — official native Linux client (APT, falls back to Flatpak)
+step "Telegram Desktop" bash -c '
+  if have_cmd telegram-desktop 2>/dev/null; then info "telegram-desktop already installed"; exit 0; fi
+  apt_pkgs telegram-desktop 2>/dev/null || flatpak_app org.telegram.desktop 2>/dev/null || { warn "Telegram install failed (APT + Flatpak)"; exit 1; }
+  info "installed: Telegram Desktop"
+'
+
+# Terminator — feature-rich terminal emulator with tiling/grouping (APT)
+step "Terminator (terminal emulator with tiling)" apt_pkgs terminator
+
+# WindTerm — fast SSH/Telnet/Serial client (native Linux build from GitHub .deb)
+WINDTERM_DEB="$DOWNLOAD_DIR/windterm.deb"
+if have_cmd windterm 2>/dev/null || [ -f "/opt/windterm/WindTerm" ]; then
+  info "WindTerm already installed"; mark_ok "WindTerm"
+else
+  step "WindTerm (SSH/Telnet/Serial client with file manager)" bash -c '
+    if run_spin "downloading WindTerm" curl -fsSL --retry 3 -o "'"$WINDTERM_DEB"'" "https://github.com/kingToolfish/WindTerm/releases/latest/download/WindTerm_${DEB_ARCH}.deb"; then
+      if apt_run "installing WindTerm" install "'"$WINDTERM_DEB"'"; then
+        info "installed: WindTerm"; mark_ok "WindTerm"
+      else mark_fail "WindTerm (install)" "$LAST_ERR"; fi
+    else warn "WindTerm download failed — skipping (may need manual install)"; mark_skip "WindTerm" "download failed"; fi
+  '
+fi
+
+# WinDirStat alternative: QDirStat + baobab (disk usage analysis)
+step "WinDirStat alt: QDirStat (disk usage analyzer)" apt_pkgs qdirstat
+step "WinDirStat alt: baobab (GNOME Disk Usage Analyzer)" apt_pkgs baobab
+
 log "TeX Live (texlive-full — large; please wait)"
 if apt_run "installing texlive-full" install texlive-full; then info "installed: texlive-full"; mark_ok "TeX Live"; else mark_fail "TeX Live" "$LAST_ERR"; fi
 
@@ -981,6 +1056,122 @@ if getent group docker >/dev/null 2>&1; then
   fi
 fi
 info "enabled services: ssh, postgresql, docker"
+
+# =============================================================================
+# 10B. INTERACTIVE FONT INSTALLATION FROM DIRECTORY
+#      Prompts the user to input a directory path, then recursively finds and
+#      installs all font files (.ttf, .otf, .ttc, .woff, .woff2, .pfa, .pfb,
+#      .afm, .pfm, .dfont, .otb, .bdf, .pcf, .gsf, .ttc, .otc, .abf, .chr,
+#      .fnt, .mxf) from that directory into the system.
+#
+#      Fonts go to:
+#        • /usr/local/share/fonts/user-import/  — system-wide TrueType/OpenType
+#        • /usr/share/fonts/                    — fallback (requires root)
+#      After copying, fc-cache is run to refresh the font cache.
+#
+#      Error handling:
+#        • Directory doesn't exist        → reprompt or skip
+#        • Directory has no font files    → warn + skip
+#        • Permission denied for a file   → skip that file, continue
+#        • No tty (non-interactive env)   → skip silently
+# =============================================================================
+_install_fonts_from_dir() {
+  local FONT_EXTS=("ttf" "otf" "ttc" "woff" "woff2" "pfa" "pfb" "afm" "pfm"
+                   "dfont" "otb" "bdf" "pcf" "gsf" "otc" "abf" "chr" "fnt" "mxf")
+  local FONT_DEST="/usr/local/share/fonts/user-import"
+  local found_count=0 installed_count=0 failed_count=0
+
+  # Build a find -iname expression:  -iname '*.ttf' -o -iname '*.otf' ...
+  local find_expr=""
+  local first=1
+  for ext in "${FONT_EXTS[@]}"; do
+    if [ "$first" -eq 1 ]; then first=0; find_expr="-iname '*.$ext'"
+    else find_expr="$find_expr -o -iname '*.$ext'"; fi
+  done
+
+  { echo; echo "================ FONT IMPORT ================"
+    echo "This step installs font files from a directory you specify into the"
+    echo "system so they are available to all applications (including Wine)."
+    echo
+    echo "Supported types: ${FONT_EXTS[*]}"
+    echo "(These cover Windows, macOS, and Linux font file formats.)"
+    echo; } >&3
+
+  while true; do
+    printf 'Enter font directory path (or "skip" to skip): ' >&3
+    local font_dir
+    read -r font_dir </dev/tty || { warn "No tty available — skipping font import"; mark_skip "Font import" "no tty"; return 1; }
+
+    case "${font_dir,,}" in
+      skip|"")
+        warn "Font import skipped by user"
+        mark_skip "Font import" "user skipped"
+        return 0 ;;
+    esac
+
+    # Validate directory
+    if [ ! -d "$font_dir" ]; then
+      err "Directory does not exist: '$font_dir'"
+      echo "  Please check the path and try again." >&3
+      continue
+    fi
+
+    if [ ! -r "$font_dir" ]; then
+      err "Directory is not readable: '$font_dir'"
+      echo "  Please fix permissions and try again." >&3
+      continue
+    fi
+
+    # Count matching files
+    found_count=$(eval find "$font_dir" -type f "$find_expr" 2>/dev/null | wc -l)
+    if [ "$found_count" -eq 0 ]; then
+      echo "  No font files found in: $font_dir" >&3
+      echo "  Supported extensions: ${FONT_EXTS[*]}" >&3
+      echo "  Please try another directory." >&3
+      continue
+    fi
+
+    break
+  done
+
+  log "Installing fonts from: $font_dir ($found_count font files found)"
+
+  mkdir -p "$FONT_DEST"
+
+  # Install each font file
+  while IFS= read -r -d '' font_file; do
+    local font_name; font_name="$(basename "$font_file")"
+    local dest_path="$FONT_DEST/$font_name"
+
+    # Skip if already present with same size (idempotent)
+    if [ -f "$dest_path" ] && [ "$(stat -c%s "$font_file" 2>/dev/null)" = "$(stat -c%s "$dest_path" 2>/dev/null)" ]; then
+      info "already present: $font_name"
+      installed_count=$((installed_count + 1))
+      continue
+    fi
+
+    if cp "$font_file" "$dest_path" 2>/dev/null; then
+      info "installed: $font_name"
+      installed_count=$((installed_count + 1))
+    else
+      warn "could not copy: $font_name (permission denied or read error — skipped)"
+      failed_count=$((failed_count + 1))
+    fi
+  done < <(eval find "$font_dir" -type f "$find_expr" -print0 2>/dev/null)
+
+  # Refresh the font cache
+  if run_spin "rebuilding font cache" fc-cache -fv "$FONT_DEST" 2>&1; then
+    info "font cache updated"
+  else
+    warn "fc-cache had issues — fonts may still work; check 'fc-list'"
+  fi
+
+  info "Font import complete: $installed_count installed, $found_count found"
+  [ "$failed_count" -gt 0 ] && warn "$failed_count files could not be copied (permissions)"
+  mark_ok "Font import ($installed_count/$found_count fonts)"
+}
+
+step "Import user fonts from directory" _install_fonts_from_dir
 
 # =============================================================================
 # 11. MANUAL / LOGIN-GATED DOWNLOADS  (always LAST)

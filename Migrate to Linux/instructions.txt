@@ -459,6 +459,10 @@ MAPPING GUIDANCE (research current packages/URLs at generation time)
       org.localsend.localsend_app (LocalSend — Quick/Nearby Share)
       io.github.alainm23.planify (Microsoft To Do alt)
       com.github.PintaProject.Pinta (Pinta — for Ubuntu 24.04+)
+  * Hard-coded (always installed) -> Adobe Acrobat Pro → Stirling PDF (Docker) + PDF Arranger (APT);
+    Advanced IP Scanner → Angry IP Scanner (.deb); Advanced Port Scanner → nmap + RustScan + Zenmap;
+    Telegram → telegram-desktop (APT/Flatpak); Terminator → terminator (APT);
+    WindTerm → .deb from GitHub (kingToolfish/WindTerm); WinDirStat → qdirstat + baobab (APT)
   * MANUAL (end)           -> VMware Workstation Pro (.bundle from Broadcom —
     support.broadcom.com, free account), SpotPlayer (.deb from spotplayer.ir with
     explicit warning about unverified source), Gurobi (commercial .tar.gz from
@@ -469,6 +473,51 @@ MAPPING GUIDANCE (research current packages/URLs at generation time)
   and use it (plus DEB_ARCH/KARCH/CONDA_ARCH from "AUTO-DETECT THE TARGET ENVIRONMENT"
   above) for every codename- and architecture-specific repo line, download URL and
   package name.
+
+FONT IMPORT (INTERACTIVE, AFTER POST-INSTALL, BEFORE MANUAL)
+
+  After all automated installs complete and post-install services are configured,
+  the script prompts the user to optionally import fonts from a local directory.
+  This runs BEFORE the manual/login-gated downloads (section 11).
+
+  Behaviour:
+    * Print a banner explaining what the step does and which file types are
+      supported.
+    * Loop: ask the user for a directory path (or "skip") via /dev/tty.
+    * Validate the path: must exist and be readable. If not, show a clear error
+      and reprompt.
+    * Recursively find all font files in the directory. Supported extensions
+      (case-insensitive):
+        .ttf .otf .ttc .woff .woff2 .pfa .pfb .afm .pfm .dfont .otb .bdf .pcf
+        .gsf .otc .abf .chr .fnt .mxf
+      These cover Windows TrueType/OpenType/Web fonts, macOS dfont, and Linux
+      bitmap/pcf/bdf fonts.
+    * If no matching files are found, warn the user and reprompt.
+    * Copy each font file to /usr/local/share/fonts/user-import/ (create the
+      directory first). Skip files that already exist with the same byte size
+      (idempotent — safe to re-run).
+    * If an individual file cannot be copied (permission denied, read error),
+      warn about that file and continue with the rest. Track counts: total found,
+      successfully installed, and failed.
+    * After copying, run `fc-cache -fv` on the font directory to refresh the
+      system font cache so applications (including Wine) see the new fonts
+      immediately.
+    * Log per-file status (installed / already present / copy-failed) to the
+      install log via the script's `info`/`warn` functions.
+    * Record the overall step as OK (with count summary), SKIP (user chose skip
+      or no tty), or FAIL via the existing `mark_ok`/`mark_skip`/`mark_fail`
+      mechanism.
+
+  Error handling built in:
+    * Directory doesn't exist          → print error, reprompt
+    * Directory not readable           → print error, reprompt
+    * No font files in directory       → warn + reprompt
+    * Permission denied on a file      → skip that file, continue
+    * No tty (non-interactive env)     → skip the entire step silently
+    * Empty input or "skip"            → skip the entire step, record as SKIP
+
+  The function name is `_install_fonts_from_dir` and it is invoked via:
+    step "Import user fonts from directory" _install_fonts_from_dir
 
 POST-INSTALL
   Enable services (ssh, postgresql, docker) and add the invoking $SUDO_USER to the
