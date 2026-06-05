@@ -11,6 +11,13 @@ able to read ONLY this file — and regenerate, with the latest up-to-date data:
   2. installed_windows_software.csv          (the report the script produces)
   3. <Target OS>/install_must_have_software.sh   (one unattended installer per
                                                   target-OS subdirectory)
+  4. windows_settings_extract.ps1            (Windows settings scraper:
+                                                  power/lid, display, keyboard,
+                                                  telemetry/location, auto-update)
+  5. <Target OS>/settings_config.sh          (per-distro apply functions +
+                                                  dispatch table)
+  6. <Target OS>/apply_settings.sh           (main runner: reads CSV,
+                                                  applies settings via config)
 
 Everything below reflects exactly what these artifacts must do. When data such as
 "the best Linux alternative", version numbers, repository URLs or package names is
@@ -23,10 +30,14 @@ DIRECTORY LAYOUT
   Migrate to Linux/
     instructions.txt                      <- this file (the spec)
     README.md                             <- human-facing overview
+    windows_settings_extract.ps1          <- settings scraper (Windows)
+    windows_configs.csv                   <- settings CSV (produced by PS1)
     detect_installed_windows_software.ps1 <- the inventory script (Windows)
     installed_windows_software.csv        <- generated report
     <Target OS>/                          <- one folder per intended target OS
-        install_must_have_software.sh     <- generated installer for that OS
+        install_must_have_software.sh     <- generated software installer
+        settings_config.sh                <- per-distro settings apply functions
+        apply_settings.sh                 <- settings migration runner
 
   Each subdirectory is named after the intended target host OS, e.g.
   "Linux Mint (Ubuntu)". Add a new target by creating a new subdirectory and
@@ -462,6 +473,169 @@ MAPPING GUIDANCE (research current packages/URLs at generation time)
 POST-INSTALL
   Enable services (ssh, postgresql, docker) and add the invoking $SUDO_USER to the
   docker group. Recommend a reboot at the end (kernel modules, group changes).
+
+
+ PART D — SETTINGS MIGRATION SPEC
+ (files: windows_settings_extract.ps1, <Target OS>/settings_config.sh,
+         <Target OS>/apply_settings.sh)
+
+GOAL
+  Extract five categories of common Windows user settings, write them to
+  windows_configs.csv (in the parent Migrate to Linux/ directory), then apply
+  them on the target Linux distro using the per-distro scripts.
+
+DIRECTORY LAYOUT (settings-migration files)
+  Migrate to Linux/
+    windows_settings_extract.ps1         <- PowerShell script run on Windows
+    windows_configs.csv                  <- produced by the PS1, copied here
+    <Target OS>/
+        settings_config.sh               <- per-distro _apply_* functions +
+                                            SETTINGS_DISPATCH table
+        apply_settings.sh                <- main runner: reads CSV, dispatches
+
+WORKFLOW (settings migration)
+  Step S1  Run windows_settings_extract.ps1 on the Windows machine:
+               powershell -ExecutionPolicy Bypass -File windows_settings_extract.ps1
+           This produces windows_configs.csv in the same (Migrate to Linux/) folder.
+  Step S2  Copy windows_configs.csv to the Migrate to Linux/ directory on the
+           Linux machine.
+  Step S3  On the target Linux machine, cd into the distro directory and run:
+               sudo ./apply_settings.sh
+           This sources settings_config.sh (same dir), reads ../windows_configs.csv,
+           and calls the appropriate _apply_* function for each row.
+
+CATEGORY 1 — POWER SETTINGS (lid-close action)
+
+  Windows extract (windows_settings_extract.ps1):
+    * Reads active power plan GUID from WMI (Win32_PowerPlan).
+    * Queries Win32_PowerSettingDataIndex for the lid-close setting
+      (GUID 5ca673a8-0e47-b2fd-5cb6-ef6e1e0a9c3e) on both AC and DC.
+    * Registry fallback: HKLM\...\Power\User\PowerSchemes\...\ACSettingIndex / DCSettingIndex.
+    * Produces CSV rows:
+        Power | lid_close_on_ac      | <action>
+        Power | lid_close_on_battery | <action>
+      where <action> ∈ {do nothing, sleep, hibernate, shut down, turn off display}.
+
+  Linux apply (settings_config.sh → _apply_power_lid):
+    * Maps Windows action to logind action:
+        do nothing → ignore, sleep → suspend, hibernate → hibernate,
+        shut down → poweroff, turn off display → lock.
+    * Writes HandleLidSwitch= and HandleLidSwitchExternalPower= in
+      /etc/systemd/logind.conf.
+    * Also writes a drop-in file /etc/systemd/logind.conf.d/50-migrate-lid.conf
+      (survives distro upgrades).
+    * Restarts systemd-logind.
+    * Prints structured output: [OK] / [ERROR] / [INFO] per sub-step.
+
+CATEGORY 2 — DISPLAY RESOLUTION & SCALING
+
+  Windows extract:
+    * Resolution from CIM_VideoController (CurrentHorizontalResolution ×
+      CurrentVerticalResolution), e.g. "1920x1080".
+    * Scaling from HKCU\Control Panel\Desktop\LogPixels or AppliedDPI,
+      e.g. "125%" or "100%".
+    * Produces CSV rows:
+        Display | resolution | <WxH>
+        Display | scaling    | <percentage>%
+
+  Linux apply:
+    * Resolution: xrandr --output <primary> --mode <WxH> if the mode exists.
+    * Scaling: gsettings set org.gnome.desktop.interface text-scaling-factor and
+      scaling-factor (integer only: ≥175%→2, ≥250%→3, ≥350%→4).
+
+CATEGORY 3 — KEYBOARD LAYOUT & SHORTCUTS
+
+  Windows extract:
+    * Current culture from [System.Globalization.CultureInfo]::CurrentCulture.
+    * Input methods from Get-WinUserLanguageList → LanguageTag list.
+    * Notes standard Windows shortcuts (Win+E, Win+L, Win+Shift+S, etc.).
+    * Produces CSV rows:
+        Keyboard | layout         | <culture string>
+        Keyboard | shortcuts_note | <semicolon-separated shortcut list>
+
+  Linux apply:
+    * Maps Windows language tags to XKB layouts (en-US→us, fa-IR→ir, etc.).
+    * Applies via localectl set-x11-keymap (system-wide) and setxkbmap (session).
+    * Shortcuts: prints informational reference (Win→GNOME equivalent table).
+
+CATEGORY 4 — DISABLE TELEMETRY; LIMIT LOCATION
+
+  Windows extract:
+    * Telemetry level from HKLM\...\DataCollection\AllowTelemetry
+      (0=Security, 1=Basic, 2=Enhanced, 3=Full).
+    * Location consent from HKLM\...\CapabilityAccessManager\ConsentStore\location.
+    * Produces CSV rows:
+        Telemetry | telemetry_level  | <level>
+        Telemetry | location_service | <enabled/disabled>
+
+  Linux apply (telemetry):
+    * Stops, disables, and masks services: whoopsie, apport, apt-daily.timer,
+      apt-daily-upgrade.timer, motd-news.timer, packagekit.
+    * Disables Ubuntu Pro ESM hook, apport crash reporting, MOTD news.
+    * Purges packages: ubuntu-report, popularity-contest.
+
+  Linux apply (location):
+    * Stops, disables, and masks: geoclue.
+    * gsettings set org.gnome.system.location enabled false.
+    * Enables Wi-Fi MAC randomization in NetworkManager.
+
+CATEGORY 5 — AUTO-UPDATE SERVICE FILES
+
+  Windows extract:
+    * Placeholder flag (no extractable Windows equivalent).
+    * Produces CSV row:
+        AutoUpdate | install_service_files | system_update
+
+  Linux apply (_apply_auto_update_services):
+    * Copies system_update.service and system_update.timer from
+      <repo_root>/Scheduled systemd Automatic Update/Debian/service files/
+      to /etc/systemd/system/.
+    * systemctl daemon-reload.
+    * systemctl enable --now system_update.timer.
+
+SETTINGS_CONFIG.SH STRUCTURE
+  The file is SOURCED by apply_settings.sh in the same distro directory. It must:
+    * Define output helpers:
+        _cfg_ok()    — green  [OK]    to stdout
+        _cfg_info()  — dim    [INFO]  to stdout
+        _cfg_error() — red    [ERROR] to stderr
+    * Define one _apply_* function per config key (see dispatch table below).
+      Each function takes the WindowsValue column as argument $1 and returns
+      0 on success, non-zero on failure.
+      Special functions: _apply_power_lid takes a second argument (logind key),
+      _apply_keyboard_layout takes a second argument (input languages string).
+    * Define the SETTINGS_DISPATCH associative array:
+        ["Category|ConfigKey"] = "function_name"
+    * Define the POWER_LOGIND_KEY associative array for lid-close key mapping.
+
+APPLY_SETTINGS.SH STRUCTURE
+  The main runner (same distro directory). It must:
+    * Source settings_config.sh from $SCRIPT_DIR.
+    * Read ../windows_configs.csv from the parent Migrate to Linux/ directory.
+    * Parse the CSV header to get column indices (robust against reordering).
+    * Iterate each data row, look up the dispatch key, call the function.
+    * Track OK/FAIL/INFO and print a summary at the end.
+    * Exit with code 1 if any step failed.
+    * Must NOT use set -o pipefail (causes silent aborts).
+    * Must use `rc=0; func || rc=$?` pattern, not set +e/set -e dance.
+
+OUTPUT FORMAT (from _apply_* functions in settings_config.sh)
+  Every _apply_* function must print structured output so the user sees exactly
+  what succeeded and what failed. Example:
+
+    [INFO]  Windows 'sleep' → logind HandleLidSwitch=suspend
+    [OK]    removed old HandleLidSwitch= from logind.conf
+    [OK]    wrote HandleLidSwitch=suspend → /etc/systemd/logind.conf
+    [OK]    wrote /etc/systemd/logind.conf.d/50-migrate-lid.conf
+    [OK]    restarted systemd-logind
+
+    [INFO]  disabling Linux telemetry...
+    [OK]    disabled & masked: whoopsie
+    [INFO]  not present: apport
+    [OK]    disabled ESM hook
+    [OK]    purged: ubuntu-report
+
+    [ERROR] xrandr not available or no monitors
 
 
 ===============================================================================

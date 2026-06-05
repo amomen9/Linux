@@ -1,51 +1,86 @@
-# Migrate to Linux — Installed Software Audit
+# Migrate to Linux — Software Audit & Settings Migration
 
-Tooling to inventory **everything installed on a Windows PC** and decide, app by app,
-how to carry it over to Linux: whether it runs natively, what the best Linux alternative
-is, how good that option is, what it costs, and whether it's worth installing at all —
-then **install all the keepers on the target Linux machine, unattended**.
+Tooling to **inventory everything installed on a Windows PC**, rate each app for Linux compatibility, install all keepers unattended — **plus extract common Windows settings (power, display, keyboard, telemetry) and apply them on Linux**.
 
 ## Files
 
+### Windows-side (run on Windows, in `Migrate to Linux/`)
+
 | File | What it is |
 |------|------------|
-| [`detect_installed_windows_software.ps1`](detect_installed_windows_software.ps1) | PowerShell script that scans the Windows PC and generates the CSV. |
-| [`installed_windows_software.csv`](installed_windows_software.csv) | The generated report (9 columns, one row per app). |
-| [`Linux Mint (Ubuntu)/install_must_have_software.sh`](Linux%20Mint%20(Ubuntu)/install_must_have_software.sh) | Unattended **root installer** for Linux Mint / Ubuntu that installs every app flagged `Must be included on Linux = yes`. |
-| [`instructions.txt`](instructions.txt) | Self-contained spec to **reproduce** the script, CSV and per-OS installer from scratch with fresh data. |
-| `installed_windows_software.repology-cache.json` | Created only when run with `-Online`; caches Repology lookups. Safe to delete. |
+| [`detect_installed_windows_software.ps1`](detect_installed_windows_software.ps1) | PowerShell script: scans installed software, rates Linux compatibility, writes CSV. |
+| [`installed_windows_software.csv`](installed_windows_software.csv) | Generated report (9 columns, one row per app). |
+| [`windows_settings_extract.ps1`](windows_settings_extract.ps1) | PowerShell script: extracts power/lid, display, keyboard, telemetry, and auto-update settings, writes `windows_configs.csv`. |
+| [`windows_configs.csv`]() | Generated settings CSV (produced by `windows_settings_extract.ps1`). |
+| [`instructions.txt`](instructions.txt) | Self-contained spec to **reproduce** all artifacts from scratch with fresh data. |
+
+### Linux-side (run on the target machine, in `<Target OS>/`)
+
+| File | What it is |
+|------|------------|
+| `Linux Mint (Ubuntu)/install_must_have_software.sh` | Unattended **root installer** — installs every app flagged `Must be included on Linux = yes`. |
+| `Linux Mint (Ubuntu)/settings_config.sh` | Per-distro settings apply functions + dispatch table (sourced by `apply_settings.sh`). |
+| `Linux Mint (Ubuntu)/apply_settings.sh` | Main runner: reads `../windows_configs.csv`, applies each setting via the dispatch table. |
 
 ### Directory layout
 
 ```text
 Migrate to Linux/
-├─ detect_installed_windows_software.ps1   # Windows inventory + Linux rating
+├─ detect_installed_windows_software.ps1   # Windows: inventory + Linux rating
 ├─ installed_windows_software.csv          # generated report
+├─ windows_settings_extract.ps1            # Windows: settings scraper
+├─ windows_configs.csv                     # generated settings CSV
+├─ settings_config.txt                     # human-readable mapping reference
 ├─ instructions.txt                        # reproducibility spec
 ├─ README.md
-└─ Linux Mint (Ubuntu)/                     # one folder per target OS
-   └─ install_must_have_software.sh         # generated unattended installer
+└─ Linux Mint (Ubuntu)/                    # one folder per target OS
+   ├─ install_must_have_software.sh        # unattended software installer
+   ├─ settings_config.sh                   # per-distro settings apply functions
+   └─ apply_settings.sh                    # settings migration runner
 ```
 
 Each subdirectory is named after a **target OS**; add a new target by creating a
-folder and generating an installer in it (see [`instructions.txt`](instructions.txt)).
+folder and generating the scripts in it (see [`instructions.txt`](instructions.txt)).
 
-## End-to-end workflow
+---
 
-1. **Generate the report** — run the PowerShell script on the Windows PC (below).
+## Workflow 1 — Migrate installed software
+
+1. **Generate the report** — run `detect_installed_windows_software.ps1` on the Windows PC.
 2. **Review** `installed_windows_software.csv` — especially the `Must be included on Linux` column.
-3. **Install on Linux** — copy the matching `<Target OS>/install_must_have_software.sh`
-   to the new machine and run it as root (see [Installing on Linux](#installing-on-linux)).
+3. **Install on Linux** — run `install_must_have_software.sh` as root.
 
-## Quick start
+## Workflow 2 — Migrate Windows settings
+
+1. **Extract settings** — run `windows_settings_extract.ps1` on the Windows PC:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File windows_settings_extract.ps1
+   ```
+   This produces `windows_configs.csv`.
+2. **Copy** `windows_configs.csv` to the `Migrate to Linux/` directory on the Linux machine.
+3. **Apply** — from the distro directory, run as root:
+   ```bash
+   cd "Migrate to Linux/Linux Mint (Ubuntu)"
+   sudo ./apply_settings.sh
+   ```
+   This reads `../windows_configs.csv` and applies:
+   - **Power:** lid-close action (battery & AC) → `logind.conf`
+   - **Display:** resolution → `xrandr`, scaling → `gsettings`
+   - **Keyboard:** layout → `localectl` + `setxkbmap`, shortcut reference
+   - **Telemetry:** disable `whoopsie`, `apport`, `apt-daily.timer`, `motd-news.timer`, etc.
+   - **Location:** disable `geoclue`, MAC randomization
+   - **Auto-update:** install `system_update.service` + `system_update.timer` from the repo
+
+---
+
+## Quick start — Software inventory
 
 ```powershell
-# From this folder, in PowerShell 5.1 or PowerShell 7+:
+# From the Migrate to Linux/ folder, in PowerShell 5.1 or PowerShell 7+:
 .\detect_installed_windows_software.ps1
 ```
 
-No administrator rights are required. The script reads the registry and the current
-user's Store packages (both read-only) and writes the CSV next to itself.
+No administrator rights required.
 
 ### Options
 
@@ -53,32 +88,11 @@ user's Store packages (both read-only) and writes the CSV next to itself.
 |-----------|---------|---------|
 | `-OutputPath <path>` | `installed_windows_software.csv` (beside the script) | Where to write the CSV. |
 | `-MustIncludeThreshold <int>` | `70` | Minimum *Alternative Competency* (%) for **Must be included on Linux = yes**. |
-| `-IncludeSystemComponents` | off | Keep redistributables, runtimes and drivers (normally filtered out). |
-| `-IncludeStoreApps <bool>` | `$true` | Include filtered Microsoft Store / UWP apps. |
-| `-Online` | off | For apps not in the built-in knowledge base, query [repology.org](https://repology.org) live to detect Linux packaging. |
+| `-IncludeSystemComponents` | off | Keep redistributables, runtimes and drivers. |
+| `-IncludeStoreApps <bool>` | `$true` | Include filtered Microsoft Store/UWP apps. |
+| `-Online` | off | Query repology.org live for unknown apps. |
 
-```powershell
-# Be stricter about what "must" be installed, and resolve unknown apps online:
-.\detect_installed_windows_software.ps1 -Online -MustIncludeThreshold 80
-```
-
-## What the script does
-
-1. **Collects** installed software from four sources:
-   - `HKLM` 64-bit, `HKLM` 32-bit (`Wow6432Node`) and **`HKCU`** uninstall keys (Win32 apps),
-   - `Get-AppxPackage` (Microsoft Store / UWP apps).
-2. **Removes noise** so only software you actually use remains:
-   - Windows updates / hotfixes / KBs / security updates / service packs,
-   - sub-components parented to another product,
-   - (unless `-IncludeSystemComponents`) redistributables, runtimes, drivers and SDK/installer fragments,
-   - hardware/OS UWP junk (video & image extensions, speech packs, vendor control panels, runtimes).
-3. **Cleans & de-duplicates** names: makes Store package IDs human-friendly
-   (`Microsoft.WindowsCalculator` → `Windows Calculator`), strips architecture suffixes,
-   and merges cosmetic Win32/Store duplicates while keeping genuinely distinct versions
-   (e.g. three separate Python installs stay as three rows).
-4. **Rates each app** against Linux using the built-in knowledge base, then writes the CSV.
-
-## The CSV columns
+### The CSV columns (software inventory)
 
 | Column | Source | Meaning |
 |--------|--------|---------|
@@ -86,135 +100,103 @@ user's Store packages (both read-only) and writes the CSV next to itself.
 | **Version** | from PC | Installed version. |
 | **Publisher** | from PC | Vendor. |
 | **Source** | from PC | `Win32` (registry) or `Store` (UWP/Appx). |
-| **Linux Availability** | curated | One or more flags (see below). |
-| **Best Linux Alternative** | curated | The current best Linux option when not natively available. **If the recommended option is `Paid`, the best *free* alternative is appended too** (`…; free alternative: …`). |
-| **Alternative Competency** | curated | Rough estimate of how the Linux app/alternative performs vs the Windows original. `100%` = on par, `<100%` = weaker, `>100%` = Linux option is better. Filled for natively-available apps too. |
-| **Pricing model** | curated | Pricing of the recommended Linux option: `Free (FOSS)`, `Free`, `Freemium`, `Shareware` or `Paid`. |
-| **Must be included on Linux** | derived | `yes` / `no` — see logic below. |
+| **Linux Availability** | curated | Flags: Available on Linux, Native Alternative, Available as WebApp, etc. |
+| **Best Linux Alternative** | curated | The best Linux option. Free alt appended if paid. |
+| **Alternative Competency** | curated | Rough % vs Windows (≥100 = Linux is better). |
+| **Pricing model** | curated | Free (FOSS), Free, Freemium, Shareware, or Paid. |
+| **Must be included on Linux** | derived | `yes` / `no` — computed from competency threshold. |
 
-The first four columns are read **live from the machine** and are never hand-authored.
-The four "curated" columns come from the knowledge base in the script; "Must be included"
-is computed from the competency figures.
+### The CSV columns (settings migration — `windows_configs.csv`)
 
-### Linux Availability flags
+| Column | Source | Meaning |
+|--------|--------|---------|
+| **Category** | from PC | `Power`, `Display`, `Keyboard`, `Telemetry`, `AutoUpdate`. |
+| **ConfigKey** | from PC | Specific setting key (e.g. `lid_close_on_ac`, `resolution`). |
+| **WindowsValue** | from PC | The extracted value (e.g. `sleep`, `1920x1080`). |
+| **LinuxCommand** | from PC | Input language tags for keyboard mapping (optional). |
+| **Notes** | from PC | Human-readable note about the Linux mapping. |
 
-A row can carry several flags. They are always normalised to this fixed order:
+---
 
-1. `Available on Linux` — the same app has a native Linux build.
-2. `Not Available` — no native Linux build of this exact app.
-3. `Native Alternative` — a strong native Linux replacement exists (named in *Best Linux Alternative*).
-4. `Available as WebApp` — usable in the browser / as a PWA.
-5. `Linux Docker` — can run on Linux via a Docker container.
-6. `Windows Emulator (Wine/Proton)` — runs under Wine / Proton / Bottles.
+## How the Linux ratings are sourced
 
-`Needs Review` appears when the script has no entry for an app (re-run with `-Online`
-to try to resolve it automatically).
+Recommendations are **researched from the web** and baked into the `$LinuxKB` array in
+`detect_installed_windows_software.ps1`. To adjust a rating or add a new app, edit that
+table and re-run. The optional `-Online` mode fills *unknown* apps via the Repology API.
 
-### "Must be included on Linux" logic
+---
 
-Computed by the script (not hand-set). A row is `yes` when **all** of these hold:
+## Settings migration — structured output
 
-- it is *installable* on Linux — its availability includes `Available on Linux` or `Native Alternative` (web-only and not-available apps are `no`, since there's nothing to install);
-- its **Alternative Competency** ≥ `-MustIncludeThreshold` (default 70%);
-- it is the **single most competent build** of that product — duplicate installs of the
-  same product (e.g. several Python versions, or the Win32 + Store copy of one app)
-  collapse to one `yes`, picking the highest-competency / Win32 entry.
+When `apply_settings.sh` runs, every `_apply_*` function produces structured lines:
 
-Lower the threshold to flag more apps, raise it to flag only the strongest options.
+```
+[INFO]  Windows 'sleep' → logind HandleLidSwitch=suspend
+[OK]    removed old HandleLidSwitch= from logind.conf
+[OK]    wrote HandleLidSwitch=suspend → /etc/systemd/logind.conf
+[OK]    wrote /etc/systemd/logind.conf.d/50-migrate-lid.conf
+[OK]    restarted systemd-logind
 
-## How the Linux ratings are sourced (and how to change them)
+[INFO]  disabling Linux telemetry...
+[OK]    disabled & masked: whoopsie
+[INFO]  not present: apport
+[OK]    disabled ESM hook
+[OK]    purged: ubuntu-report
 
-Live, per-app scraping of "the best alternative" from PowerShell isn't reliable (there's
-no free alternatives API and HTML scraping breaks constantly), so the recommendations are
-**researched from the web (June 2026)** and baked into a single editable table — the
-`$LinuxKB` array near the top-middle of the script. Each entry looks like:
-
-```powershell
-@{ P='Internet Download Manager';
-   S='Not Available; Native Alternative';
-   A='uGet (closest match) or Free Download Manager / JDownloader 2 / XDM; aria2 for CLI';
-   C=85;
-   Pr='Free (FOSS)' }
+[ERROR] xrandr not available or no monitors
 ```
 
-- `P` — regex matched against the app name (first match wins; list specific patterns first).
-- `S` — the availability flags.
-- `A` — the best alternative text.
-- `C` — competency percentage (integer; may exceed 100).
-- `Pr` — pricing model.
-- `F` — *(optional)* the best **free** alternative; appended to `A` automatically when `Pr='Paid'`.
+A summary prints at the end showing OK / Failed / Info-only counts.
 
-To adjust a rating or add a new app, edit that table and re-run — the machine columns are
-regenerated and your curated values flow straight into the CSV. **Do not hand-edit the
-machine columns in the CSV**; they are overwritten on every run.
+---
 
-The optional `-Online` mode fills *unknown* apps by querying the Repology API, which
-reports how many Linux repositories package a given project.
-
-## Installing on Linux
-
-Once you have the CSV, install the keepers on the target machine with the matching
-installer. For **Linux Mint / Ubuntu**:
+## Installing on Linux — Software
 
 ```bash
+# For Linux Mint / Ubuntu:
 sudo ./"Linux Mint (Ubuntu)/install_must_have_software.sh"
 ```
 
-The installer is **unattended and idempotent**, with a **clean progress display** — only
-`==> <step>` headers and indented `installed:`/`updated:` lines, plus a **live progress
-line** that shows the real apt percentage + current operation (or a non-apt command's
-latest output) and clears itself the moment that step finishes — so even a multi-GB
-install like `texlive-full` visibly progresses. All apt/dpkg/curl output is sent to a log
-file (path shown at start and end). It writes
-**two logs**: `install.log` (full output) and **`install-results.log`** — a short, one
-line-per-step results file (`<timestamp>  <OK|FAIL|SKIP>  <item>  <reason>`) so you can
-see at a glance what succeeded, what failed, and why. It:
+The installer is **unattended and idempotent**, with a clean progress display,
+auto-detection of the target machine (codename + architecture), and two log files.
 
-- **auto-detects the target machine** — the Ubuntu base codename/version and the
-  architecture (`dpkg --print-architecture` + `uname -m`) — and uses them in every repo
-  line, download URL and package name, so the same script works on amd64 or arm64 with
-  nothing hard-coded;
-- installs the Linux counterpart of every row flagged `Must be included on Linux = yes`
-  — the native app where available, otherwise the recommended alternative;
-- prefers the distro's **native APT repos**, falling back to **vendor repos / `.deb`s**
-  (Chrome, Edge, VS Code, Docker, **PostgreSQL via the official postgresql.org PGDG repo**,
-  pgAdmin, DBeaver, AnyDesk, Proton VPN, Discord, Zoom, Parsec, GitKraken, …) and then
-  **Flatpak** only where neither is clean (RealVNC, Teams, WhatsApp, LocalSend, …);
-- installs build dependencies package managers won't pull (kernel headers, `dkms`,
-  `gcc`/`make` for VMware's modules; a JRE for LanguageTool);
-- runs the **update** path for anything already installed;
-- handles **login-gated / manual downloads last** (VMware Workstation, SpotPlayer,
-  Gurobi, and RStudio if its direct URL fails): it prompts you to drop the file in a
-  named location and type `yes` (or `skip`), looping until the file is present;
-- prints an OK / failed / skipped / manual summary at the end.
+---
 
-> Run it as **root**. A reboot afterwards is recommended (kernel modules, the `docker`
-> group, and newly-enabled services).
+## Installing on Linux — Settings
+
+```bash
+# For Linux Mint / Ubuntu:
+cd "Linux Mint (Ubuntu)"
+sudo ./apply_settings.sh
+```
+
+Runs as root. Prints structured output per setting. A reboot is recommended
+afterwards (display scaling, logind changes).
+
+---
 
 ## Reproducing everything from scratch
 
 [`instructions.txt`](instructions.txt) is a self-contained specification: an AI engine
-(or a person) can read it alone — without the original chat — and regenerate the
-PowerShell script, the CSV and each target-OS installer with freshly-researched data.
-The intended loop is: AI writes the `.ps1` → **you run it once** on the Windows PC → you
-hand back the CSV → AI writes the installer for each target-OS subfolder.
+can read it alone and regenerate all PowerShell scripts, the CSVs, and each target-OS
+installer with freshly-researched data. It now includes **PART D — Settings Migration Spec**.
 
 ## Caveats
 
 - **Competency is a deliberate rough estimate** for planning, not a benchmark.
-- Ratings reflect the Linux landscape as of **June 2026** and will drift over time.
-- Anything left as `Needs Review` (e.g. ambiguous names) needs a human decision.
-- The report describes *one machine*; re-run it on each PC you want to migrate.
+- Ratings reflect the Linux landscape as of **June 2026** and will drift.
+- Display resolution may not be replicable on different hardware.
+- The settings migration scripts (`settings_config.sh`, `apply_settings.sh`) live
+  **per distro directory** (e.g. `Linux Mint (Ubuntu)/`) — each target OS gets its own copy.
 
 ## Requirements
 
-**Inventory script (Windows):**
-
+**Windows (inventory + settings extract):**
 - Windows 10/11
 - Windows PowerShell 5.1 or PowerShell 7+
-- Internet access only for the optional `-Online` mode
+- Internet access only for `-Online` mode
 
-**Installer (target machine):**
-
+**Linux (installer + settings apply):**
 - Linux Mint or Ubuntu (APT base), run as **root**
-- Internet access (downloads from the configured repos/vendors)
+- Internet access for repo/vendor downloads
+- For settings: `xrandr`, `gsettings`, `localectl`, `systemctl` (all standard)
