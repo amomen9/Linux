@@ -935,8 +935,9 @@ step "XDM (Xtreme Download Manager)" install_deb_url "XDM" \
 # 6. VENDOR .deb DOWNLOADS (no Flatpak or APT available)
 # =============================================================================
 # RealVNC Viewer: distributed as a vendor .deb (not on Flathub, not in APT).
+# RealVNC uses "x64" in filenames, not "amd64" — must hard-code the arch suffix.
 step "RealVNC Viewer" install_deb_url "RealVNC Viewer" \
-  "https://downloads.realvnc.com/download/file/viewer.files/VNC-Viewer-7.15.1-Linux-${ARCH}.deb"
+  "https://downloads.realvnc.com/download/file/viewer.files/VNC-Viewer-7.15.1-Linux-x64.deb"
 
 # =============================================================================
 # 7. FLATPAK FALLBACKS
@@ -956,7 +957,8 @@ else mark_fail "rclone" "$LAST_ERR"; fi
 
 log "Miniconda (Anaconda ecosystem)"
 if [ -d /opt/miniconda3 ]; then
-  if run_spin "updating conda" /opt/miniconda3/bin/conda update -n base -y conda; then info "updated: miniconda"; mark_ok "Miniconda"; else mark_fail "Miniconda update" "$LAST_ERR"; fi
+  if run_spin "accepting conda ToS" /opt/miniconda3/bin/conda config --set tos_accepted true 2>/dev/null || true; then :; fi
+if run_spin "updating conda" /opt/miniconda3/bin/conda update -n base -y conda; then info "updated: miniconda"; mark_ok "Miniconda"; else mark_fail "Miniconda update" "$LAST_ERR"; fi
 else
   if run_spin "downloading Miniconda" curl -fsSL -o "$DOWNLOAD_DIR/miniconda.sh" "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-${CONDA_ARCH}.sh" \
      && run_spin "installing Miniconda" bash "$DOWNLOAD_DIR/miniconda.sh" -b -p /opt/miniconda3; then
@@ -1068,28 +1070,49 @@ step "Bing Wallpaper (daily Bing desktop background)" bash -c '
       exit 0
     fi
 
-    # Attempt 1: Install the GNOME Shell extension (neffo/bing-wallpaper-gnome-extension).
+    # Attempt 1: Clone and install the GNOME Shell extension from git.
     # Official source: https://github.com/neffo/bing-wallpaper-gnome-extension (HTTPS, FOSS).
     # This is the closest equivalent to the Windows Bing Wallpaper app.
+    # Cloning from git is more reliable than release .zip (often missing from releases).
     EXT_DIR="${USER_HOME}/.local/share/gnome-shell/extensions/BingWallpaper@ineffable-gmail.com"
+    if [ -d "$EXT_DIR/.git" ] || [ -f "$EXT_DIR/extension.js" ]; then
+      if [ -d "$EXT_DIR/.git" ]; then
+        (cd "$EXT_DIR" && git pull --ff-only 2>/dev/null) || true
+      fi
+      echo "Bing Wallpaper GNOME extension already installed/updated"
+      exit 0
+    fi
+    rm -rf "$EXT_DIR" 2>/dev/null || true
+    if have_cmd git 2>/dev/null && \
+       git clone --depth 1 "https://github.com/neffo/bing-wallpaper-gnome-extension.git" "$EXT_DIR" 2>/dev/null; then
+      chown -R "${SUDO_USER}:${SUDO_USER}" "$EXT_DIR" 2>/dev/null || true
+      echo "installed: Bing Wallpaper GNOME extension (from git)"
+      echo "Enable it via: gnome-extensions enable BingWallpaper@ineffable-gmail.com"
+      if have_cmd gnome-extensions 2>/dev/null; then
+        sudo -u "$SUDO_USER" gnome-extensions enable BingWallpaper@ineffable-gmail.com 2>/dev/null || true
+      fi
+      echo "NOTE: Restart GNOME Shell (Alt+F2, r, Enter) or log out/in for the extension to take effect."
+      exit 0
+    fi
+
+    # Attempt 2: Try the GitHub releases .zip as a fallback.
     mkdir -p "$EXT_DIR"
     if curl -fsSL --retry 3 -o /tmp/bing-wallpaper-extension.zip \
-       "https://github.com/neffo/bing-wallpaper-gnome-extension/releases/latest/download/BingWallpaper@ineffable-gmail.com.shell-extension.zip"; then
+       "https://github.com/neffo/bing-wallpaper-gnome-extension/releases/latest/download/bing-wallpaper@ineffable-gmail.com.zip"; then
       if unzip -q -o /tmp/bing-wallpaper-extension.zip -d "$EXT_DIR" 2>/dev/null; then
-        chown -R "${SUDO_USER}:${SUDO_USER}" "${USER_HOME}/.local/share/gnome-shell/extensions/BingWallpaper@ineffable-gmail.com"
+        chown -R "${SUDO_USER}:${SUDO_USER}" "${USER_HOME}/.local/share/gnome-shell/extensions/BingWallpaper@ineffable-gmail.com" 2>/dev/null || true
         rm -f /tmp/bing-wallpaper-extension.zip
-        echo "installed: Bing Wallpaper GNOME extension"
-        echo "Enable it via: gnome-extensions enable BingWallpaper@ineffable-gmail.com"
-        # Try to enable it immediately
+        echo "installed: Bing Wallpaper GNOME extension (from release .zip)"
         if have_cmd gnome-extensions 2>/dev/null; then
           sudo -u "$SUDO_USER" gnome-extensions enable BingWallpaper@ineffable-gmail.com 2>/dev/null || true
         fi
         echo "NOTE: Restart GNOME Shell (Alt+F2, r, Enter) or log out/in for the extension to take effect."
         exit 0
       fi
+      rm -f /tmp/bing-wallpaper-extension.zip
     fi
 
-    # Attempt 2: Fallback — install bing-wall via Snap (works on all desktops).
+    # Attempt 3: Fallback — install bing-wall via Snap (works on all desktops).
     echo "GNOME extension install failed — trying snap fallback..."
     if have_cmd snap 2>/dev/null; then
       snap install bing-wall && echo "installed: bing-wall (Snap)" && exit 0
