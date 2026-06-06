@@ -262,11 +262,30 @@ EXECUTION MODEL
     summary also go to fd 3; show the log path at start and end.
   * LIVE PROGRESS (not just a spinner): while a step runs, show a SINGLE transient
     line on fd 3 that updates in place with real progress, and CLEAR it the moment that
-    step's process terminates (leaving only its "installed:" result). For apt, get the
-    actual percentage + current operation from APT::Status-Fd (run apt-get with
-    -o APT::Status-Fd=9 redirected to a temp file and tail it). For non-apt commands
-    (curl/conda/unzip/…), show the command's latest output line. This is essential for
-    very long installs (e.g. texlive-full) so the user can see it is progressing.
+    step's process terminates (leaving only its "installed:" result). The progress line
+    format differs by operation type:
+
+    **Downloads** (curl/wget): use curl's hash-bar (`curl -#`) which prints a
+    self-overwriting progress meter to stderr — tail it and display to fd 3. See the
+    `download_file` function.
+
+    **Installations with native progress** (apt, flatpak, pip, docker pull):
+      - apt: get the actual percentage + current operation from APT::Status-Fd (run
+        apt-get with -o APT::Status-Fd=9 redirected to a temp file and tail it).
+      - flatpak: use `--show-progress` flag. Verbose output is suppressed; only the
+        progress gauge is shown. See the `install_flatpak` function.
+      - docker: `docker pull` already prints layers + status — tail from output.
+
+    **Installations without progress API** (Wine .exe, .deb scripts, tar extraction,
+    conda, snap, dpkg -i): these commands can produce many lines of verbose output.
+    Instead of showing their last output line (which may be a random diagnostic),
+    show a **non-interactive auto-progress indicator** — a live elapsed-time counter
+    ("running… 45s") — while the command runs, and redirect ALL its output to the
+    log. See the `run_spin_quiet` function. This keeps the UI clean and avoids
+    printing confusing internal output while still confirming the step is active.
+
+    This is essential for very long installs (e.g. texlive-full) so the user can see
+    it is progressing without being overwhelmed by raw package-manager output.
   * TWO LOG FILES (both printed at the end):
       - install.log         : the full, verbose command output (for deep debugging).
       - install-results.log : a SHORT results log — one tab-separated line per step,
