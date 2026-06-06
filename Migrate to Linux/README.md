@@ -248,6 +248,11 @@ apt shows its live percentage via `APT::Status-Fd`, flatpak uses `--show-progres
 and installers without a progress API (Wine, .deb scripts) show a non-interactive
 elapsed-time counter instead of verbose output.
 
+On failure, the script **prints the downloaded file's path and the exact manual
+install command** so the user can retry. All downloads go to
+`/opt/migrate-downloads/`, which is set **mode 0777 and owned by the invoking
+non-root user** so files can be inspected or manually installed.
+
 **PaperCut (hard-coded — the native client, never a substitute).** PaperCut's Linux
 client (Print Deploy / User Client) is served by **your own PaperCut server**, which is
 the trusted first-party source for it. Set `PAPERCUT_SERVER` (host) and optionally
