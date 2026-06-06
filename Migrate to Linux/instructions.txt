@@ -9,6 +9,10 @@ able to read ONLY this file — and regenerate, with the latest up-to-date data:
 
   1. detect_installed_windows_software.ps1   (Windows inventory + Linux rating)
   2. installed_windows_software.csv          (the report the script produces)
+  2b. separate_Linux_software_requirments.csv  (hand-curated: hardcoded apps that
+                                                  the installer includes regardless
+                                                  of whether they appear in the
+                                                  Windows-generated CSV)
   3. <Target OS>/install_must_have_software.sh   (one unattended installer per
                                                   target-OS subdirectory)
   4. windows_settings_extract.ps1            (Windows settings scraper:
@@ -40,6 +44,8 @@ DIRECTORY LAYOUT
     windows_configs.csv                   <- settings CSV (produced by PS1)
     detect_installed_windows_software.ps1 <- the inventory script (Windows)
     installed_windows_software.csv        <- generated software report
+    separate_Linux_software_requirments.csv <- hand-curated: hardcoded apps beyond
+                                             the machine-generated CSV
     detect_installed_drivers.ps1          <- device-driver inventory script (Windows)
     installed_windows_drivers.csv         <- generated driver report
     <Target OS>/                          <- one folder per intended target OS
