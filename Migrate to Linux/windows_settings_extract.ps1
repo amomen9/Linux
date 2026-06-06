@@ -183,7 +183,7 @@ $windowsShortcuts = @(
     'Ctrl+Shift+Esc = Task Manager',
     'Win+Shift+S = Screenshot snipping'
 )
-Add-Row 'Keyboard' 'shortcuts_note' ($windowsShortcuts -join ' ; ') '' 'Map to GNOME/KDE equivalents in settings_config.sh'
+Add-Row 'Keyboard' 'shortcuts_note' ($windowsShortcuts -join ' ; ') '' 'Map to GNOME/KDE equivalents in apply_settings.sh'
 
 # -----------------------------------------------------------------------
 # 4. TELEMETRY & LOCATION
