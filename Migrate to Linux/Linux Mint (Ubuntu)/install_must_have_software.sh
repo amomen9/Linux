@@ -224,22 +224,82 @@ add_repo() {  # add_repo NAME KEY_URL "deb [opts] URL suite components"
 # Download the latest vendor .deb and install/upgrade it (idempotent).
 install_deb_url() {  # install_deb_url "Label" URL
   local label="$1" url="$2" f="$DOWNLOAD_DIR/${1// /_}.deb"
-  if run_spin "downloading $label" curl -fsSL --retry 3 -o "$f" "$url"; then
+  if download_file "downloading $label" "$url" "$f"; then
     if apt_run "installing $label" install "$f"; then info "installed: $label"
-    else dpkg -i "$f"; apt_get -f install -y; info "installed: $label (deps fixed)"; fi
+    elif dpkg -i "$f" 2>/dev/null && apt_get -f install -y 2>/dev/null; then info "installed: $label (deps fixed)"
+    else
+      _fail_with_file "$label" "$f" "sudo dpkg -i \"$f\" && sudo apt-get -f install -y"
+      return 1
+    fi
   else
     warn "download failed: $label"; return 1
   fi
 }
 
-flatpak_app() {  # flatpak_app APPID
+# Print manual-install instructions with the downloaded file path.
+# _fail_with_file "AppName" "/path/to/file" "install command"
+_fail_with_file() {
+  local name="$1" file="$2" cmd="$3"
+  warn "$name auto-install failed"
+  info "Downloaded file: $file"
+  info "Manual install: $cmd"
+  STEP_FAILS+=("$name — manual install: $file ($cmd)")
+}
+
+install_flatpak() {  # install_flatpak APPID
   local id="$1"
   if flatpak info "$id" >/dev/null 2>&1; then
-    run_spin "updating $id" flatpak update -y "$id" || true; info "updated: $id"
+    run_spin "updating $id" flatpak update -y --noninteractive "$id" || true; info "updated: $id"
   else
-    if run_spin "installing $id" flatpak install -y --noninteractive flathub "$id"; then info "installed: $id"
+    if run_spin "installing $id" flatpak install -y --noninteractive --show-progress flathub "$id"; then info "installed: $id"
     else warn "flatpak install failed: $id"; return 1; fi
   fi
+}
+
+# Download a file with live progress (curl -# shows a hash-bar progress indicator).
+# Usage: download_file "label" URL DEST_FILE
+download_file() {
+  local text="$1" url="$2" dest="$3"
+  local tmp rc; tmp="$(mktemp 2>/dev/null || echo /tmp/migrate.dl.$$)"
+  if [ -t 3 ]; then
+    curl -# -fSL --retry 3 -o "$dest" "$url" 2>"$tmp" &
+    local pid=$! i=0
+    while kill -0 "$pid" 2>/dev/null; do
+      _progress "$i" "$text" "$(tail -n 1 "$tmp" 2>/dev/null | tr -d '\r')"; i=$((i+1)); sleep 0.15
+    done
+    wait "$pid"; rc=$?
+    printf '\r\033[K' >&3
+  else
+    curl -fsSL --retry 3 -o "$dest" "$url" 2>/dev/null; rc=$?
+  fi
+  cat "$tmp" >> "$LOG" 2>/dev/null
+  _capture_reason "$tmp" "$rc"
+  rm -f "$tmp"
+  return $rc
+}
+
+# Run a command with a non-interactive auto-progress indicator (for installers without a progress API).
+# Shows a live elapsed-time counter instead of verbose output. Output -> log.
+run_spin_quiet() {  # run_spin_quiet "label" cmd...
+  local text="$1"; shift
+  local tmp rc start; tmp="$(mktemp 2>/dev/null || echo /tmp/migrate.q.$$)"
+  if [ -t 3 ]; then
+    start=$(date +%s)
+    "$@" >"$tmp" 2>&1 &
+    local pid=$! i=0
+    while kill -0 "$pid" 2>/dev/null; do
+      local now elapsed; now=$(date +%s); elapsed=$((now - start))
+      _progress "$i" "$text" "running…  ${elapsed}s"; i=$((i+1)); sleep 0.5
+    done
+    wait "$pid"; rc=$?
+    printf '\r\033[K' >&3
+  else
+    "$@" >"$tmp" 2>&1; rc=$?
+  fi
+  cat "$tmp" >> "$LOG" 2>/dev/null
+  _capture_reason "$tmp" "$rc"
+  rm -f "$tmp"
+  return $rc
 }
 
 # =============================================================================
@@ -324,15 +384,15 @@ _install_wine_app() {
       return 0
     fi
   fi
-  if run_spin "downloading $label" curl -fsSL --retry 3 -o "$exe_path" "$dl_url"; then
+  if download_file "downloading $label" "$dl_url" "$exe_path"; then
     if have_cmd wine; then
       if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
         local USER_HOME
         USER_HOME="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
-        run_spin "installing $label under Wine" \
+        run_spin_quiet "installing $label under Wine" \
           bash -c "export HOME='$USER_HOME' WINEARCH=win64 WINEPREFIX='\${HOME}/.wine'; wineboot -u 2>/dev/null || true; wine '$exe_path' $extra_flags /S" || true
       else
-        run_spin "installing $label under Wine" \
+        run_spin_quiet "installing $label under Wine" \
           bash -c "export WINEARCH=win64 WINEPREFIX='\${HOME}/.wine'; wineboot -u 2>/dev/null || true; wine '$exe_path' $extra_flags /S" || true
       fi
       info "installed: $label via Wine"
@@ -366,12 +426,12 @@ _install_idm_wine() {
 
   local idm_url="https://mirror2.internetdownloadmanager.com/idman${IDM_VERSION//./}.exe"
   local idm_exe="$DOWNLOAD_DIR/idman_${IDM_VERSION}.exe"
-  if run_spin "downloading IDM" curl -fsSL --retry 3 -o "$idm_exe" "$idm_url"; then
+  if download_file "downloading IDM" "$idm_url" "$idm_exe"; then
     if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-      run_spin "installing IDM under Wine" \
+      run_spin_quiet "installing IDM under Wine" \
         bash -c "export HOME='$USER_HOME' WINEARCH=win64 WINEPREFIX='\${HOME}/.wine'; wineboot -u 2>/dev/null || true; wine '$idm_exe' /S /D='C:\\Program Files\\Internet Download Manager'" || true
     else
-      run_spin "installing IDM under Wine" \
+      run_spin_quiet "installing IDM under Wine" \
         bash -c "export WINEARCH=win64 WINEPREFIX='\${HOME}/.wine'; wineboot -u 2>/dev/null || true; wine '$idm_exe' /S /D='C:\\Program Files\\Internet Download Manager'" || true
     fi
     info "installed: IDM (Internet Download Manager) via Wine"
@@ -381,7 +441,7 @@ _install_idm_wine() {
     local idm_fallback="https://mirror2.internetdownloadmanager.com/idman627build18.exe"
     if run_spin "IDM fallback download" curl -fsSL --retry 3 -o "$idm_exe" "$idm_fallback"; then
       if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-        run_spin "installing IDM under Wine (fallback)" \
+        run_spin_quiet "installing IDM under Wine (fallback)" \
           bash -c "export HOME='$USER_HOME' WINEARCH=win64 WINEPREFIX='\${HOME}/.wine'; wineboot -u 2>/dev/null || true; wine '$idm_exe' /S /D='C:\\Program Files\\Internet Download Manager'" || true
       fi
       info "installed: IDM via Wine (fallback build)"
@@ -438,21 +498,21 @@ _install_winrar_wine() {
   wrar_exe="$DOWNLOAD_DIR/winrar-${WINRAR_VERSION}.exe"
   # Primary: official rarlab.com download (en-US, HTTPS)
   wrar_url="https://www.win-rar.com/fileadmin/winrar-versions/winrar/winrar-${WINRAR_VERSION//./}-x64-english.exe"
-  if run_spin "downloading WinRAR (English)" curl -fsSL --retry 3 -o "$wrar_exe" "$wrar_url"; then :; else
+  if download_file "downloading WinRAR (English)" "$wrar_url" "$wrar_exe"; then :; else
     # Fallback: rarlab.com direct
     warn "primary WinRAR URL failed — trying rarlab.com fallback"
     local rarlab_url="https://www.rarlab.com/rar/winrar-x64-${WINRAR_VERSION//./}.exe"
-    if ! run_spin "downloading WinRAR (rarlab fallback)" curl -fsSL --retry 3 -o "$wrar_exe" "$rarlab_url"; then
+    if ! download_file "downloading WinRAR (rarlab fallback)" "$rarlab_url" "$wrar_exe"; then
       warn "WinRAR download failed — manual install needed"
       return 1
     fi
   fi
 
   if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-    run_spin "installing WinRAR under Wine" \
+    run_spin_quiet "installing WinRAR under Wine" \
       bash -c "export HOME='$USER_HOME' WINEARCH=win64 WINEPREFIX='\${HOME}/.wine'; wineboot -u 2>/dev/null || true; wine '$wrar_exe' /S" || true
   else
-    run_spin "installing WinRAR under Wine" \
+    run_spin_quiet "installing WinRAR under Wine" \
       bash -c "export WINEARCH=win64 WINEPREFIX='\${HOME}/.wine'; wineboot -u 2>/dev/null || true; wine '$wrar_exe' /S" || true
   fi
   info "installed: WinRAR via Wine (v${WINRAR_VERSION})"
@@ -530,6 +590,10 @@ exec 3>&1 4>&2                       # save the real terminal for the clean UI
 require_root
 export DEBIAN_FRONTEND=noninteractive
 mkdir -p "$DOWNLOAD_DIR" /etc/apt/keyrings
+chmod 0777 "$DOWNLOAD_DIR"
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+  chown -R "${SUDO_USER}:${SUDO_USER}" "$DOWNLOAD_DIR" 2>/dev/null || true
+fi
 : > "$LOG" 2>/dev/null || LOG=/dev/null
 { echo "# Migrate-to-Linux installation results — $(date '+%F %T')";
   printf '# %s\t%s\t%s\t%s\n' "timestamp" "stat" "item" "reason"; } > "$RESULTS" 2>/dev/null || RESULTS=/dev/null
@@ -672,14 +736,14 @@ _notepadpp_wine() {
     fi
   fi
   local url="https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v${NPP_VERSION}/npp.${NPP_VERSION}.Installer.exe"
-  if run_spin "downloading Notepad++ installer" curl -fsSL --retry 3 -o "$NPP_EXE" "$url"; then
+  if download_file "downloading Notepad++ installer" "$url" "$NPP_EXE"; then
     if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
       local USER_HOME
       USER_HOME="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
-      run_spin "installing Notepad++ under Wine" \
+      run_spin_quiet "installing Notepad++ under Wine" \
         bash -c "export HOME='$USER_HOME' WINEARCH=win64 WINEPREFIX='\${HOME}/.wine'; wineboot -u 2>/dev/null || true; wine '$NPP_EXE' /S /D='$NPP_INSTALL_DIR'" || true
     else
-      run_spin "installing Notepad++ under Wine" \
+      run_spin_quiet "installing Notepad++ under Wine" \
         bash -c "export WINEARCH=win64 WINEPREFIX='\${HOME}/.wine'; wineboot -u 2>/dev/null || true; wine '$NPP_EXE' /S /D='$NPP_INSTALL_DIR'" || true
     fi
     info "installed: Notepad++ via Wine (v${NPP_VERSION})"
@@ -729,13 +793,13 @@ if deb_installed peazip 2>/dev/null; then
   info "PeaZip already installed (skipping)"
   mark_ok "PeaZip"
 else
-  if run_spin "downloading PeaZip" curl -fsSL --retry 3 -o "$PEAZIP_DEB" "$PEAZIP_URL"; then
+  if download_file "downloading PeaZip" "$PEAZIP_URL" "$PEAZIP_DEB"; then
     if apt_run "installing PeaZip" install "$PEAZIP_DEB"; then
       info "installed: PeaZip (native RAR/ZIP/7z GUI)"
       mark_ok "PeaZip"
     else
       warn "PeaZip .deb install failed — trying Flatpak"
-      if flatpak_app io.github.peazip.PeaZip; then
+      if install_flatpak io.github.peazip.PeaZip; then
         info "installed: PeaZip via Flatpak"
         mark_ok "PeaZip"
       else
@@ -744,7 +808,7 @@ else
     fi
   else
     warn "PeaZip download failed — trying Flatpak"
-    if flatpak_app io.github.peazip.PeaZip; then
+    if install_flatpak io.github.peazip.PeaZip; then
       info "installed: PeaZip via Flatpak"
       mark_ok "PeaZip"
     else
@@ -768,17 +832,17 @@ step "Media & utilities"         apt_pkgs vlc mpv rhythmbox qbittorrent flamesho
                                           thunderbird calibre anki uget notepadqq geany libreoffice \
                                           uget aria2
 # Pinta was removed from the Ubuntu 24.04 repos; install via Flatpak instead.
-step "Pinta (Flatpak)" flatpak_app com.github.PintaProject.Pinta
+step "Pinta (Flatpak)" install_flatpak com.github.PintaProject.Pinta
 step "Desktop apps (small)"      apt_pkgs gnome-clocks gnome-sound-recorder cheese gnome-weather \
                                           gnome-calculator gnome-terminal tilix gedit sticky \
                                           gnome-disk-utility usb-creator-gtk nautilus-dropbox \
                                           smartmontools nvme-cli openvpn network-manager-openvpn-gnome
 step "OneDrive (abraunegg)"      apt_pkgs onedrive
 step "PowerToys: launcher (Run)"           apt_pkgs ulauncher
-step "PowerToys: OCR (Text Extractor)"     flatpak_app com.tenderowl.frog
+step "PowerToys: OCR (Text Extractor)"     install_flatpak com.tenderowl.frog
 step "PowerToys: color picker"             apt_pkgs gpick
 step "PowerToys: image resizer via Nautilus" apt_pkgs nautilus-image-converter imagemagick
-step "PowerToys: mouse sharing (KVM)"      flatpak_app com.github.debauchee.barrier
+step "PowerToys: mouse sharing (KVM)"      install_flatpak com.github.debauchee.barrier
 step "PowerToys: screen zoom"              apt_pkgs kmag
 step "PowerToys: find mouse"               info "Use GNOME Settings > Mouse > Show Pointer Location (Ctrl to locate)"
 step "PowerToys: keyboard accents"         apt_pkgs ibus-typing-booster
@@ -803,7 +867,7 @@ ANGRY_IP_DEB="$DOWNLOAD_DIR/angry_ip_scanner.deb"
 if deb_installed angryipscanner 2>/dev/null || have_cmd ipscan 2>/dev/null; then
   info "Angry IP Scanner already installed"; mark_ok "Angry IP Scanner"
 else
-  if run_spin "downloading Angry IP Scanner" curl -fsSL --retry 3 -o "$ANGRY_IP_DEB" "https://github.com/angryip/ipscan/releases/latest/download/ipscan_${DEB_ARCH}.deb"; then
+  if download_file "downloading Angry IP Scanner" "https://github.com/angryip/ipscan/releases/latest/download/ipscan_${DEB_ARCH}.deb" "$ANGRY_IP_DEB"; then
     if apt_run "installing Angry IP Scanner" install "$ANGRY_IP_DEB"; then
       info "installed: Angry IP Scanner (network scanner, GUI)"; mark_ok "Angry IP Scanner"
     else mark_fail "Angry IP Scanner (install)" "$LAST_ERR"; fi
@@ -833,7 +897,7 @@ step "Port Scanner alt: nmap + Zenmap + RustScan" bash -c '
 # Telegram — official native Linux client (APT, falls back to Flatpak)
 step "Telegram Desktop" bash -c '
   if have_cmd telegram-desktop 2>/dev/null; then info "telegram-desktop already installed"; exit 0; fi
-  apt_pkgs telegram-desktop 2>/dev/null || flatpak_app org.telegram.desktop 2>/dev/null || { warn "Telegram install failed (APT + Flatpak)"; exit 1; }
+  apt_pkgs telegram-desktop 2>/dev/null || install_flatpak org.telegram.desktop 2>/dev/null || { warn "Telegram install failed (APT + Flatpak)"; exit 1; }
   info "installed: Telegram Desktop"
 '
 
@@ -942,10 +1006,10 @@ step "RealVNC Viewer" install_deb_url "RealVNC Viewer" \
 # =============================================================================
 # 7. FLATPAK FALLBACKS
 # =============================================================================
-step "Microsoft Teams" flatpak_app com.github.IsmaelMartinez.teams_for_linux
-step "WhatsApp (ZapZap)" flatpak_app com.rtosta.zapzap
-step "LocalSend (Quick/Nearby Share)" flatpak_app org.localsend.localsend_app
-step "Planify (Microsoft To Do alt)" flatpak_app io.github.alainm23.planify
+step "Microsoft Teams" install_flatpak com.github.IsmaelMartinez.teams_for_linux
+step "WhatsApp (ZapZap)" install_flatpak com.rtosta.zapzap
+step "LocalSend (Quick/Nearby Share)" install_flatpak org.localsend.localsend_app
+step "Planify (Microsoft To Do alt)" install_flatpak io.github.alainm23.planify
 
 # =============================================================================
 # 8. SCRIPT / BINARY INSTALLERS

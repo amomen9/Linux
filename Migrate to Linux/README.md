@@ -242,6 +242,11 @@ sudo ./"Linux Mint (Ubuntu)/install_must_have_software.sh"
 
 The installer is **unattended and idempotent**, with a clean progress display,
 auto-detection of the target machine (codename + architecture), and two log files.
+For downloads, a **live hash-bar progress indicator** is shown (`curl -#`).
+For installations, only **installation progress** is displayed (no verbosity):
+apt shows its live percentage via `APT::Status-Fd`, flatpak uses `--show-progress`,
+and installers without a progress API (Wine, .deb scripts) show a non-interactive
+elapsed-time counter instead of verbose output.
 
 **PaperCut (hard-coded — the native client, never a substitute).** PaperCut's Linux
 client (Print Deploy / User Client) is served by **your own PaperCut server**, which is
