@@ -286,6 +286,15 @@ EXECUTION MODEL
 
     This is essential for very long installs (e.g. texlive-full) so the user can see
     it is progressing without being overwhelmed by raw package-manager output.
+  * FAILURE HELPER (_fail_with_file): when a downloaded .deb / .exe / script fails
+    to auto-install (even the dpkg -i fallback), print the downloaded file's full
+    path and the exact manual command to retry (e.g. "sudo dpkg -i <file> && sudo
+    apt-get -f install -y"). This avoids silent failures and gives the user a
+    clear next step. The download directory (/opt/migrate-downloads) is created
+    with mode 0777 and chown'd to the invoking non-root user ($SUDO_USER) so all
+    downloaded files are fully accessible without sudo for inspection or manual
+    install.
+
   * TWO LOG FILES (both printed at the end):
       - install.log         : the full, verbose command output (for deep debugging).
       - install-results.log : a SHORT results log — one tab-separated line per step,
