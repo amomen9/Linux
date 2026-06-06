@@ -538,7 +538,7 @@ POST-INSTALL
  (files: windows_settings_extract.ps1, <Target OS>/apply_settings.sh)
 
 GOAL
-  Extract five categories of common Windows user settings, write them to
+  Extract six categories of common Windows user settings, write them to
   windows_configs.csv (in the parent Migrate to Linux/ directory), then apply
   them on the target Linux distro using the per-distro apply_settings.sh.
 
@@ -546,6 +546,15 @@ GOAL
   formerly split into a separate settings_config.sh that apply_settings.sh sourced.
   They are now MERGED into apply_settings.sh, which is fully self-contained. Do NOT
   regenerate a separate settings_config.sh.
+
+  NOTE — ALL USERS (hard requirement): every setting MUST apply to EVERY user on the
+  target machine, not just root. System config (logind.conf, systemd units,
+  localectl, APT, NetworkManager.conf, service masking) is already machine-wide.
+  GNOME/desktop keys (display scaling, location, lock-screen timeout) MUST be written
+  as SYSTEM-WIDE dconf DEFAULTS in /etc/dconf/db/local.d via a _dconf_system_set
+  helper (ensure a /etc/dconf/profile/user with "system-db:local", write one small
+  keyfile per [schema] key, then `dconf update`). NEVER apply them with `gsettings
+  set ...` as root — that only changes root's own profile and reaches no real user.
 
 DIRECTORY LAYOUT (settings-migration files)
   Migrate to Linux/
@@ -602,9 +611,11 @@ CATEGORY 2 — DISPLAY RESOLUTION & SCALING
         Display | scaling    | <percentage>%
 
   Linux apply:
-    * Resolution: xrandr --output <primary> --mode <WxH> if the mode exists.
-    * Scaling: gsettings set org.gnome.desktop.interface text-scaling-factor and
-      scaling-factor (integer only: ≥175%→2, ≥250%→3, ≥350%→4).
+    * Resolution: xrandr --output <primary> --mode <WxH> if the mode exists
+      (runtime/session — display config is not a per-user persistent setting).
+    * Scaling (ALL USERS via _dconf_system_set, NOT gsettings-as-root):
+        org/gnome/desktop/interface text-scaling-factor <float>
+        org/gnome/desktop/interface scaling-factor uint32 N (≥175%→2, ≥250%→3, ≥350%→4).
 
 CATEGORY 3 — KEYBOARD LAYOUT & SHORTCUTS
 
@@ -639,7 +650,8 @@ CATEGORY 4 — DISABLE TELEMETRY; LIMIT LOCATION
 
   Linux apply (location):
     * Stops, disables, and masks: geoclue.
-    * gsettings set org.gnome.system.location enabled false.
+    * ALL USERS via _dconf_system_set: org/gnome/system/location enabled false
+      (NOT gsettings-as-root).
     * Enables Wi-Fi MAC randomization in NetworkManager.
 
 CATEGORY 5 — AUTO-UPDATE SERVICE FILES
@@ -656,6 +668,25 @@ CATEGORY 5 — AUTO-UPDATE SERVICE FILES
     * systemctl daemon-reload.
     * systemctl enable --now system_update.timer.
 
+CATEGORY 6 — LOCK SCREEN TIMEOUT (idle → lock/blank)
+
+  Windows extract:
+    * Primary signal: a SECURE screen saver — HKCU\Control Panel\Desktop with
+      ScreenSaveActive=1, ScreenSaverIsSecure=1, ScreenSaveTimeOut=<seconds>.
+    * Fallback: power "turn off display after" (SUB_VIDEO 7516b95f...\VIDEOIDLE
+      3c0bc021...) ACSettingIndex (seconds) under PowerSchemes.
+    * Emit minutes, or "never" when nothing locks the screen (so Linux disables the
+      lock/blank too — mirroring a Windows box with no lock-screen timeout).
+    * Produces CSV row:
+        Screen | lock_screen_timeout | <N> min   (or "never")
+
+  Linux apply (_apply_lock_screen_timeout — ALL USERS via _dconf_system_set):
+    * "never"/0  -> org/gnome/desktop/session idle-delay uint32 0 (never blank),
+                    org/gnome/desktop/screensaver lock-enabled false,
+                    org/gnome/desktop/screensaver idle-activation-enabled false.
+    * "<N> min"  -> session idle-delay uint32 <N*60>, screensaver lock-enabled true,
+                    screensaver lock-delay uint32 0.
+
 APPLY_SETTINGS.SH STRUCTURE (single self-contained file)
   apply_settings.sh holds EVERYTHING — there is no separate settings_config.sh.
   Generate it as one file containing, in order:
@@ -665,10 +696,17 @@ APPLY_SETTINGS.SH STRUCTURE (single self-contained file)
         _cfg_ok()    — green  [OK]    to stdout
         _cfg_info()  — dim    [INFO]  to stdout
         _cfg_error() — red    [ERROR] to stderr
+    * The _dconf_system_set SCHEMA KEY GVARIANT helper (ALL-USERS mechanism): ensures
+      dconf-cli; ensures /etc/dconf/profile/user has "system-db:local"; writes ONE
+      deterministic keyfile per (schema,key) under /etc/dconf/db/local.d (rewritten
+      wholesale => idempotent); runs `dconf update`. Used by the scaling, location and
+      lock-screen functions so they reach every user, not just root.
     * One _apply_* function per config key (see dispatch table below). Each takes
       the WindowsValue column as argument $1 and returns 0 on success, non-zero on
       failure. Special functions: _apply_power_lid takes a second argument (logind
       key); _apply_keyboard_layout takes a second argument (input languages string).
+      _apply_lock_screen_timeout parses "<N> min"/"never" and sets idle-delay +
+      screensaver lock keys via _dconf_system_set.
     * The SETTINGS_DISPATCH associative array:
         ["Category|ConfigKey"]="function_name"
       CRITICAL: associative-array literals need [key]=value with NO spaces around
@@ -912,6 +950,9 @@ PART E2 — LINUX DRIVER INSTALLER  (<Target OS>/install_device_drivers.sh)
       (apply functions + SETTINGS_DISPATCH + runner). Do NOT emit a separate
       settings_config.sh. Verify the SETTINGS_DISPATCH literal uses [key]="value"
       with NO spaces around '=' (spaced literals silently break every lookup).
+      Ensure it covers all SIX categories incl. Screen|lock_screen_timeout, and that
+      ALL GNOME/desktop keys (scaling, location, lock-screen) are applied to every
+      user via _dconf_system_set (system-wide dconf), NEVER `gsettings set` as root.
   [ ] (Re)generate <Target OS>/execute_all.sh per PART F (chmod +x then run
       settings -> apps -> drivers, continue-on-error, per-stage summary).
   [ ] Update README.md to match.

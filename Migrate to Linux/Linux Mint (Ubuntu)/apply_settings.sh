@@ -18,10 +18,20 @@
 #
 # Settings applied:
 #   1. Power: lid-close action on battery and AC (→ logind.conf)
-#   2. Display: resolution & scaling (→ xrandr + gsettings)
+#   2. Display: resolution (→ xrandr) & scaling (→ system-wide dconf)
 #   3. Keyboard: layout and shortcut reference (→ localectl + setxkbmap)
 #   4. Telemetry + location: disable all known telemetry/geolocation services
 #   5. Auto-update: install system_update.service + system_update.timer from repo
+#   6. Screen: lock-screen / blank timeout (→ system-wide dconf; "never" disables it)
+#
+# ALL-USERS GUARANTEE:
+#   Every setting is applied so it affects EVERY user on the machine, not just root:
+#     * logind.conf, systemd units, localectl, APT config, NetworkManager.conf,
+#       service masking  → system-wide by nature.
+#     * GNOME/desktop keys (scaling, location, lock-screen timeout) → written as
+#       SYSTEM-WIDE dconf defaults in /etc/dconf/db/local.d (via _dconf_system_set),
+#       NOT `gsettings set` as root (which would only touch root's own profile).
+#       These take effect for every user (current + future) on their next login.
 # -----------------------------------------------------------------------------
 
 # Keep pipefail OFF so individual function failures don't kill the loop.
@@ -59,6 +69,55 @@ require_root() {
 _cfg_ok()    { printf '\033[32m  [OK]\033[0m    %s\n' "$1"; }
 _cfg_info()  { printf '\033[2m  [INFO]\033[0m  %s\n' "$1"; }
 _cfg_error() { printf '\033[1;31m  [ERROR]\033[0m %s\n' "$1" >&2; }
+
+# ---------------------------------------------------------------------------
+# SYSTEM-WIDE dconf (ALL USERS)
+# Write a GNOME/desktop key as a system-wide DEFAULT so it applies to EVERY user
+# on the machine — not just root. This uses the dconf "local" system database
+# (/etc/dconf/db/local.d), the documented mechanism for machine-wide GNOME
+# defaults. Doing `gsettings set ...` as root would only change root's own
+# profile and would NOT reach the actual users, so we never do that.
+#
+# Each (schema,key) pair gets its own small keyfile that we rewrite wholesale
+# every run (idempotent); dconf merges them all on `dconf update`.
+# ---------------------------------------------------------------------------
+_DCONF_DB_DIR="/etc/dconf/db/local.d"
+_DCONF_PROFILE="/etc/dconf/profile/user"
+
+_dconf_system_set() {  # _dconf_system_set SCHEMA_PATH KEY GVARIANT_VALUE
+    local schema="$1" key="$2" value="$3"
+
+    # Ensure the dconf CLI exists (install best-effort; it's standard on GNOME).
+    if ! command -v dconf >/dev/null 2>&1; then
+        DEBIAN_FRONTEND=noninteractive apt-get install -y dconf-cli >/dev/null 2>&1 || true
+    fi
+    if ! command -v dconf >/dev/null 2>&1; then
+        _cfg_error "dconf not available — cannot set ${schema}/${key} for all users"
+        return 1
+    fi
+
+    mkdir -p "$_DCONF_DB_DIR" "$(dirname "$_DCONF_PROFILE")"
+
+    # Make sure every user's dconf reads the system 'local' db (idempotent;
+    # append rather than clobber any existing custom profile).
+    if [ ! -f "$_DCONF_PROFILE" ]; then
+        printf 'user-db:user\nsystem-db:local\n' > "$_DCONF_PROFILE"
+    elif ! grep -q '^system-db:local' "$_DCONF_PROFILE" 2>/dev/null; then
+        printf 'system-db:local\n' >> "$_DCONF_PROFILE"
+    fi
+
+    # Deterministic filename per (schema,key) so re-runs overwrite, not duplicate.
+    local fname
+    fname="$(printf '%s_%s' "$schema" "$key" | tr '/ ' '__' | tr -cd 'A-Za-z0-9_.-')"
+    printf '[%s]\n%s=%s\n' "$schema" "$key" "$value" > "${_DCONF_DB_DIR}/50-migrate-${fname}"
+
+    if dconf update 2>/dev/null; then
+        return 0
+    else
+        _cfg_error "dconf update failed after writing ${schema}/${key}"
+        return 1
+    fi
+}
 
 # ---------------------------------------------------------------------------
 # POWER SETTINGS — Lid-close action (battery / AC)
@@ -178,32 +237,27 @@ _apply_display_scaling() {
     [ "$raw" -eq 100 ] && scale_factor=1
     [ "$raw" -eq 200 ] && scale_factor=2
 
-    _cfg_info "Windows was at ${scaling_pct} → scale factor ${scale_factor}"
-
-    if ! command -v gsettings >/dev/null 2>&1; then
-        _cfg_error "gsettings not available"
-        return 1
-    fi
+    _cfg_info "Windows was at ${scaling_pct} → scale factor ${scale_factor} (applied for all users)"
 
     if [ "$raw" -gt 100 ]; then
-        if gsettings set org.gnome.desktop.interface text-scaling-factor "$scale_factor" 2>/dev/null; then
-            _cfg_ok "set GNOME text-scaling-factor=${scale_factor}"
+        # Fractional text scaling for every user (system-wide dconf default).
+        if _dconf_system_set "org/gnome/desktop/interface" "text-scaling-factor" "$scale_factor"; then
+            _cfg_ok "set text-scaling-factor=${scale_factor} (all users)"
         else
             _cfg_error "failed to set text-scaling-factor"
             any_error=1
         fi
 
-        if gsettings writable org.gnome.desktop.interface scaling-factor 2>/dev/null; then
-            local int_scale=1
-            [ "$raw" -ge 175 ] && int_scale=2
-            [ "$raw" -ge 250 ] && int_scale=3
-            [ "$raw" -ge 350 ] && int_scale=4
-            if gsettings set org.gnome.desktop.interface scaling-factor "$int_scale" 2>/dev/null; then
-                _cfg_ok "set GNOME scaling-factor=${int_scale}"
-            else
-                _cfg_error "failed to set scaling-factor"
-                any_error=1
-            fi
+        # Integer window scaling (HiDPI) for every user.
+        local int_scale=1
+        [ "$raw" -ge 175 ] && int_scale=2
+        [ "$raw" -ge 250 ] && int_scale=3
+        [ "$raw" -ge 350 ] && int_scale=4
+        if _dconf_system_set "org/gnome/desktop/interface" "scaling-factor" "uint32 ${int_scale}"; then
+            _cfg_ok "set scaling-factor=${int_scale} (all users)"
+        else
+            _cfg_error "failed to set scaling-factor"
+            any_error=1
         fi
     else
         _cfg_ok "scaling is 100% — no change needed"
@@ -385,13 +439,12 @@ _apply_limit_location() {
         _cfg_info "geoclue not installed"
     fi
 
-    if command -v gsettings >/dev/null 2>&1; then
-        if gsettings set org.gnome.system.location enabled false 2>/dev/null; then
-            _cfg_ok "gsettings location enabled=false"
-        else
-            _cfg_error "gsettings location set failed"
-            any_error=1
-        fi
+    # Disable GNOME location services for EVERY user (system-wide dconf default).
+    if _dconf_system_set "org/gnome/system/location" "enabled" "false"; then
+        _cfg_ok "location services disabled for all users (dconf)"
+    else
+        _cfg_error "failed to disable location via dconf"
+        any_error=1
     fi
 
     if [ -f /etc/NetworkManager/NetworkManager.conf ] && ! grep -q "wifi.scan-rand-mac-address" /etc/NetworkManager/NetworkManager.conf 2>/dev/null; then
@@ -460,6 +513,53 @@ _apply_auto_update_services() {
 }
 
 # ---------------------------------------------------------------------------
+# SCREEN — Lock-screen / blank timeout (applied to ALL users via dconf)
+#
+# Windows value  →  Linux action
+#   "<N> min"        → blank after N*60s, lock enabled       (for every user)
+#   "never" / 0      → DISABLE screen blanking AND locking   (for every user)
+# This mirrors a Windows box that has no lock-screen timeout: on Linux the lock
+# and the blank are turned off for everyone.
+# ---------------------------------------------------------------------------
+_apply_lock_screen_timeout() {
+    local value="$1"
+    local any_error=0
+
+    _cfg_info "Windows screen-lock timeout: $value (applied for all users)"
+
+    # Parse a leading number of minutes; anything non-numeric / never / 0 => disable.
+    local secs=0
+    case "$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')" in
+        ""|never|0|0*min|unknown|disabled|none|off) secs=0 ;;
+        *)
+            local mins; mins="$(printf '%s' "$value" | grep -oE '[0-9]+' | head -1)"
+            [ -n "$mins" ] || mins=0
+            secs=$(( mins * 60 ))
+            ;;
+    esac
+
+    if [ "$secs" -le 0 ]; then
+        _cfg_info "→ DISABLING screen lock & blanking for all users"
+        _dconf_system_set "org/gnome/desktop/session"     "idle-delay"              "uint32 0" \
+            && _cfg_ok "idle-delay=0 (never blank) — all users"          || any_error=1
+        _dconf_system_set "org/gnome/desktop/screensaver" "lock-enabled"            "false" \
+            && _cfg_ok "screensaver lock-enabled=false — all users"      || any_error=1
+        _dconf_system_set "org/gnome/desktop/screensaver" "idle-activation-enabled" "false" \
+            && _cfg_ok "screensaver idle-activation=false — all users"   || any_error=1
+    else
+        _cfg_info "→ lock after ${secs}s for all users"
+        _dconf_system_set "org/gnome/desktop/session"     "idle-delay"   "uint32 ${secs}" \
+            && _cfg_ok "idle-delay=${secs}s — all users"                 || any_error=1
+        _dconf_system_set "org/gnome/desktop/screensaver" "lock-enabled" "true" \
+            && _cfg_ok "screensaver lock-enabled=true — all users"       || any_error=1
+        _dconf_system_set "org/gnome/desktop/screensaver" "lock-delay"   "uint32 0" \
+            && _cfg_ok "lock-delay=0 (lock immediately on blank) — all users" || any_error=1
+    fi
+
+    return $any_error
+}
+
+# ---------------------------------------------------------------------------
 # DISPATCH TABLE — "Category|ConfigKey" → apply function
 # NOTE: associative-array literals need [key]=value with NO spaces around '='.
 # ---------------------------------------------------------------------------
@@ -474,6 +574,7 @@ declare -A SETTINGS_DISPATCH=(
     ["Telemetry|telemetry_level"]="_apply_disable_telemetry"
     ["Telemetry|location_service"]="_apply_limit_location"
     ["AutoUpdate|install_service_files"]="_apply_auto_update_services"
+    ["Screen|lock_screen_timeout"]="_apply_lock_screen_timeout"
 )
 
 # Mapping of which logind key each power ConfigKey corresponds to
@@ -638,8 +739,12 @@ if [ ${#INFO[@]} -gt 0 ]; then
 fi
 
 echo "  Done."
+echo "  ALL USERS: GNOME settings (scaling, location, lock-screen timeout) were"
+echo "             written as system-wide dconf defaults in /etc/dconf/db/local.d,"
+echo "             so they apply to every user on the next login. logind/systemd/"
+echo "             localectl/APT changes are system-wide by nature."
 echo "  NOTE: A reboot (or at least re-login) is recommended to fully apply"
-echo "        display scaling, logind.conf changes, and group memberships."
+echo "        display scaling, lock-screen timeout, logind.conf changes, and groups."
 echo ""
 
 exit $((${#FAIL[@]} > 0 ? 1 : 0))

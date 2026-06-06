@@ -4,12 +4,13 @@
     windows_configs.csv for later application on Linux.
 
 .DESCRIPTION
-    Extracts five categories of settings:
+    Extracts six categories of settings:
       1. Power settings  —  what closing the lid does (on battery / on AC)
       2. Display resolution & scaling
       3. Keyboard layout (language) and common shortcuts
       4. Telemetry level and location-service state
       5. (placeholder) scheduled auto-update service/timer mapping
+      6. Lock-screen / blank timeout (secure screensaver or display-off idle)
 
     Output is written to windows_configs.csv (UTF-8, -NoTypeInformation).
 
@@ -145,7 +146,7 @@ Write-Host "Display: resolution = $resolution"
 Write-Host "Display: scaling    = ${scalePercent}%"
 
 Add-Row 'Display' 'resolution' $resolution '' "xrandr / GNOME Settings > Displays"
-Add-Row 'Display' 'scaling' "${scalePercent}%" '' "gsettings set org.gnome.desktop.interface scaling-factor"
+Add-Row 'Display' 'scaling' "${scalePercent}%" '' "GNOME text-scaling-factor (system-wide dconf, all users)"
 
 # -----------------------------------------------------------------------
 # 3. KEYBOARD LAYOUT & SHORTCUTS
@@ -239,6 +240,46 @@ Add-Row 'Telemetry' 'location_service' $locationEnabled '' "Disable location: sy
 Write-Host "Auto-update: will install system_update.service + system_update.timer from repo"
 
 Add-Row 'AutoUpdate' 'install_service_files' 'system_update' '' 'Install system_update.service + system_update.timer from the repo (see Scheduled systemd Automatic Update/Debian/service files/)'
+
+# -----------------------------------------------------------------------
+# 6. LOCK SCREEN TIMEOUT — how long before the screen locks / blanks.
+#    Primary signal: a SECURE screen saver (locks on resume). Fallback: the
+#    power "turn off display after" (VIDEOIDLE) idle timeout on AC. If nothing
+#    locks the screen, the value is "never" — so Linux disables lock/blanking
+#    too (mirroring a Windows box that has no lock-screen timeout).
+# -----------------------------------------------------------------------
+$lockTimeoutSec = $null
+try {
+    $desk = Get-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -ErrorAction SilentlyContinue
+    $ssActive  = [int](Safe-Property $desk 'ScreenSaveActive'    0)
+    $ssSecure  = [int](Safe-Property $desk 'ScreenSaverIsSecure' 0)
+    $ssTimeout = [int](Safe-Property $desk 'ScreenSaveTimeOut'   0)
+    if ($ssActive -eq 1 -and $ssSecure -eq 1 -and $ssTimeout -gt 0) {
+        $lockTimeoutSec = $ssTimeout
+    }
+} catch {}
+
+# Fallback: power "turn off display after" (SUB_VIDEO\VIDEOIDLE) on AC, in seconds.
+if ($null -eq $lockTimeoutSec) {
+    try {
+        $vid = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Power\User\PowerSchemes\*\7516b95f-f776-4464-8c53-06167f40cc99\3c0bc021-c8a8-4e07-a973-6b14cbcb2b7e' -ErrorAction SilentlyContinue |
+               Select-Object -First 1
+        $ac = Safe-Property $vid 'ACSettingIndex'
+        if ($null -ne $ac -and [int]$ac -gt 0) { $lockTimeoutSec = [int]$ac }
+    } catch {}
+}
+
+if ($null -ne $lockTimeoutSec -and $lockTimeoutSec -gt 0) {
+    $lockMinutes = [math]::Round($lockTimeoutSec / 60)
+    if ($lockMinutes -lt 1) { $lockMinutes = 1 }
+    $lockValue = "$lockMinutes min"
+} else {
+    $lockValue = 'never'
+}
+
+Write-Host "Screen: lock timeout = $lockValue"
+
+Add-Row 'Screen' 'lock_screen_timeout' $lockValue '' 'GNOME (system-wide dconf, all users): session idle-delay + screensaver lock-enabled; "never" => disable lock & blanking'
 
 # -----------------------------------------------------------------------
 # EXPORT CSV

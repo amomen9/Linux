@@ -88,13 +88,20 @@ just one stage.
    cd "Migrate to Linux/Linux Mint (Ubuntu)"
    sudo ./apply_settings.sh
    ```
-   This reads `../windows_configs.csv` and applies:
+   This reads `../windows_configs.csv` and applies (**to all users** — see note below):
    - **Power:** lid-close action (battery & AC) → `logind.conf`
-   - **Display:** resolution → `xrandr`, scaling → `gsettings`
+   - **Display:** resolution → `xrandr`, scaling → system-wide dconf default
    - **Keyboard:** layout → `localectl` + `setxkbmap`, shortcut reference
    - **Telemetry:** disable `whoopsie`, `apport`, `apt-daily.timer`, `motd-news.timer`, etc.
-   - **Location:** disable `geoclue`, MAC randomization
+   - **Location:** disable `geoclue`, MAC randomization, GNOME location (system-wide)
+   - **Screen:** lock-screen / blank timeout → system-wide dconf (`"never"` disables lock & blanking)
    - **Auto-update:** install `system_update.service` + `system_update.timer` from the repo
+
+   > **Applied to all users.** GNOME/desktop keys (scaling, location, lock-screen
+   > timeout) are written as **system-wide dconf defaults** in `/etc/dconf/db/local.d`
+   > — not `gsettings set` as root (which only touches root's own profile). Together
+   > with the system-wide `logind`/`systemd`/`localectl`/APT changes, every setting
+   > applies to **every user** on the machine (current and future) on next login.
 
 ## Workflow 3 — Migrate device drivers
 
@@ -160,9 +167,9 @@ No administrator rights required.
 
 | Column | Source | Meaning |
 |--------|--------|---------|
-| **Category** | from PC | `Power`, `Display`, `Keyboard`, `Telemetry`, `AutoUpdate`. |
-| **ConfigKey** | from PC | Specific setting key (e.g. `lid_close_on_ac`, `resolution`). |
-| **WindowsValue** | from PC | The extracted value (e.g. `sleep`, `1920x1080`). |
+| **Category** | from PC | `Power`, `Display`, `Keyboard`, `Telemetry`, `AutoUpdate`, `Screen`. |
+| **ConfigKey** | from PC | Specific setting key (e.g. `lid_close_on_ac`, `resolution`, `lock_screen_timeout`). |
+| **WindowsValue** | from PC | The extracted value (e.g. `sleep`, `1920x1080`, `10 min` / `never`). |
 | **LinuxCommand** | from PC | Input language tags for keyboard mapping (optional). |
 | **Notes** | from PC | Human-readable note about the Linux mapping. |
 
@@ -264,8 +271,10 @@ cd "Linux Mint (Ubuntu)"
 sudo ./apply_settings.sh
 ```
 
-Runs as root. Prints structured output per setting. A reboot is recommended
-afterwards (display scaling, logind changes).
+Runs as root. Prints structured output per setting, and **applies every setting to
+all users** (GNOME keys via system-wide dconf defaults; the rest are system-wide by
+nature). A reboot / re-login is recommended afterwards (display scaling, lock-screen
+timeout, logind changes).
 
 ---
 
