@@ -43,6 +43,7 @@
 #   MobaXterm=remmina; Bitvise=openssh; Proxifier=proxychains4; Rufus=gnome-disk-utility
 #   Acrobat Pro=Stirling PDF(Docker)+PDF Arranger(APT); Advanced IP Scanner=Angry IP Scanner(.deb); Advanced Port Scanner=RustScan+Zenmap(nmap GUI)
 #   Telegram=telegram-desktop(APT/Flatpak); Terminator=terminator(APT); WindTerm=.deb from GitHub; WinDirStat=qdirstat+baobab(APT)
+#   PaperCut=NATIVE PaperCut Print Deploy client (hard-coded; from your PaperCut server — NEVER the CUPS alternative)
 #   Gurobi=MANUAL(+free glpk/cbc); VMware=MANUAL; VirtualBox=Oracle repo; SpotPlayer=MANUAL
 #
 #   Parsec is EXCLUDED per user request — not installed.
@@ -62,6 +63,15 @@ NODE_MAJOR="22"
 XDM_VERSION="8.0.29"                        # XDM release tag on GitHub
 IDM_VERSION="6.42.58"                       # IDM version (for Wine install)
 WINRAR_VERSION="7.13"                       # WinRAR version (for Wine install)
+# PaperCut Print Deploy client (hard-coded inclusion — the NATIVE PaperCut client,
+# never a CUPS substitute). The Linux client is served by YOUR PaperCut Print Deploy
+# server, which is the trusted first-party source for it. Set PAPERCUT_SERVER (env or
+# here) to auto-install unattended; otherwise the script prompts for the downloaded
+# Linux client tarball in the manual section at the end.
+PAPERCUT_SERVER="${PAPERCUT_SERVER:-}"      # e.g. "printdeploy.example.com" (host only)
+PAPERCUT_PORT="${PAPERCUT_PORT:-9174}"      # default PaperCut Print Deploy client port
+PAPERCUT_TARBALL="/opt/migrate-downloads/papercut-print-deploy-linux.tar.gz"
+PAPERCUT_NEEDS_MANUAL=0                      # set when auto-install defers to the manual prompt
 SPIN='-\|/'
 LAST_ERR=""                                 # short failure reason from the last run_spin
 
@@ -848,6 +858,62 @@ fi
 step "WinDirStat alt: QDirStat (disk usage analyzer)" apt_pkgs qdirstat
 step "WinDirStat alt: baobab (GNOME Disk Usage Analyzer)" apt_pkgs baobab
 
+# =============================================================================
+# PAPERCUT PRINT DEPLOY CLIENT  (hard-coded inclusion — install the NATIVE PaperCut
+# client, never a CUPS substitute). The Linux client is served by YOUR PaperCut Print
+# Deploy server, which is the trusted first-party source for it. If PAPERCUT_SERVER is
+# set we install it unattended here; otherwise it is DEFERRED to the manual section at
+# the very end (so the unattended part still finishes first).
+# =============================================================================
+# Extract + run the bundled installer from $PAPERCUT_TARBALL.
+_papercut_extract_install() {
+  rm -rf /opt/papercut-print-deploy && mkdir -p /opt/papercut-print-deploy
+  if run_spin "extracting PaperCut client" tar -xzf "$PAPERCUT_TARBALL" -C /opt/papercut-print-deploy; then
+    local inst
+    inst="$(find /opt/papercut-print-deploy -maxdepth 3 -type f \( -iname 'install*.sh' -o -iname '*installer*' \) 2>/dev/null | head -n1)"
+    if [ -n "$inst" ]; then
+      chmod +x "$inst" 2>/dev/null || true
+      run_spin "running PaperCut installer" bash "$inst" || warn "PaperCut bundled installer returned non-zero (files are in /opt/papercut-print-deploy)"
+    fi
+    info "installed: PaperCut Print Deploy client -> /opt/papercut-print-deploy"
+    return 0
+  else
+    warn "PaperCut client extraction failed"
+    return 1
+  fi
+}
+
+# Unattended attempt: install from PAPERCUT_SERVER, else defer to the manual section.
+_install_papercut_auto() {
+  if have_cmd pc-print-deploy-client 2>/dev/null || [ -d /opt/papercut-print-deploy ] || ls -d /opt/PaperCut* >/dev/null 2>&1; then
+    info "PaperCut client already installed (skipping)"; mark_ok "PaperCut Print Deploy client"; return 0
+  fi
+  if [ -n "${PAPERCUT_SERVER:-}" ]; then
+    log "PaperCut Print Deploy client (native PaperCut — not CUPS) from $PAPERCUT_SERVER:$PAPERCUT_PORT"
+    local url got=0
+    for url in \
+      "https://${PAPERCUT_SERVER}:${PAPERCUT_PORT}/client/setup/print-deploy-client%5Blinux-x64%5D.tar.gz" \
+      "https://${PAPERCUT_SERVER}:${PAPERCUT_PORT}/client/print-deploy-client-linux.tar.gz" ; do
+      # Verified TLS first; the user's OWN server may use a self-signed cert, so retry
+      # once with --insecure (it is the explicitly-configured first-party host).
+      if run_spin "downloading PaperCut client" curl -fsSL --retry 3 -o "$PAPERCUT_TARBALL" "$url" \
+         || run_spin "downloading PaperCut client (self-signed server)" curl -fsSL -k --retry 3 -o "$PAPERCUT_TARBALL" "$url"; then
+        got=1; break
+      fi
+    done
+    if [ "$got" -eq 1 ]; then
+      if _papercut_extract_install; then mark_ok "PaperCut Print Deploy client"; return 0; fi
+    fi
+    warn "PaperCut auto-download from $PAPERCUT_SERVER failed — deferring to the manual section"
+  else
+    log "PaperCut Print Deploy client (native PaperCut — not CUPS)"
+    info "PAPERCUT_SERVER not set — deferring PaperCut to the manual section (download from your server)"
+  fi
+  PAPERCUT_NEEDS_MANUAL=1
+  return 0
+}
+_install_papercut_auto
+
 log "TeX Live (texlive-full — large; please wait)"
 if apt_run "installing texlive-full" install texlive-full; then info "installed: texlive-full"; mark_ok "TeX Live"; else mark_fail "TeX Live" "$LAST_ERR"; fi
 
@@ -1223,6 +1289,20 @@ if prompt_for_file "Gurobi" "$GUROBI_TGZ" \
      "OPTIONAL: download the Gurobi Optimizer Linux tarball from https://www.gurobi.com/downloads/
    (account + license required). Skip to use the free solvers instead."; then
   if run_spin "extracting Gurobi" tar -xzf "$GUROBI_TGZ" -C /opt; then info "extracted: gurobi -> /opt (set GUROBI_HOME + license)"; mark_manual "Gurobi" "extracted to /opt (set GUROBI_HOME + license)"; else mark_fail "Gurobi (extract)" "$LAST_ERR"; fi
+fi
+
+# PaperCut Print Deploy client — hard-coded inclusion (the NATIVE PaperCut client,
+# never a CUPS substitute). Reached here only when PAPERCUT_SERVER was not set, or the
+# unattended auto-download failed. The client is downloaded from YOUR PaperCut Print
+# Deploy server (the trusted first-party source for it).
+if [ "${PAPERCUT_NEEDS_MANUAL:-0}" -eq 1 ]; then
+  log "PaperCut Print Deploy client (manual — from your PaperCut server)"
+  if prompt_for_file "PaperCut Print Deploy client" "$PAPERCUT_TARBALL" \
+       "Open your PaperCut Print Deploy client page (e.g. https://<your-server>:9174) in a
+   browser, download the LINUX client (.tar.gz), and save it to the path below.
+   Tip: set PAPERCUT_SERVER at the top of this script to automate this next time."; then
+    if _papercut_extract_install; then mark_manual "PaperCut Print Deploy client"; else mark_fail "PaperCut Print Deploy client (manual)" "$LAST_ERR"; fi
+  fi
 fi
 
 # =============================================================================

@@ -472,7 +472,21 @@ MAPPING GUIDANCE (research current packages/URLs at generation time)
   * Hard-coded (always installed) -> Adobe Acrobat Pro → Stirling PDF (Docker) + PDF Arranger (APT);
     Advanced IP Scanner → Angry IP Scanner (.deb); Advanced Port Scanner → nmap + RustScan + Zenmap;
     Telegram → telegram-desktop (APT/Flatpak); Terminator → terminator (APT);
-    WindTerm → .deb from GitHub (kingToolfish/WindTerm); WinDirStat → qdirstat + baobab (APT)
+    WindTerm → .deb from GitHub (kingToolfish/WindTerm); WinDirStat → qdirstat + baobab (APT);
+    PaperCut → the NATIVE PaperCut Print Deploy client (see PAPERCUT below) — NEVER the
+    CUPS alternative.
+  * PAPERCUT (hard-coded — install the real client, not a substitute):
+    PaperCut's Linux client is served by the customer's OWN PaperCut Print Deploy
+    server, which IS the trusted first-party source for it (there is no universal
+    public download). The installer exposes PAPERCUT_SERVER + PAPERCUT_PORT (default
+    9174) config vars: when PAPERCUT_SERVER is set it downloads the Linux client
+    tarball from https://<server>:<port>/client/... (verified TLS first, then one
+    --insecure retry for the user's self-signed server) and runs the bundled
+    installer UNATTENDED; otherwise it DEFERS to the manual section at the end and
+    prompts for the Linux client .tar.gz downloaded from that server's client page.
+    Either way the NATIVE PaperCut client is installed — CUPS is never substituted.
+    The $LinuxKB entry for PaperCut therefore carries NO "free alternative" (no F=),
+    so the paid→free rule does not append CUPS.
   * MANUAL (end)           -> VMware Workstation Pro (.bundle from Broadcom —
     support.broadcom.com, free account), SpotPlayer (.deb from spotplayer.ir with
     explicit warning about unverified source), Gurobi (commercial .tar.gz from
@@ -725,6 +739,25 @@ APPLY_SETTINGS.SH STRUCTURE (single self-contained file)
     * Must use `rc=0; func || rc=$?` pattern, not set +e/set -e dance.
     * Does NOT source any external file (it already contains the functions/table).
 
+  ROBUSTNESS REQUIREMENTS (regressions found in real runs — do NOT reintroduce):
+    * QUOTE-AWARE CSV PARSING: parse each data row with a real CSV parser
+      (parse_csv_line -> CSV_FIELDS) that honours double-quoted fields containing
+      commas and "" escapes, and strips a trailing CR (PowerShell writes CRLF). The
+      naive `cut -d,` approach mis-splits fields like the keyboard "en-US, fa"
+      (dropping the 2nd language) and truncates any Notes/value containing a comma.
+    * LOCALE-PROOF NUMBERS for dconf: format the scaling float with `LC_ALL=C awk`
+      so the decimal separator is a DOT. On comma-locales (fa_IR/de_DE) awk prints
+      "1,50", an INVALID GVariant double; `dconf update` then fails to compile the
+      whole /etc/dconf/db/local.d and the failure CASCADES to every other dconf key.
+      Do not emit bare integers for double keys either (use 1.50/2.00, not 1/2).
+    * dconf CLEANUP-ON-FAILURE: if `dconf update` fails after writing a keyfile,
+      remove that keyfile and recompile, so one bad key cannot poison later keys.
+    * KEYBOARD FALLBACK: localectl can fail (headless VM / no systemd-localed / DBus).
+      When it does, write /etc/default/keyboard (XKBLAYOUT=) and
+      /etc/X11/xorg.conf.d/00-keyboard.conf directly (system-wide). Count the step OK
+      if EITHER localectl OR the file-writes succeed. setxkbmap is best-effort for the
+      current session only and must NOT make the step fail (Wayland/headless/root).
+
 OUTPUT FORMAT (from the built-in _apply_* functions in apply_settings.sh)
   Every _apply_* function must print structured output so the user sees exactly
   what succeeded and what failed. Example:
@@ -933,6 +966,8 @@ PART E2 — LINUX DRIVER INSTALLER  (<Target OS>/install_device_drivers.sh)
         - Pinta via Flatpak (removed from noble APT repos)
         - RStudio auto-URL first, manual fallback
         - Conditional PPAs for noble (dotnet/backports, Ulauncher)
+        - PaperCut hard-coded: NATIVE Print Deploy client from PAPERCUT_SERVER
+          (unattended) or the manual prompt — NEVER the CUPS alternative
         - Trusted Sources Guarantee comment block at top of script
   [ ] (Re)generate detect_installed_drivers.ps1 per PART E1 (Win32_PnPSignedDriver
       inventory + $DriverKB classification -> installed_windows_drivers.csv).
@@ -953,6 +988,9 @@ PART E2 — LINUX DRIVER INSTALLER  (<Target OS>/install_device_drivers.sh)
       Ensure it covers all SIX categories incl. Screen|lock_screen_timeout, and that
       ALL GNOME/desktop keys (scaling, location, lock-screen) are applied to every
       user via _dconf_system_set (system-wide dconf), NEVER `gsettings set` as root.
+      Honour the PART D ROBUSTNESS REQUIREMENTS: quote-aware CSV parsing (not cut),
+      LC_ALL=C float formatting for dconf, dconf cleanup-on-failure, and the
+      localectl→/etc/default/keyboard fallback.
   [ ] (Re)generate <Target OS>/execute_all.sh per PART F (chmod +x then run
       settings -> apps -> drivers, continue-on-error, per-stage summary).
   [ ] Update README.md to match.

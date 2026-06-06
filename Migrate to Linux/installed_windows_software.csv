@@ -66,7 +66,7 @@
 "Outlook For Windows","1.2026.512.400","Microsoft Corporation","Store","Native Alternative; Available as WebApp","Thunderbird or Evolution (native); outlook.com (web)","88%","Free (FOSS)","yes"
 "Paint","11.2603.251.0","Microsoft Corporation","Store","Native Alternative","GIMP, Krita, Pinta, or Drawing","200%","Free (FOSS)","yes"
 "Pandoc 3.9","3.9","John MacFarlane","Win32","Available on Linux","","100%","Free (FOSS)","yes"
-"PaperCut Print Deploy Client","1.10.2699","PaperCut Software International Pty Ltd","Win32","Available on Linux","PaperCut ships a native Linux client; free alternative: CUPS (built-in Linux printing) for basic needs","95%","Paid","yes"
+"PaperCut Print Deploy Client","1.10.2699","PaperCut Software International Pty Ltd","Win32","Available on Linux","Install the NATIVE PaperCut client for Linux (Print Deploy / User Client) from your PaperCut server — hard-coded inclusion, do NOT substitute CUPS","95%","Paid","yes"
 "Parsec","150-103a","Parsec Cloud Inc.","Win32","Available on Linux","","95%","Freemium","yes"
 "pgAdmin 4 version 9.10","9.10","The pgAdmin Development Team","Win32","Available on Linux","","100%","Free (FOSS)","yes"
 "pgNow","1.0.17","Red Gate Software Limited","Win32","Native Alternative","pgAdmin 4, DBeaver, or the psql CLI","95%","Free (FOSS)","yes"
