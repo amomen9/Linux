@@ -14,10 +14,16 @@ able to read ONLY this file — and regenerate, with the latest up-to-date data:
   4. windows_settings_extract.ps1            (Windows settings scraper:
                                                   power/lid, display, keyboard,
                                                   telemetry/location, auto-update)
-  5. <Target OS>/settings_config.sh          (per-distro apply functions +
-                                                  dispatch table)
-  6. <Target OS>/apply_settings.sh           (main runner: reads CSV,
-                                                  applies settings via config)
+  5. <Target OS>/apply_settings.sh           (SELF-CONTAINED settings runner: the
+                                                  apply functions + dispatch table
+                                                  + CSV runner in ONE file)
+  6. detect_installed_drivers.ps1            (Windows device-driver inventory +
+                                                  Linux driver/module mapping)
+  7. installed_windows_drivers.csv           (the driver report the script produces)
+  8. <Target OS>/install_device_drivers.sh   (driver installer: live hardware
+                                                  detection + manufacturer firmware)
+  9. <Target OS>/execute_all.sh              (one-shot orchestrator: runs settings,
+                                                  apps, drivers — continue-on-error)
 
 Everything below reflects exactly what these artifacts must do. When data such as
 "the best Linux alternative", version numbers, repository URLs or package names is
@@ -33,15 +39,19 @@ DIRECTORY LAYOUT
     windows_settings_extract.ps1          <- settings scraper (Windows)
     windows_configs.csv                   <- settings CSV (produced by PS1)
     detect_installed_windows_software.ps1 <- the inventory script (Windows)
-    installed_windows_software.csv        <- generated report
+    installed_windows_software.csv        <- generated software report
+    detect_installed_drivers.ps1          <- device-driver inventory script (Windows)
+    installed_windows_drivers.csv         <- generated driver report
     <Target OS>/                          <- one folder per intended target OS
+        execute_all.sh                    <- one-shot orchestrator (settings/apps/drivers)
         install_must_have_software.sh     <- generated software installer
-        settings_config.sh                <- per-distro settings apply functions
-        apply_settings.sh                 <- settings migration runner
+        install_device_drivers.sh         <- generated driver installer
+        apply_settings.sh                 <- self-contained settings runner
+                                             (apply functions + dispatch + runner)
 
   Each subdirectory is named after the intended target host OS, e.g.
   "Linux Mint (Ubuntu)". Add a new target by creating a new subdirectory and
-  generating an installer in it per the INSTALLER SPEC below.
+  generating the installers in it per the INSTALLER SPECS below.
 
 
 WORKFLOW (IMPORTANT — the human runs the PowerShell step)
@@ -525,22 +535,26 @@ POST-INSTALL
 
 
  PART D — SETTINGS MIGRATION SPEC
- (files: windows_settings_extract.ps1, <Target OS>/settings_config.sh,
-         <Target OS>/apply_settings.sh)
+ (files: windows_settings_extract.ps1, <Target OS>/apply_settings.sh)
 
 GOAL
   Extract five categories of common Windows user settings, write them to
   windows_configs.csv (in the parent Migrate to Linux/ directory), then apply
-  them on the target Linux distro using the per-distro scripts.
+  them on the target Linux distro using the per-distro apply_settings.sh.
+
+  NOTE — SINGLE-FILE DESIGN: the apply functions and the dispatch table were
+  formerly split into a separate settings_config.sh that apply_settings.sh sourced.
+  They are now MERGED into apply_settings.sh, which is fully self-contained. Do NOT
+  regenerate a separate settings_config.sh.
 
 DIRECTORY LAYOUT (settings-migration files)
   Migrate to Linux/
     windows_settings_extract.ps1         <- PowerShell script run on Windows
     windows_configs.csv                  <- produced by the PS1, copied here
     <Target OS>/
-        settings_config.sh               <- per-distro _apply_* functions +
-                                            SETTINGS_DISPATCH table
-        apply_settings.sh                <- main runner: reads CSV, dispatches
+        apply_settings.sh                <- self-contained runner: the _apply_*
+                                            functions + SETTINGS_DISPATCH table +
+                                            the CSV-reading runner, all in ONE file
 
 WORKFLOW (settings migration)
   Step S1  Run windows_settings_extract.ps1 on the Windows machine:
@@ -550,8 +564,8 @@ WORKFLOW (settings migration)
            Linux machine.
   Step S3  On the target Linux machine, cd into the distro directory and run:
                sudo ./apply_settings.sh
-           This sources settings_config.sh (same dir), reads ../windows_configs.csv,
-           and calls the appropriate _apply_* function for each row.
+           It reads ../windows_configs.csv and calls the appropriate built-in
+           _apply_* function for each row (no external file is sourced).
 
 CATEGORY 1 — POWER SETTINGS (lid-close action)
 
@@ -565,7 +579,7 @@ CATEGORY 1 — POWER SETTINGS (lid-close action)
         Power | lid_close_on_battery | <action>
       where <action> ∈ {do nothing, sleep, hibernate, shut down, turn off display}.
 
-  Linux apply (settings_config.sh → _apply_power_lid):
+  Linux apply (apply_settings.sh → _apply_power_lid):
     * Maps Windows action to logind action:
         do nothing → ignore, sleep → suspend, hibernate → hibernate,
         shut down → poweroff, turn off display → lock.
@@ -642,24 +656,28 @@ CATEGORY 5 — AUTO-UPDATE SERVICE FILES
     * systemctl daemon-reload.
     * systemctl enable --now system_update.timer.
 
-SETTINGS_CONFIG.SH STRUCTURE
-  The file is SOURCED by apply_settings.sh in the same distro directory. It must:
-    * Define output helpers:
+APPLY_SETTINGS.SH STRUCTURE (single self-contained file)
+  apply_settings.sh holds EVERYTHING — there is no separate settings_config.sh.
+  Generate it as one file containing, in order:
+
+  A) Apply-function block (formerly settings_config.sh):
+    * Output helpers:
         _cfg_ok()    — green  [OK]    to stdout
         _cfg_info()  — dim    [INFO]  to stdout
         _cfg_error() — red    [ERROR] to stderr
-    * Define one _apply_* function per config key (see dispatch table below).
-      Each function takes the WindowsValue column as argument $1 and returns
-      0 on success, non-zero on failure.
-      Special functions: _apply_power_lid takes a second argument (logind key),
-      _apply_keyboard_layout takes a second argument (input languages string).
-    * Define the SETTINGS_DISPATCH associative array:
-        ["Category|ConfigKey"] = "function_name"
-    * Define the POWER_LOGIND_KEY associative array for lid-close key mapping.
+    * One _apply_* function per config key (see dispatch table below). Each takes
+      the WindowsValue column as argument $1 and returns 0 on success, non-zero on
+      failure. Special functions: _apply_power_lid takes a second argument (logind
+      key); _apply_keyboard_layout takes a second argument (input languages string).
+    * The SETTINGS_DISPATCH associative array:
+        ["Category|ConfigKey"]="function_name"
+      CRITICAL: associative-array literals need [key]=value with NO spaces around
+      '='. Writing `["k"]  ="v"` silently produces broken keys like `["k"]` and the
+      runner then matches NOTHING and applies nothing. Keep `[key]="value"` tight.
+    * The POWER_LOGIND_KEY associative array for lid-close key mapping.
 
-APPLY_SETTINGS.SH STRUCTURE
-  The main runner (same distro directory). It must:
-    * Source settings_config.sh from $SCRIPT_DIR.
+  B) Runner block:
+    * require_root (verify EUID 0; exit otherwise).
     * Read ../windows_configs.csv from the parent Migrate to Linux/ directory.
     * Parse the CSV header to get column indices (robust against reordering).
     * Iterate each data row, look up the dispatch key, call the function.
@@ -667,8 +685,9 @@ APPLY_SETTINGS.SH STRUCTURE
     * Exit with code 1 if any step failed.
     * Must NOT use set -o pipefail (causes silent aborts).
     * Must use `rc=0; func || rc=$?` pattern, not set +e/set -e dance.
+    * Does NOT source any external file (it already contains the functions/table).
 
-OUTPUT FORMAT (from _apply_* functions in settings_config.sh)
+OUTPUT FORMAT (from the built-in _apply_* functions in apply_settings.sh)
   Every _apply_* function must print structured output so the user sees exactly
   what succeeded and what failed. Example:
 
@@ -685,6 +704,176 @@ OUTPUT FORMAT (from _apply_* functions in settings_config.sh)
     [OK]    purged: ubuntu-report
 
     [ERROR] xrandr not available or no monitors
+
+
+===============================================================================
+ PART E — DEVICE DRIVER MIGRATION SPEC
+ (files: detect_installed_drivers.ps1, installed_windows_drivers.csv,
+         <Target OS>/install_device_drivers.sh)
+===============================================================================
+
+GOAL
+  Inventory EVERY device driver on the Windows PC and rate how each device is
+  handled on Linux; then, on the target Linux machine, install the Linux driver
+  for every device that needs one beyond the in-box kernel — downloading from the
+  manufacturer where required.
+
+KEY PRINCIPLE (do not violate)
+  On Linux, the AUTHORITATIVE source of truth for drivers is the LIVE hardware
+  (lspci/lsusb/lscpu/DMI on the target), NOT the Windows device names — those don't
+  map cleanly to Linux modules. The CSV is a cross-reference/report; the installer
+  detects hardware itself and installs accordingly. Absent hardware => "skipped",
+  never "failed".
+
+
+PART E1 — POWERSHELL DRIVER INVENTORY  (detect_installed_drivers.ps1)
+
+  PARAMETERS
+    -OutputPath <path>           default: installed_windows_drivers.csv beside script
+    -IncludeVirtualDevices       switch, default off (keep ROOT\/SW\/SWD\/SWC\ etc.)
+    -IncludeMicrosoftInbox       switch, default off (keep generic MS in-box drivers)
+
+  COLLECTION (machine-derived; read live, never hand-authored)
+    Enumerate Get-CimInstance Win32_PnPSignedDriver (fall back to Get-WmiObject).
+    Guard EVERY property access with a Safe-Property try/catch (DeviceName,
+    DeviceClass, Manufacturer, DriverVersion, DriverDate, DriverProviderName,
+    HardWareID, DeviceID) so missing properties never throw.
+
+  FILTERING (noise removal)
+    Parse the bus prefix from the Hardware ID (PCI / USB / ACPI / HID / BTHENUM /
+    ROOT / SW / SWD / SWC ...). By default DROP virtual/software buses
+    (ROOT, SW, SWD, SWC, STORAGE, UMB, VMS, or empty) unless -IncludeVirtualDevices.
+    By default also drop generic Microsoft in-box drivers on non-PCI/USB buses
+    unless -IncludeMicrosoftInbox. De-duplicate by (Device Name + Hardware ID).
+
+  THE 12 CSV COLUMNS (exact header text, in this order)
+    Device Name            (machine)
+    Device Class           (machine: DISPLAY, NET, BLUETOOTH, PRINTER, ...)
+    Manufacturer           (machine)
+    Driver Version         (machine)
+    Driver Date            (machine: yyyy-MM-dd)
+    Driver Provider        (machine)
+    Hardware ID            (machine: PCI\VEN_xxxx&DEV_xxxx / USB\VID_xxxx&PID_xxxx)
+    Linux Driver Status    (curated flags — see below)
+    Linux Driver / Module  (curated: kernel module or package name)
+    Vendor Download        (curated: manufacturer Linux page; only when a vendor
+                            download is actually needed)
+    Notes                  (curated)
+    Must install on Linux  (DERIVED in code: yes | no)
+
+  LINUX DRIVER STATUS FLAGS — a cell may hold several, ALWAYS in this order:
+    In-Kernel ; Generic Driver ; Firmware Required ; Kernel Module (DKMS) ;
+    Proprietary Driver ; Vendor Driver ; Not Applicable ; Needs Review
+
+  CLASSIFICATION ($DriverKB) — the single place curated data lives
+    An ordered rule array; first matching rule wins (specific before generic).
+    Match on: Device Class (regex), the PCI/USB VENDOR ID extracted from the
+    Hardware ID (VEN_/VID_ -> 4 hex, e.g. 10DE=NVIDIA, 8086=Intel, 1002=AMD,
+    10EC=Realtek, 14E4=Broadcom, 168C=Qualcomm Atheros, 14C3=MediaTek), the Device
+    Name (regex), and optionally the bus prefix (e.g. BTHENUM). Each rule yields the
+    Status flags, the Linux Driver/Module, the Vendor Download URL and a Note.
+    Representative mappings (research current modules/packages at generation time):
+      * NVIDIA GPU (Display, 10DE)   -> Proprietary Driver: nvidia-driver-NNN
+      * AMD GPU (Display, 1002)      -> In-Kernel amdgpu + Mesa
+      * Intel GPU (Display, 8086)    -> In-Kernel i915/xe + Mesa + VA-API
+      * Intel Wi-Fi (Net, 8086)      -> In-Kernel iwlwifi + linux-firmware
+      * Realtek Wi-Fi (Net, 10EC)    -> Kernel Module (DKMS) rtw88/rtw89 or rtl88x2bu
+      * Realtek Ethernet (Net, 10EC) -> In-Kernel r8169 (r8168-/r8125-dkms fallback)
+      * Broadcom Wi-Fi (Net, 14E4)   -> Proprietary broadcom-sta-dkms (wl)
+      * Qualcomm/MediaTek Wi-Fi      -> In-Kernel ath*/mt76 + firmware
+      * Bluetooth                    -> In-Kernel btusb + linux-firmware
+      * HD Audio                     -> In-Kernel snd_hda_intel (ALSA/PipeWire)
+      * Webcam (UVC)                 -> In-Kernel uvcvideo
+      * NVMe / AHCI                  -> In-Kernel nvme / ahci
+      * CPU (Processor)              -> intel-microcode / amd64-microcode
+      * HP printer/scanner           -> Vendor Driver hplip
+      * Other printer                -> Generic CUPS driverless / vendor PPD
+      * Fingerprint (Biometric)      -> Vendor Driver fprintd + libfprint
+      * System firmware/UEFI         -> Firmware Required: fwupd + LVFS
+      * Paired Bluetooth periph (BTHENUM) / monitors -> Not Applicable
+    Unknown devices => Status "Needs Review", Driver "run lspci -nnk / lsusb".
+
+  "MUST INSTALL ON LINUX" (computed, not hand-set)
+    yes when the Status contains "Proprietary Driver" OR "Kernel Module (DKMS)" OR
+    "Vendor Driver" — i.e. something must be actively installed beyond the in-box
+    kernel + the base linux-firmware package. Otherwise no (In-Kernel / firmware-
+    covered / Not Applicable rows are "no").
+
+  OUTPUT + SUMMARY
+    Export the 12 columns to CSV (UTF-8, -NoTypeInformation). Print totals: devices
+    listed, "Must install" count, and a breakdown by status category.
+
+
+PART E2 — LINUX DRIVER INSTALLER  (<Target OS>/install_device_drivers.sh)
+
+  EXECUTION MODEL  (identical conventions to install_must_have_software.sh)
+    * Bash, run as ROOT. set -uo pipefail. Never abort on one failure; record
+      OK/FAIL/SKIP and print a summary.
+    * SAME clean-UI machinery: save the terminal on fd 3 (exec 3>&1 4>&2), send all
+      command noise to a log (exec >>"$LOG" 2>&1), print only curated "==> step"
+      lines + a live spinner; APT progress via APT::Status-Fd. TWO logs:
+      driver-install.log (verbose) and driver-install-results.log (one line/step).
+    * Auto-detect CODENAME/UBU_VER, DEB_ARCH, KARCH — nothing hard-coded.
+
+  LIVE HARDWARE DETECTION (authoritative)
+    Ensure pciutils + usbutils exist, then capture once: lspci -nn, lspci -nnk,
+    lsusb, CPU vendor (/proc/cpuinfo), DMI sys_vendor/product_name. Derive boolean
+    presence flags (NVIDIA/AMD/Intel GPU; Realtek/Broadcom NIC & USB Wi-Fi; HP;
+    fingerprint vendor IDs 06cb/27c6/138a/08ff/1c7a; printer) by grepping lspci/lsusb.
+
+  CROSS-REFERENCE (optional)
+    If ../installed_windows_drivers.csv exists, list the device names whose last
+    field is "yes" (rows flagged "Must install on Linux"). Robust against embedded
+    quotes and the CRLF line endings PowerShell writes. Informational only.
+
+  WHAT IT INSTALLS (gate every step on a detection flag)
+    1. Base: linux-firmware, pciutils, usbutils, lshw, build-essential, dkms,
+       linux-headers-$(uname -r), ubuntu-drivers-common, fwupd. Warn if Secure Boot
+       is enabled (mokutil --sb-state) — DKMS/NVIDIA modules need MOK enrollment.
+    2. GPU: NVIDIA -> ubuntu-drivers install (NVIDIA's packaged binary; fall back to
+       autoinstall, then nvidia-driver-NNN metapackage). AMD -> Mesa + VA-API/Vulkan
+       (amdgpu is in-kernel). Intel -> Mesa + intel-media-va-driver.
+    3. Network: Realtek 2.5GbE -> r8125-dkms; Realtek GbE -> r8168-dkms fallback;
+       Broadcom Wi-Fi -> broadcom-sta-dkms (blacklist b43/brcmsmac/bcma/ssb);
+       Realtek USB Wi-Fi -> rtl88x2bu-dkms / rtl8812au-dkms. Everything else (Intel/
+       Atheros/MediaTek Wi-Fi + all Bluetooth) is in-kernel + linux-firmware.
+    4. CPU microcode: intel-microcode / amd64-microcode by CPU vendor.
+    5. Printers/scanners: cups + printer-driver-all + ipp-usb; sane-utils; hplip if
+       an HP device is present. Enable cups.
+    6. Fingerprint: fprintd + libpam-fprintd if a known reader VID is present.
+    7. MANUFACTURER FIRMWARE (the genuine vendor-download path): fwupdmgr
+       enable-remote lvfs; refresh --force; get-updates; update -y --no-reboot-check.
+       LVFS serves firmware uploaded & signed by Lenovo/Dell/HP/Intel/etc.
+    8. OPTIONAL manual vendor installers LAST, behind a skippable prompt: NVIDIA .run
+       from nvidia.com; AMDGPU-PRO from amd.com. The packaged drivers already cover
+       these — the prompt is for users who specifically want the vendor's installer.
+
+  TRUSTED SOURCES (same hard rule as PART C)
+    Distro APT mirrors (GPG-signed); NVIDIA's driver from Ubuntu restricted; fwupd
+    LVFS (manufacturer-signed firmware). Optional .run/PRO installers print the exact
+    vendor URL (nvidia.com / amd.com) and are user-verified. Include the "TRUSTED
+    SOURCES GUARANTEE" comment block at the top.
+
+  SUMMARY
+    Print Installed/Manual/Skipped(n-a)/Failed counts; list skipped (hardware absent)
+    and failed items; recommend a REBOOT (GPU/DKMS modules, microcode, firmware).
+
+
+===============================================================================
+ PART F — ONE-SHOT ORCHESTRATOR  (<Target OS>/execute_all.sh)
+===============================================================================
+  A single entry point that runs the whole migration on the target machine.
+    * Bash; cd to its own dir (SCRIPT_DIR) so child scripts resolve ../*.csv.
+    * require root (children each need root).
+    * For each stage IN ORDER — settings, apps, drivers —
+        apply_settings.sh, install_must_have_software.sh, install_device_drivers.sh:
+      chmod +x the script, then run "./<script>" inheriting the terminal (each child
+      has its own clean UI + logs).
+    * CONTINUE-ON-ERROR: capture each child's exit code; a failure is recorded but
+      NEVER stops the remaining stages. A missing script is "MISSING", not a failure.
+    * Print a per-stage OK/FAILED/MISSING summary with exit codes + elapsed time;
+      exit non-zero iff any stage failed.
+  Run with:  sudo ./execute_all.sh
 
 
 ===============================================================================
@@ -707,10 +896,28 @@ OUTPUT FORMAT (from _apply_* functions in settings_config.sh)
         - RStudio auto-URL first, manual fallback
         - Conditional PPAs for noble (dotnet/backports, Ulauncher)
         - Trusted Sources Guarantee comment block at top of script
+  [ ] (Re)generate detect_installed_drivers.ps1 per PART E1 (Win32_PnPSignedDriver
+      inventory + $DriverKB classification -> installed_windows_drivers.csv).
+  [ ] Ask the human to run it; from the live hardware (NOT the CSV), (re)generate
+      <Target OS>/install_device_drivers.sh per PART E2. Ensure:
+        - live detection via lspci/lsusb/lscpu/DMI is authoritative; absent hardware
+          is "skipped", not "failed"
+        - NVIDIA via ubuntu-drivers; AMD/Intel Mesa+VA-API; Realtek/Broadcom DKMS;
+          intel-/amd64-microcode; hplip; fprintd
+        - manufacturer firmware via fwupd/LVFS (refresh + get-updates + update)
+        - optional NVIDIA .run / AMDGPU-PRO behind a skippable prompt, LAST
+        - Secure Boot (mokutil) warning for DKMS/NVIDIA modules
+        - Trusted Sources Guarantee comment block at top of script
+  [ ] (Re)generate <Target OS>/apply_settings.sh as ONE self-contained file
+      (apply functions + SETTINGS_DISPATCH + runner). Do NOT emit a separate
+      settings_config.sh. Verify the SETTINGS_DISPATCH literal uses [key]="value"
+      with NO spaces around '=' (spaced literals silently break every lookup).
+  [ ] (Re)generate <Target OS>/execute_all.sh per PART F (chmod +x then run
+      settings -> apps -> drivers, continue-on-error, per-stage summary).
   [ ] Update README.md to match.
-  [ ] Confirm the installer hard-codes NO architecture or release — codename, DEB_ARCH
-      and KARCH are all auto-detected on the target and used in every repo/URL/package.
-  [ ] Validate: PowerShell parses (AST), bash installer passes `bash -n`.
+  [ ] Confirm the installers hard-code NO architecture or release — codename,
+      DEB_ARCH and KARCH are all auto-detected on the target and used everywhere.
+  [ ] Validate: PowerShell parses (AST), every bash script passes `bash -n`.
   [ ] Confirm SpotPlayer remains MANUAL only with explicit user warning about
       unverified source.
 ===============================================================================

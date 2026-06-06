@@ -2,10 +2,11 @@
 # -----------------------------------------------------------------------------
 # Human-readable reference of the Windows settings extracted by
 # windows_settings_extract.ps1 and the corresponding Linux commands
-# applied by apply_settings.sh (via settings_config.sh).
+# applied by apply_settings.sh.
 #
 # This file is documentation only. The actual logic lives in
-# <distro>/settings_config.sh (e.g. Linux Mint (Ubuntu)/settings_config.sh).
+# <distro>/apply_settings.sh (e.g. Linux Mint (Ubuntu)/apply_settings.sh) — a
+# single self-contained script (the former settings_config.sh is merged into it).
 # Each distro directory gets its own copy.
 # -----------------------------------------------------------------------------
 
