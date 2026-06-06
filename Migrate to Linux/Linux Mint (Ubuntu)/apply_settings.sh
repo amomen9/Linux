@@ -50,6 +50,38 @@ die() {
     exit 1
 }
 
+# Trim leading/trailing whitespace.
+_trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"; printf '%s' "$s"; }
+
+# Parse ONE RFC4180-style CSV line into the global array CSV_FIELDS, honouring
+# double-quoted fields that contain commas and "" escapes. The previous `cut -d,`
+# approach mis-split quoted fields like "en-US, fa" (dropping the 2nd language) and
+# truncated Notes containing commas — this parser does not.
+CSV_FIELDS=()
+parse_csv_line() {
+    local line="${1%$'\r'}"          # strip a trailing CR (PowerShell writes CRLF)
+    CSV_FIELDS=()
+    local field="" in_q=0 i ch nx n=${#line}
+    for (( i=0; i<n; i++ )); do
+        ch="${line:i:1}"
+        if [ "$in_q" -eq 1 ]; then
+            if [ "$ch" = '"' ]; then
+                nx="${line:i+1:1}"
+                if [ "$nx" = '"' ]; then field+='"'; i=$((i+1)); else in_q=0; fi
+            else
+                field+="$ch"
+            fi
+        else
+            case "$ch" in
+                '"') in_q=1 ;;
+                ',') CSV_FIELDS+=("$field"); field="" ;;
+                *)   field+="$ch" ;;
+            esac
+        fi
+    done
+    CSV_FIELDS+=("$field")
+}
+
 require_root() {
     if [ "$(id -u)" -ne 0 ]; then
         printf '\033[1;31mThis script must run as root. Use: sudo %s\033[0m\n' "$0" >&2
@@ -107,14 +139,20 @@ _dconf_system_set() {  # _dconf_system_set SCHEMA_PATH KEY GVARIANT_VALUE
     fi
 
     # Deterministic filename per (schema,key) so re-runs overwrite, not duplicate.
-    local fname
+    local fname keyfile
     fname="$(printf '%s_%s' "$schema" "$key" | tr '/ ' '__' | tr -cd 'A-Za-z0-9_.-')"
-    printf '[%s]\n%s=%s\n' "$schema" "$key" "$value" > "${_DCONF_DB_DIR}/50-migrate-${fname}"
+    keyfile="${_DCONF_DB_DIR}/50-migrate-${fname}"
+    printf '[%s]\n%s=%s\n' "$schema" "$key" "$value" > "$keyfile"
 
     if dconf update 2>/dev/null; then
         return 0
     else
-        _cfg_error "dconf update failed after writing ${schema}/${key}"
+        # A single malformed keyfile makes `dconf update` recompile-fail for the
+        # WHOLE db, which would cascade to every later key. Remove the one we just
+        # wrote and recompile so the rest of the run still succeeds.
+        rm -f "$keyfile" 2>/dev/null || true
+        dconf update 2>/dev/null || true
+        _cfg_error "dconf update failed for ${schema}/${key} (reverted this key)"
         return 1
     fi
 }
@@ -232,10 +270,13 @@ _apply_display_scaling() {
         _cfg_info "no scaling extracted — defaulting to 100%"
     fi
 
+    # IMPORTANT: force the C locale so the decimal separator is a DOT, not a comma.
+    # On locales like fa_IR/de_DE, awk prints "1,50", which is an invalid GVariant
+    # double — `dconf update` then fails to compile the whole local.d db, cascading
+    # the failure to every other dconf key in the run. "%.2f" always yields a valid
+    # double (e.g. 1.50, 2.00), so no integer overrides are needed.
     local scale_factor
-    scale_factor="$(awk "BEGIN {printf \"%.2f\", ${raw}/100}")"
-    [ "$raw" -eq 100 ] && scale_factor=1
-    [ "$raw" -eq 200 ] && scale_factor=2
+    scale_factor="$(LC_ALL=C awk "BEGIN {printf \"%.2f\", ${raw}/100}")"
 
     _cfg_info "Windows was at ${scaling_pct} → scale factor ${scale_factor} (applied for all users)"
 
@@ -312,27 +353,41 @@ _apply_keyboard_layout() {
     local layout_str; layout_str="$(IFS=','; echo "${layouts[*]}")"
     _cfg_info "mapped to XKB: $layout_str"
 
-    if command -v localectl >/dev/null 2>&1; then
-        if localectl set-x11-keymap "$layout_str" 2>/dev/null; then
-            _cfg_ok "localectl set-x11-keymap $layout_str"
-        else
-            _cfg_error "localectl failed"
-            any_error=1
-        fi
+    # Apply system-wide (ALL USERS). Prefer localectl; if it fails (no
+    # systemd-localed, headless VM, D-Bus issues) write the very files localectl
+    # would have written, so the layout still reaches every user.
+    local applied=0
+    if command -v localectl >/dev/null 2>&1 && localectl set-x11-keymap "$layout_str" 2>/dev/null; then
+        _cfg_ok "localectl set-x11-keymap $layout_str (all users)"
+        applied=1
     else
-        _cfg_error "localectl not available"
-        any_error=1
+        _cfg_info "localectl unavailable/failed — writing keyboard config files directly"
+        # /etc/default/keyboard — read by console-setup and Xorg (system-wide).
+        if [ -f /etc/default/keyboard ] && grep -q '^XKBLAYOUT=' /etc/default/keyboard 2>/dev/null; then
+            if sed -i "s|^XKBLAYOUT=.*|XKBLAYOUT=\"$layout_str\"|" /etc/default/keyboard 2>/dev/null; then
+                _cfg_ok "updated XKBLAYOUT in /etc/default/keyboard (all users)"; applied=1
+            else _cfg_error "failed to update /etc/default/keyboard"; fi
+        else
+            if printf 'XKBMODEL="pc105"\nXKBLAYOUT="%s"\nXKBVARIANT=""\nXKBOPTIONS=""\nBACKSPACE="guess"\n' "$layout_str" > /etc/default/keyboard 2>/dev/null; then
+                _cfg_ok "wrote /etc/default/keyboard (all users)"; applied=1
+            else _cfg_error "failed to write /etc/default/keyboard"; fi
+        fi
+        # /etc/X11/xorg.conf.d/00-keyboard.conf — system-wide X keyboard layout.
+        mkdir -p /etc/X11/xorg.conf.d 2>/dev/null
+        if printf 'Section "InputClass"\n        Identifier "system-keyboard"\n        MatchIsKeyboard "on"\n        Option "XkbLayout" "%s"\nEndSection\n' "$layout_str" > /etc/X11/xorg.conf.d/00-keyboard.conf 2>/dev/null; then
+            _cfg_ok "wrote /etc/X11/xorg.conf.d/00-keyboard.conf (all users)"; applied=1
+        else
+            _cfg_info "could not write xorg.conf.d keyboard file (non-fatal)"
+        fi
     fi
+    [ "$applied" -eq 1 ] || any_error=1
 
-    if command -v setxkbmap >/dev/null 2>&1; then
-        if setxkbmap "$layout_str" 2>/dev/null; then
-            _cfg_ok "setxkbmap $layout_str (current session)"
-        else
-            _cfg_error "setxkbmap failed"
-            any_error=1
-        fi
+    # Best-effort: also apply to the CURRENT X session for immediacy. This is not
+    # counted as a failure — it can't work on Wayland or a headless/root session.
+    if command -v setxkbmap >/dev/null 2>&1 && setxkbmap "$layout_str" 2>/dev/null; then
+        _cfg_ok "setxkbmap $layout_str (current session)"
     else
-        _cfg_info "setxkbmap not available (Wayland?) — skip"
+        _cfg_info "setxkbmap not applied to this session (Wayland/headless/root) — takes effect on next login"
     fi
 
     return $any_error
@@ -667,12 +722,13 @@ row_num=1
 for line in "${data_lines[@]}"; do
     row_num=$((row_num + 1))
 
-    # Parse CSV row fields by column index
-    category="$(echo   "$line" | cut -d',' -f$((col_idx["Category"] + 1))      | tr -d '"' | xargs)"
-    config_key="$(echo "$line" | cut -d',' -f$((col_idx["ConfigKey"] + 1))     | tr -d '"' | xargs)"
-    win_value="$(echo  "$line" | cut -d',' -f$((col_idx["WindowsValue"] + 1))  | tr -d '"')"
-    lin_cmd="$(echo    "$line" | cut -d',' -f$((col_idx["LinuxCommand"] + 1))  | tr -d '"')"
-    notes="$(echo      "$line" | cut -d',' -f$((col_idx["Notes"] + 1))         | tr -d '"')"
+    # Parse CSV row fields by column index (quote-aware: keeps commas inside fields).
+    parse_csv_line "$line"
+    category="$(_trim   "${CSV_FIELDS[${col_idx[Category]}]:-}")"
+    config_key="$(_trim "${CSV_FIELDS[${col_idx[ConfigKey]}]:-}")"
+    win_value="${CSV_FIELDS[${col_idx[WindowsValue]}]:-}"
+    lin_cmd="${CSV_FIELDS[${col_idx[LinuxCommand]}]:-}"
+    notes="${CSV_FIELDS[${col_idx[Notes]}]:-}"
 
     echo "------------------------------------------------------------------------------"
     echo "[$category] $config_key"
