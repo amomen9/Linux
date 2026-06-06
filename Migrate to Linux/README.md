@@ -243,6 +243,21 @@ sudo ./"Linux Mint (Ubuntu)/install_must_have_software.sh"
 The installer is **unattended and idempotent**, with a clean progress display,
 auto-detection of the target machine (codename + architecture), and two log files.
 
+**PaperCut (hard-coded — the native client, never a substitute).** PaperCut's Linux
+client (Print Deploy / User Client) is served by **your own PaperCut server**, which is
+the trusted first-party source for it. Set `PAPERCUT_SERVER` (host) and optionally
+`PAPERCUT_PORT` (default `9174`) at the top of the script — or as env vars — to install
+it **unattended**:
+
+```bash
+sudo PAPERCUT_SERVER=printdeploy.example.com ./install_must_have_software.sh
+```
+
+If `PAPERCUT_SERVER` is not set (or the auto-download fails), the installer **defers to
+the manual prompt at the end** and asks for the Linux client `.tar.gz` downloaded from
+your server's client page (`https://<server>:9174`). Either way the **native PaperCut
+client is installed — CUPS is never substituted**.
+
 At the end of the automated installation, the script **prompts** the user to import
 fonts from a directory. The font import mechanism:
 

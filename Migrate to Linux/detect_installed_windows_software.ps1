@@ -371,7 +371,7 @@ $LinuxKB = @(
     @{P='Legion Arena';                  S='Not Available; Native Alternative';                  A='Steam / Lutris / Heroic for games; LenovoLegionLinux for hardware control'; C=60; Pr='Free'}
     @{P='Samsung Magician';              S='Not Available; Native Alternative';                  A='smartmontools (SMART), nvme-cli, fwupd; Samsung Magician DC (bootable) for firmware'; C=55; Pr='Free (FOSS)'}
     @{P='Samsung Account';               S='Not Available; Available as WebApp';                 A='account.samsung.com (web)'; C=70; Pr='Free'}
-    @{P='PaperCut';                      S='Available on Linux';                                 A='PaperCut ships a native Linux client'; C=95; Pr='Paid'; F='CUPS (built-in Linux printing) for basic needs'}
+    @{P='PaperCut';                      S='Available on Linux';                                 A='Install the NATIVE PaperCut client for Linux (Print Deploy / User Client) from your PaperCut server — hard-coded inclusion, do NOT substitute CUPS'; C=95; Pr='Paid'}
     @{P='Psiphon';                       S='Native Alternative';                                 A='Proton VPN, or Tor Browser / obfs4 bridges'; C=90; Pr='Freemium'}
 
     # --- More communication / accounts ---
