@@ -89,7 +89,7 @@ _capture_reason() {  # _capture_reason FILE RC
 _progress() {  # _progress ITER "label" "detail"
   local w=$(( ${COLUMNS:-100} - 16 )); [ "$w" -lt 30 ] && w=70
   local d="$3"
-  [ -n "$d" ] && d=" — $(printf '%s' "$d" | tr -d '\r' | tr -s ' ' | cut -c1-"$w")"
+  [ -n "$d" ] && d=" — $(printf '%s' "$d" | tr -d '\r\n' | tr -s ' ' | cut -c1-"$w")"
   printf '\r\033[K       \033[2m[%s]\033[0m %s%s' "${SPIN:$(( $1 % 4 )):1}" "$2" "$d" >&3
 }
 
@@ -192,6 +192,24 @@ prompt_for_file() {  # prompt_for_file "App" /path "instructions"
       *)    echo "  Please type 'yes' or 'skip'." >&3 ;;
     esac
   done
+}
+
+# Check if a manually-installed application is already present.
+# Usage: _check_manual_app "AppName" "/path/to/check" ["command_to_check"]
+# Returns 0 if already installed (prints info message), 1 if not.
+_check_manual_app() {
+  local name="$1" path="$2" cmd="${3:-}"
+  # Check by file/directory path
+  if [ -f "$path" ] || [ -d "$path" ]; then
+    info "$name is already installed at $path (may not be the latest version)"
+    return 0
+  fi
+  # Check by command presence
+  if [ -n "$cmd" ] && have_cmd "$cmd" 2>/dev/null; then
+    info "$name is already installed — '$(command -v "$cmd")' (may not be the latest version)"
+    return 0
+  fi
+  return 1
 }
 
 # ----------------------------- environment -----------------------------------
@@ -466,7 +484,9 @@ log "Optional vendor installers (download from the manufacturer — skippable)"
 
 if $HAS_NVIDIA; then
   NV_RUN="$DOWNLOAD_DIR/NVIDIA-Linux.run"
-  if prompt_for_file "NVIDIA .run (from nvidia.com)" "$NV_RUN" \
+  if _check_manual_app "NVIDIA .run (from nvidia.com)" "" "nvidia-smi"; then
+    mark_ok "NVIDIA .run"
+  elif prompt_for_file "NVIDIA .run (from nvidia.com)" "$NV_RUN" \
        "OPTIONAL: the proprietary NVIDIA driver is already installed via ubuntu-drivers.
    Only use this if you specifically want NVIDIA's standalone installer. Download the
    Linux ${KARCH} driver .run from https://www.nvidia.com/Download/index.aspx"; then
@@ -479,7 +499,9 @@ fi
 
 if $HAS_AMDGPU; then
   AMD_TGZ="$DOWNLOAD_DIR/amdgpu-pro.tar.xz"
-  if prompt_for_file "AMDGPU-PRO (from amd.com)" "$AMD_TGZ" \
+  if _check_manual_app "AMDGPU-PRO (from amd.com)" "" "amdgpu-pro"; then
+    mark_ok "AMDGPU-PRO"
+  elif prompt_for_file "AMDGPU-PRO (from amd.com)" "$AMD_TGZ" \
        "OPTIONAL: the in-kernel amdgpu driver + Mesa are already installed and are the
    recommended stack. AMDGPU-PRO only helps specific pro/compute workloads. Download
    the AMDGPU-PRO tarball for Ubuntu $UBU_VER from https://www.amd.com/en/support"; then
