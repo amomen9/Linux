@@ -1,7 +1,7 @@
 # settings_config.txt
 # -----------------------------------------------------------------------------
 # Human-readable reference of the Windows settings extracted by
-# windows_settings_extract.ps1 and the corresponding Linux commands
+# C_detect_windows_settings.ps1 and the corresponding Linux commands
 # applied by apply_settings.sh.
 #
 # This file is documentation only. The actual logic lives in
@@ -108,10 +108,10 @@ Linux apply:
 WORKFLOW SUMMARY
 ==============================================================================
 
-  Step 1 (Windows):  powershell -ExecutionPolicy Bypass -File windows_settings_extract.ps1
-                     → produces windows_configs.csv
+  Step 1 (Windows):  powershell -ExecutionPolicy Bypass -File C_detect_windows_settings.ps1
+                     → produces C_windows_configs.csv
 
-  Step 2 (copy):     Copy windows_configs.csv to the Migrate to Linux/ directory
+  Step 2 (copy):     Copy C_windows_configs.csv to the Migrate to Linux/ directory
                      on your Linux machine.
 
   Step 3 (Linux):    sudo ./apply_settings.sh

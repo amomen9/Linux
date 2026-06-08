@@ -29,7 +29,7 @@ else
 fi
 
 # Always operate from this script's own directory so the child scripts resolve
-# their relative paths (e.g. ../windows_configs.csv, ../installed_*_drivers.csv).
+# their relative paths (e.g. ../C_windows_configs.csv, ../installed_*_drivers.csv).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR" || { echo "Cannot cd to script directory: $SCRIPT_DIR" >&2; exit 1; }
 

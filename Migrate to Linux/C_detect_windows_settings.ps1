@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
     Extracts common Windows user-facing settings and writes them to
-    windows_configs.csv for later application on Linux.
+    C_windows_configs.csv for later application on Linux.
 
 .DESCRIPTION
     Extracts six categories of settings:
@@ -12,13 +12,13 @@
       5. (placeholder) scheduled auto-update service/timer mapping
       6. Lock-screen / blank timeout (secure screensaver or display-off idle)
 
-    Output is written to windows_configs.csv (UTF-8, -NoTypeInformation).
+    Output is written to C_windows_configs.csv (UTF-8, -NoTypeInformation).
 
     This script does NOT require admin rights. It reads current-user
     settings directly from the registry and WMI.
 
 .PARAMETER OutputPath
-    CSV path. Default: windows_configs.csv beside this script.
+    CSV path. Default: C_windows_configs.csv beside this script.
 #>
 
 [CmdletBinding()]
@@ -33,7 +33,7 @@ if (-not $OutputPath) {
     if (-not $scriptDir -and $PSCommandPath)            { $scriptDir = Split-Path -Parent $PSCommandPath }
     if (-not $scriptDir -and $MyInvocation.MyCommand.Path) { $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path }
     if (-not $scriptDir)                                 { $scriptDir = (Get-Location).Path }
-    $OutputPath = Join-Path $scriptDir 'windows_configs.csv'
+    $OutputPath = Join-Path $scriptDir 'C_windows_configs.csv'
 }
 
 # Safely access a property that may not exist.

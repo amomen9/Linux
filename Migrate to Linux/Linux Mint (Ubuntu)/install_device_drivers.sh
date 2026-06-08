@@ -21,8 +21,8 @@
 # Unlike the Windows side, the AUTHORITATIVE source of truth here is the live
 # hardware (lspci/lsusb/lscpu/DMI) — Windows device names don't map cleanly to
 # Linux modules. The script therefore DETECTS the hardware on this machine and
-# installs accordingly, and ALSO cross-references ../installed_windows_drivers.csv
-# (produced by detect_installed_drivers.ps1) to show which Windows-flagged devices
+# installs accordingly, and ALSO cross-references ../A_installed_windows_drivers.csv
+# (produced by A_detect_installed_drivers.ps1) to show which Windows-flagged devices
 # it handled.
 #
 # Run as root:   sudo ./install_device_drivers.sh
@@ -39,7 +39,7 @@ OK=();  FAIL=();  SKIPPED=();  MANUAL_DONE=();  STEP_FAILS=()
 DOWNLOAD_DIR="/opt/driver-downloads"
 LOG="$DOWNLOAD_DIR/driver-install.log"             # full, verbose command output
 RESULTS="$DOWNLOAD_DIR/driver-install-results.log" # short, one line per step result
-DRIVER_CSV="../installed_windows_drivers.csv"      # cross-reference (optional)
+DRIVER_CSV="../A_installed_windows_drivers.csv"      # cross-reference (optional)
 SPIN='-\|/'
 LAST_ERR=""
 
@@ -263,7 +263,7 @@ HAS_PRINTER=false; pci_match 'Printer' || usb_match ' Printer| LaserJet| DeskJet
 # =============================================================================
 # 0b. CROSS-REFERENCE the Windows driver CSV (optional, informational)
 # =============================================================================
-log "Cross-referencing ../installed_windows_drivers.csv (Windows-flagged drivers)"
+log "Cross-referencing ../A_installed_windows_drivers.csv (Windows-flagged drivers)"
 if [ -f "$DRIVER_CSV" ]; then
   # Rows whose LAST field is "yes" are the Windows-flagged devices. Extract just the
   # device name (field 1) — robust against embedded quotes/commas in later fields and

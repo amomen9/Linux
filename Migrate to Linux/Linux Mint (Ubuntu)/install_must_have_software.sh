@@ -4,7 +4,7 @@
 # -----------------------------------------------------------------------------
 # Unattended installer for Linux Mint (Ubuntu base) that installs every program
 # flagged "Must be included on Linux = yes" in
-#   ../installed_windows_software.csv
+#   ../B_installed_windows_software.csv
 # installing the best native Linux app or the best alternative for each.
 #
 # Run as root:   sudo ./install_must_have_software.sh
