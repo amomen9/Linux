@@ -5,7 +5,7 @@
     competency, the Linux pricing model, and whether it is worth installing on Linux.
 
 .DESCRIPTION
-    The script produces installed_windows_software.csv with 9 columns:
+    The script produces installed_windows_software.csv with 10 columns:
 
       MACHINE-DERIVED (read live from this PC, never hand-authored):
         Name                       human-friendly product name
@@ -27,6 +27,9 @@
         Must be included on Linux  yes/no — DERIVED by the script: "yes" for the most
                                    competent installable option per product (native or
                                    alternative) whose competency >= -MustIncludeThreshold
+        Can be synched to Linux alternative  whether the Windows app's data can be
+                                     automatically synced with the Linux alternative
+                                     through signing in (cloud): "Yes" or "No, manual transfer"
 
     How the data is sourced (honouring "fill the judgement columns by tweaking, not by
     pretending the PC reported them"): the four curated columns come from the $LinuxKB
@@ -274,141 +277,141 @@ $deduped = $clean |
 
 # ---------------------------------------------------------------------------
 # 4. KNOWLEDGE BASE  -- availability (S), best alternative (A),
-#    competency % (C) and Linux pricing model (Pr).
+#    competency % (C), Linux pricing model (Pr), and syncability (Sy).
 #    First matching pattern wins, so list specific entries before generic ones.
 # ---------------------------------------------------------------------------
 $LinuxKB = @(
     # --- Browsers ---
-    @{P='Google Chrome';                 S='Available on Linux';                                 A=''; C=100; Pr='Free'}
-    @{P='Microsoft Edge';                S='Available on Linux';                                 A=''; C=98;  Pr='Free'}
-    @{P='Mozilla Firefox|Firefox';       S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'}
+    @{P='Google Chrome';                 S='Available on Linux';                                 A=''; C=100; Pr='Free'; Sy='Yes'; }
+    @{P='Microsoft Edge';                S='Available on Linux';                                 A=''; C=98;  Pr='Free'; Sy='Yes'; }
+    @{P='Mozilla Firefox|Firefox';       S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='Yes'; }
 
     # --- Communication / meetings ---
-    @{P='Discord';                       S='Available on Linux';                                 A=''; C=100; Pr='Free'}
-    @{P='Zoom';                          S='Available on Linux';                                 A=''; C=98;  Pr='Freemium'}
-    @{P='Cisco Jabber';                  S='Not Available; Available as WebApp';                 A='Cisco Webex (native Linux) or Jami / Linphone (FOSS SIP)'; C=85; Pr='Freemium'}
-    @{P='Teams';                         S='Available as WebApp; Native Alternative';            A='Teams PWA via Edge/Chrome (Microsoft-recommended); or the unofficial "teams-for-linux" app'; C=85; Pr='Freemium'}
+    @{P='Discord';                       S='Available on Linux';                                 A=''; C=100; Pr='Free'; Sy='Yes'; }
+    @{P='Zoom';                          S='Available on Linux';                                 A=''; C=98;  Pr='Freemium'; Sy='Yes'; }
+    @{P='Cisco Jabber';                  S='Not Available; Available as WebApp';                 A='Cisco Webex (native Linux) or Jami / Linphone (FOSS SIP)'; C=85; Pr='Freemium'; Sy='No, manual transfer'; }
+    @{P='Teams';                         S='Available as WebApp; Native Alternative';            A='Teams PWA via Edge/Chrome (Microsoft-recommended); or the unofficial "teams-for-linux" app'; C=85; Pr='Freemium'; Sy='Yes'; }
 
     # --- Cloud storage / sync ---
-    @{P='Dropbox';                       S='Available on Linux';                                 A=''; C=100; Pr='Freemium'}
-    @{P='Google Drive';                  S='Native Alternative; Available as WebApp';            A='Insync (paid GUI) or rclone (free CLI); GNOME Online Accounts for basic mounting'; C=85; Pr='Free (FOSS)'}
-    @{P='OneDrive';                      S='Native Alternative; Available as WebApp';            A='abraunegg "onedrive" client (free, full sync) or Insync / rclone'; C=88; Pr='Free (FOSS)'}
-    @{P='Quick Share';                   S='Native Alternative';                                 A='LocalSend, or "Packet" / RQuickShare (brings Google Quick Share to Linux)'; C=105; Pr='Free (FOSS)'}
+    @{P='Dropbox';                       S='Available on Linux';                                 A=''; C=100; Pr='Freemium'; Sy='Yes'; }
+    @{P='Google Drive';                  S='Native Alternative; Available as WebApp';            A='Insync (paid GUI) or rclone (free CLI); GNOME Online Accounts for basic mounting'; C=85; Pr='Free (FOSS)'; Sy='Yes'; }
+    @{P='OneDrive';                      S='Native Alternative; Available as WebApp';            A='abraunegg "onedrive" client (free, full sync) or Insync / rclone'; C=88; Pr='Free (FOSS)'; Sy='Yes'; }
+    @{P='Quick Share';                   S='Native Alternative';                                 A='LocalSend, or "Packet" / RQuickShare (brings Google Quick Share to Linux)'; C=105; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
 
     # --- Developer tools ---
-    @{P='Visual Studio Code';            S='Available on Linux';                                 A=''; C=100; Pr='Free'}
-    @{P='Visual Studio Build Tools';     S='Native Alternative';                                 A='.NET SDK (`dotnet` CLI), MSBuild via Mono, or build with gcc/clang + make/CMake'; C=95; Pr='Free'}
-    @{P='Visual Studio Community|Visual Studio \d|Visual Studio 20'; S='Not Available; Native Alternative'; A='VS Code or JetBrains Rider + .NET SDK CLI (all native on Linux)'; C=85; Pr='Freemium'}
-    @{P='GitHub Desktop';                S='Not Available; Native Alternative';                  A='GitKraken, or the "github-desktop-plus" community fork; gitg / Git Cola for FOSS'; C=85; Pr='Freemium'}
-    @{P='^Git\b|^Git$|^Git ';            S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'}
-    @{P='Docker Desktop';                S='Available on Linux';                                 A='Docker Desktop for Linux, or native Docker Engine / Podman (no VM needed)'; C=120; Pr='Free (FOSS)'}
-    @{P='DBeaver';                       S='Available on Linux';                                 A=''; C=100; Pr='Freemium'}
-    @{P='pgAdmin';                       S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'}
-    @{P='pgNow';                         S='Native Alternative';                                 A='pgAdmin 4, DBeaver, or the psql CLI'; C=95; Pr='Free (FOSS)'}
-    @{P='SQL Server Management Studio';  S='Not Available; Native Alternative; Linux Docker';    A='DBeaver or VS Code "mssql" extension as the client; run SQL Server itself via Docker (mcr.microsoft.com/mssql/server)'; C=80; Pr='Free (FOSS)'}
-    @{P='CMake';                         S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'}
-    @{P='^ninja';                        S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'}
-    @{P='Node\.js';                      S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'}
-    @{P='Anaconda';                      S='Available on Linux';                                 A=''; C=100; Pr='Freemium'}
-    @{P='^Python';                       S='Available on Linux';                                 A='python3 is pre-installed; manage versions with pyenv'; C=105; Pr='Free (FOSS)'}
-    @{P='^R for Windows|^R \d|^R$';      S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'}
-    @{P='RStudio';                       S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'}
-    @{P='PowerShell 7';                  S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'}
-    @{P='OpenSSH';                       S='Available on Linux';                                 A='OpenSSH client/server is standard on Linux'; C=100; Pr='Free (FOSS)'}
-    @{P='OpenSSL';                       S='Available on Linux';                                 A='OpenSSL is pre-installed'; C=100; Pr='Free (FOSS)'}
-    @{P='OpenVPN';                       S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'}
-    @{P='Strawberry Perl|Perl';          S='Available on Linux';                                 A='Perl is pre-installed; add modules with cpanminus'; C=100; Pr='Free (FOSS)'}
-    @{P='MiKTeX';                        S='Available on Linux; Native Alternative';             A='MiKTeX has a Linux build, or use TeX Live (the Linux standard)'; C=100; Pr='Free (FOSS)'}
-    @{P='Pandoc';                        S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'}
-    @{P='wkhtmltox|wkhtmltopdf';         S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'}
-    @{P='Gurobi';                        S='Available on Linux';                                 A='Gurobi runs natively on Linux (commercial; free academic license)'; C=100; Pr='Paid'; F='HiGHS, SCIP, Google OR-Tools or GLPK'}
-    @{P='Java \d|Java\(TM\)|^JDK|^JRE';  S='Available on Linux; Native Alternative';             A='OpenJDK (e.g. Eclipse Temurin / "openjdk-*-jdk" packages)'; C=100; Pr='Free (FOSS)'}
-    @{P='\.NET SDK';                     S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'}
-    @{P='GnuWin32: Grep|^Grep';          S='Available on Linux';                                 A='GNU grep is pre-installed'; C=100; Pr='Free (FOSS)'}
-    @{P='MobaXterm';                     S='Native Alternative; Windows Emulator (Wine/Proton)'; A='Built-in terminal + OpenSSH; Remmina (RDP/VNC/SSH), Tabby, or Termius'; C=90; Pr='Free (FOSS)'}
-    @{P='PuTTY';                         S='Available on Linux';                                 A='PuTTY is packaged for Linux, though native `ssh` is the norm'; C=100; Pr='Free (FOSS)'}
-    @{P='Bitvise SSH';                   S='Not Available; Native Alternative';                  A='OpenSSH (ssh/sftp/scp), Termius, or FileZilla for SFTP'; C=95; Pr='Free (FOSS)'}
-    @{P='Proxifier';                     S='Not Available; Native Alternative';                  A='proxychains-ng or redsocks'; C=75; Pr='Free (FOSS)'}
-    @{P='RealVNC|VNC Viewer';            S='Available on Linux';                                 A=''; C=95; Pr='Freemium'}
-    @{P='AnyDesk';                       S='Available on Linux';                                 A=''; C=97; Pr='Freemium'}
-    @{P='Parsec';                        S='Available on Linux';                                 A=''; C=95; Pr='Freemium'}
-    @{P='VMware Workstation';            S='Available on Linux';                                 A='VMware Workstation Pro for Linux (now free) — or KVM/virt-manager, VirtualBox'; C=100; Pr='Free'}
+    @{P='Visual Studio Code';            S='Available on Linux';                                 A=''; C=100; Pr='Free'; Sy='Yes'; }
+    @{P='Visual Studio Build Tools';     S='Native Alternative';                                 A='.NET SDK (`dotnet` CLI), MSBuild via Mono, or build with gcc/clang + make/CMake'; C=95; Pr='Free'; Sy='No, manual transfer'; }
+    @{P='Visual Studio Community|Visual Studio \d|Visual Studio 20'; S='Not Available; Native Alternative'; A='VS Code or JetBrains Rider + .NET SDK CLI (all native on Linux)'; C=85; Pr='Freemium'; Sy='No, manual transfer'; }
+    @{P='GitHub Desktop';                S='Not Available; Native Alternative';                  A='GitKraken, or the "github-desktop-plus" community fork; gitg / Git Cola for FOSS'; C=85; Pr='Freemium'; Sy='Yes'; }
+    @{P='^Git\b|^Git$|^Git ';            S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Docker Desktop';                S='Available on Linux';                                 A='Docker Desktop for Linux, or native Docker Engine / Podman (no VM needed)'; C=120; Pr='Free (FOSS)'; Sy='Yes'; }
+    @{P='DBeaver';                       S='Available on Linux';                                 A=''; C=100; Pr='Freemium'; Sy='No, manual transfer'; }
+    @{P='pgAdmin';                       S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='pgNow';                         S='Native Alternative';                                 A='pgAdmin 4, DBeaver, or the psql CLI'; C=95; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='SQL Server Management Studio';  S='Not Available; Native Alternative; Linux Docker';    A='DBeaver or VS Code "mssql" extension as the client; run SQL Server itself via Docker (mcr.microsoft.com/mssql/server)'; C=80; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='CMake';                         S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='^ninja';                        S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Node\.js';                      S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Anaconda';                      S='Available on Linux';                                 A=''; C=100; Pr='Freemium'; Sy='No, manual transfer'; }
+    @{P='^Python';                       S='Available on Linux';                                 A='python3 is pre-installed; manage versions with pyenv'; C=105; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='^R for Windows|^R \d|^R$';      S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='RStudio';                       S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='PowerShell 7';                  S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='OpenSSH';                       S='Available on Linux';                                 A='OpenSSH client/server is standard on Linux'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='OpenSSL';                       S='Available on Linux';                                 A='OpenSSL is pre-installed'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='OpenVPN';                       S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Strawberry Perl|Perl';          S='Available on Linux';                                 A='Perl is pre-installed; add modules with cpanminus'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='MiKTeX';                        S='Available on Linux; Native Alternative';             A='MiKTeX has a Linux build, or use TeX Live (the Linux standard)'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Pandoc';                        S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='wkhtmltox|wkhtmltopdf';         S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Gurobi';                        S='Available on Linux';                                 A='Gurobi runs natively on Linux (commercial; free academic license)'; C=100; Pr='Paid'; F='HiGHS, SCIP, Google OR-Tools or GLPK'; Sy='No, manual transfer'; }
+    @{P='Java \d|Java\(TM\)|^JDK|^JRE';  S='Available on Linux; Native Alternative';             A='OpenJDK (e.g. Eclipse Temurin / "openjdk-*-jdk" packages)'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='\.NET SDK';                     S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='GnuWin32: Grep|^Grep';          S='Available on Linux';                                 A='GNU grep is pre-installed'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='MobaXterm';                     S='Native Alternative; Windows Emulator (Wine/Proton)'; A='Built-in terminal + OpenSSH; Remmina (RDP/VNC/SSH), Tabby, or Termius'; C=90; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='PuTTY';                         S='Available on Linux';                                 A='PuTTY is packaged for Linux, though native `ssh` is the norm'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Bitvise SSH';                   S='Not Available; Native Alternative';                  A='OpenSSH (ssh/sftp/scp), Termius, or FileZilla for SFTP'; C=95; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Proxifier';                     S='Not Available; Native Alternative';                  A='proxychains-ng or redsocks'; C=75; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='RealVNC|VNC Viewer';            S='Available on Linux';                                 A=''; C=95; Pr='Freemium'; Sy='No, manual transfer'; }
+    @{P='AnyDesk';                       S='Available on Linux';                                 A=''; C=97; Pr='Freemium'; Sy='No, manual transfer'; }
+    @{P='Parsec';                        S='Available on Linux';                                 A=''; C=95; Pr='Freemium'; Sy='No, manual transfer'; }
+    @{P='VMware Workstation';            S='Available on Linux';                                 A='VMware Workstation Pro for Linux (now free) — or KVM/virt-manager, VirtualBox'; C=100; Pr='Free'; Sy='No, manual transfer'; }
 
     # --- Media / utilities ---
-    @{P='calibre';                       S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'}
-    @{P='Anki';                          S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'}
-    @{P='KMPlayer';                      S='Not Available; Native Alternative';                  A='VLC or mpv'; C=150; Pr='Free (FOSS)'}
-    @{P='K-Lite|Codec Pack';             S='Not Available';                                      A='Not needed on Linux — VLC/mpv + GStreamer/ffmpeg cover all codecs'; C=100; Pr='Free (FOSS)'}
-    @{P='oCam';                          S='Not Available; Native Alternative';                  A='OBS Studio or SimpleScreenRecorder (record); Flameshot (stills)'; C=110; Pr='Free (FOSS)'}
-    @{P='Camtasia';                      S='Not Available; Native Alternative';                  A='OBS Studio (capture) + Kdenlive / Shotcut (edit); or ScreenPal (web)'; C=85; Pr='Free (FOSS)'}
-    @{P='Lightshot';                     S='Not Available; Native Alternative';                  A='Flameshot (or Spectacle / Ksnip)'; C=115; Pr='Free (FOSS)'}
-    @{P='WinRAR';                        S='Not Available; Native Alternative';                  A='p7zip / PeaZip / Ark (GUI); `rar`/`unrar` CLI also available'; C=95; Pr='Free (FOSS)'}
-    @{P='Torrent';                       S='Not Available; Native Alternative';                  A='qBittorrent (or Transmission / Deluge)'; C=130; Pr='Free (FOSS)'}
-    @{P='Internet Download Manager';     S='Not Available; Native Alternative';                  A='uGet (closest match) or Free Download Manager / JDownloader 2 / XDM; aria2 for CLI'; C=85; Pr='Free (FOSS)'}
-    @{P='Notepad\+\+';                   S='Native Alternative; Windows Emulator (Wine/Proton)'; A='Notepadqq, Geany, Kate or VS Code; Notepad++ also runs well under Wine'; C=95; Pr='Free (FOSS)'}
+    @{P='calibre';                       S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Anki';                          S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='Yes'; }
+    @{P='KMPlayer';                      S='Not Available; Native Alternative';                  A='VLC or mpv'; C=150; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='K-Lite|Codec Pack';             S='Not Available';                                      A='Not needed on Linux — VLC/mpv + GStreamer/ffmpeg cover all codecs'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='oCam';                          S='Not Available; Native Alternative';                  A='OBS Studio or SimpleScreenRecorder (record); Flameshot (stills)'; C=110; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Camtasia';                      S='Not Available; Native Alternative';                  A='OBS Studio (capture) + Kdenlive / Shotcut (edit); or ScreenPal (web)'; C=85; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Lightshot';                     S='Not Available; Native Alternative';                  A='Flameshot (or Spectacle / Ksnip)'; C=115; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='WinRAR';                        S='Not Available; Native Alternative';                  A='p7zip / PeaZip / Ark (GUI); `rar`/`unrar` CLI also available'; C=95; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Torrent';                       S='Not Available; Native Alternative';                  A='qBittorrent (or Transmission / Deluge)'; C=130; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Internet Download Manager';     S='Not Available; Native Alternative';                  A='uGet (closest match) or Free Download Manager / JDownloader 2 / XDM; aria2 for CLI'; C=85; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Notepad\+\+';                   S='Native Alternative; Windows Emulator (Wine/Proton)'; A='Notepadqq, Geany, Kate or VS Code; Notepad++ also runs well under Wine'; C=95; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
 
     # --- Office / productivity / writing ---
-    @{P='Microsoft 365|Microsoft Office|Office \d|^Office'; S='Available as WebApp; Native Alternative; Windows Emulator (Wine/Proton)'; A='Office for the web (office.com); or LibreOffice / OnlyOffice / WPS Office (native)'; C=78; Pr='Free (FOSS)'}
-    @{P='OneNote';                       S='Available as WebApp; Native Alternative';            A='OneNote for the web; or Obsidian / Joplin / Xournal++'; C=85; Pr='Free (FOSS)'}
-    @{P='Grammarly';                     S='Not Available; Available as WebApp; Native Alternative'; A='LanguageTool (FOSS desktop + browser); or Grammarly browser extension / web'; C=80; Pr='Freemium'}
-    @{P='Reverso';                       S='Available as WebApp; Native Alternative';            A='reverso.net (web); GoldenDict for offline dictionary/translation'; C=80; Pr='Freemium'}
-    @{P='Longman Dictionary';            S='Not Available; Native Alternative';                  A='GoldenDict / GoldenDict-ng (can load the Longman dictionary files)'; C=85; Pr='Free (FOSS)'}
-    @{P='Babylon';                       S='Not Available; Native Alternative';                  A='GoldenDict (reads Babylon .BGL dictionaries)'; C=90; Pr='Free (FOSS)'}
-    @{P='AlterEgo|Lexique';              S='Not Available; Native Alternative; Windows Emulator (Wine/Proton)'; A='GoldenDict with the relevant dictionary files; or run under Wine'; C=65; Pr='Free (FOSS)'}
-    @{P='QUICKfind';                     S='Not Available; Windows Emulator (Wine/Proton)';      A='GoldenDict / a StarDict reader; QUICKfind may run under Wine'; C=50; Pr='Free (FOSS)'}
-    @{P='Copilot';                       S='Available as WebApp';                                A='copilot.microsoft.com (web/PWA); local LLMs via Ollama'; C=95; Pr='Freemium'}
+    @{P='Microsoft 365|Microsoft Office|Office \d|^Office'; S='Available as WebApp; Native Alternative; Windows Emulator (Wine/Proton)'; A='Office for the web (office.com); or LibreOffice / OnlyOffice / WPS Office (native)'; C=78; Pr='Free (FOSS)'; Sy='Yes'; }
+    @{P='Grammarly';                     S='Not Available; Available as WebApp; Native Alternative'; A='LanguageTool (FOSS desktop + browser); or Grammarly browser extension / web'; C=80; Pr='Freemium'; Sy='Yes'; }
+    @{P='Reverso';                       S='Available as WebApp; Native Alternative';            A='reverso.net (web); GoldenDict for offline dictionary/translation'; C=80; Pr='Freemium'; Sy='Yes'; }
+    @{P='Longman Dictionary';            S='Not Available; Native Alternative';                  A='GoldenDict / GoldenDict-ng (can load the Longman dictionary files)'; C=85; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Babylon';                       S='Not Available; Native Alternative';                  A='GoldenDict (reads Babylon .BGL dictionaries)'; C=90; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='AlterEgo|Lexique';              S='Not Available; Native Alternative; Windows Emulator (Wine/Proton)'; A='GoldenDict with the relevant dictionary files; or run under Wine'; C=65; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='QUICKfind';                     S='Not Available; Windows Emulator (Wine/Proton)';      A='GoldenDict / a StarDict reader; QUICKfind may run under Wine'; C=50; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Copilot';                       S='Available as WebApp';                                A='copilot.microsoft.com (web/PWA); local LLMs via Ollama'; C=95; Pr='Freemium'; Sy='Yes'; }
 
     # --- VPN / DRM / e-learning ---
-    @{P='SpotPlayer|Spot Player';        S='Available on Linux';                                 A='SpotPlayer has an Ubuntu/Linux build at spotplayer.ir'; C=95; Pr='Free'}
-    @{P='Hotspot Shield';                S='Available on Linux; Native Alternative';             A='Hotspot Shield has an Ubuntu/Debian client; stronger FOSS option: Proton VPN (or Mullvad)'; C=105; Pr='Freemium'}
-    @{P='Adobe AIR';                     S='Not Available';                                      A='Deprecated runtime (HARMAN AIR SDK only); most AIR apps have native/web replacements'; C=20; Pr='Free'}
-    @{P='Adobe Connect';                 S='Available as WebApp';                                A='Adobe Connect in-browser; or Jitsi / BigBlueButton for FOSS web meetings'; C=85; Pr='Paid'}
-    @{P='Adobe Digital Editions';        S='Not Available; Native Alternative';                  A='Thorium Reader (reads LCP DRM) or calibre + DeDRM; Foliate for DRM-free EPUB'; C=90; Pr='Free (FOSS)'}
+    @{P='SpotPlayer|Spot Player';        S='Available on Linux';                                 A='SpotPlayer has an Ubuntu/Linux build at spotplayer.ir'; C=95; Pr='Free'; Sy='No, manual transfer'; }
+    @{P='Hotspot Shield';                S='Available on Linux; Native Alternative';             A='Hotspot Shield has an Ubuntu/Debian client; stronger FOSS option: Proton VPN (or Mullvad)'; C=105; Pr='Freemium'; Sy='No, manual transfer'; }
+    @{P='Adobe AIR';                     S='Not Available';                                      A='Deprecated runtime (HARMAN AIR SDK only); most AIR apps have native/web replacements'; C=20; Pr='Free'; Sy='No, manual transfer'; }
+    @{P='Adobe Connect';                 S='Available as WebApp';                                A='Adobe Connect in-browser; or Jitsi / BigBlueButton for FOSS web meetings'; C=85; Pr='Paid'; Sy='No, manual transfer'; }
+    @{P='Adobe Digital Editions';        S='Not Available; Native Alternative';                  A='Thorium Reader (reads LCP DRM) or calibre + DeDRM; Foliate for DRM-free EPUB'; C=90; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
 
     # --- Hardware / vendor utilities ---
-    @{P='Lenovo Vantage|Lenovo Companion'; S='Not Available; Native Alternative';               A='No vendor app; use fwupd (firmware) and LenovoLegionLinux for Legion hardware'; C=40; Pr='Free (FOSS)'}
-    @{P='Lenovo Go Central|Lenovo Professional Wireless'; S='Not Available';                     A='Vendor utility — usually no Linux app needed; Solaar for Logitech-style combos'; C=20; Pr='Free (FOSS)'}
-    @{P='Legion Arena';                  S='Not Available; Native Alternative';                  A='Steam / Lutris / Heroic for games; LenovoLegionLinux for hardware control'; C=60; Pr='Free'}
-    @{P='Samsung Magician';              S='Not Available; Native Alternative';                  A='smartmontools (SMART), nvme-cli, fwupd; Samsung Magician DC (bootable) for firmware'; C=55; Pr='Free (FOSS)'}
-    @{P='Samsung Account';               S='Not Available; Available as WebApp';                 A='account.samsung.com (web)'; C=70; Pr='Free'}
-    @{P='PaperCut';                      S='Available on Linux';                                 A='Install the NATIVE PaperCut client for Linux (Print Deploy / User Client) from your PaperCut server — hard-coded inclusion, do NOT substitute CUPS'; C=95; Pr='Paid'}
-    @{P='Psiphon';                       S='Native Alternative';                                 A='Proton VPN, or Tor Browser / obfs4 bridges'; C=90; Pr='Freemium'}
+    @{P='Lenovo Vantage|Lenovo Companion'; S='Not Available; Native Alternative';               A='No vendor app; use fwupd (firmware) and LenovoLegionLinux for Legion hardware'; C=40; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Lenovo Go Central|Lenovo Professional Wireless'; S='Not Available';                     A='Vendor utility — usually no Linux app needed; Solaar for Logitech-style combos'; C=20; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Legion Arena';                  S='Not Available; Native Alternative';                  A='Steam / Lutris / Heroic for games; LenovoLegionLinux for hardware control'; C=60; Pr='Free'; Sy='No, manual transfer'; }
+    @{P='Samsung Magician';              S='Not Available; Native Alternative';                  A='smartmontools (SMART), nvme-cli, fwupd; Samsung Magician DC (bootable) for firmware'; C=55; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Samsung Account';               S='Not Available; Available as WebApp';                 A='account.samsung.com (web)'; C=70; Pr='Free'; Sy='Yes'; }
+    @{P='PaperCut';                      S='Available on Linux';                                 A='Install the NATIVE PaperCut client for Linux (Print Deploy / User Client) from your PaperCut server — hard-coded inclusion, do NOT substitute CUPS'; C=95; Pr='Paid'; Sy='No, manual transfer'; }
+    @{P='Psiphon';                       S='Native Alternative';                                 A='Proton VPN, or Tor Browser / obfs4 bridges'; C=90; Pr='Freemium'; Sy='No, manual transfer'; }
 
     # --- More communication / accounts ---
-    @{P='WhatsApp|Whats App';            S='Available as WebApp; Native Alternative';            A='web.whatsapp.com (PWA); native clients ZapZap or Whatsie'; C=90; Pr='Free'}
-    @{P='Outlook';                       S='Available as WebApp; Native Alternative';            A='Thunderbird or Evolution (native); outlook.com (web)'; C=88; Pr='Free (FOSS)'}
-    @{P='Claude';                        S='Available as WebApp';                                A='claude.ai (web/PWA); local LLMs via Ollama / Jan'; C=95; Pr='Freemium'}
-    @{P='Nearby Share';                  S='Native Alternative';                                 A='LocalSend, or "Packet" / RQuickShare (Quick Share for Linux)'; C=105; Pr='Free (FOSS)'}
+    @{P='WhatsApp|Whats App';            S='Available as WebApp; Native Alternative';            A='web.whatsapp.com (PWA); native clients ZapZap or Whatsie'; C=90; Pr='Free'; Sy='Yes'; }
+    @{P='Outlook';                       S='Available as WebApp; Native Alternative';            A='Thunderbird or Evolution (native); outlook.com (web)'; C=88; Pr='Free (FOSS)'; Sy='Yes'; }
+    @{P='Claude';                        S='Available as WebApp';                                A='claude.ai (web/PWA); local LLMs via Ollama / Jan'; C=95; Pr='Freemium'; Sy='Yes'; }
+    @{P='Nearby Share';                  S='Native Alternative';                                 A='LocalSend, or "Packet" / RQuickShare (Quick Share for Linux)'; C=105; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
 
     # --- Store first-party small apps ---
-    @{P='Rufus';                         S='Not Available; Native Alternative';                  A='GNOME Disks, balenaEtcher, Ventoy, Fedora Media Writer, or `dd`'; C=90; Pr='Free (FOSS)'}
-    @{P='Windows Calculator';            S='Available on Linux';                                 A='GNOME Calculator / KCalc (pre-installed)'; C=100; Pr='Free (FOSS)'}
-    @{P='Sticky Notes';                  S='Native Alternative';                                 A='Sticky (GNOME), KNotes, or Joplin'; C=95; Pr='Free (FOSS)'}
-    @{P='Microsoft To Do';               S='Available as WebApp; Native Alternative';            A='to-do.microsoft.com (web); or Tasks.org / Planify / Super Productivity'; C=90; Pr='Free (FOSS)'}
-    @{P='Windows Terminal';              S='Native Alternative';                                 A='GNOME Console/Terminal, Konsole, Tabby, or Ghostty (built-in on Linux)'; C=110; Pr='Free (FOSS)'}
-    @{P='Sound Recorder';                S='Native Alternative';                                 A='GNOME Sound Recorder or Audacity'; C=100; Pr='Free (FOSS)'}
-    @{P='Windows Camera';                S='Native Alternative';                                 A='Cheese, GNOME Snapshot, or Kamoso'; C=95; Pr='Free (FOSS)'}
-    @{P='Windows Notepad';               S='Native Alternative';                                 A='GNOME Text Editor / gedit / Kate (pre-installed)'; C=110; Pr='Free (FOSS)'}
-    @{P='^Paint$|Microsoft Paint';       S='Native Alternative';                                 A='GIMP, Krita, Pinta, or Drawing'; C=200; Pr='Free (FOSS)'}
-    @{P='^Photos$|Windows Photos';       S='Native Alternative';                                 A='Shotwell, gThumb, GNOME Loupe, or digiKam'; C=100; Pr='Free (FOSS)'}
-    @{P='Zune Music|Groove|Media Player';S='Native Alternative';                                 A='Rhythmbox, Lollypop, Elisa, or VLC'; C=110; Pr='Free (FOSS)'}
-    @{P='Alarms';                        S='Native Alternative';                                 A='GNOME Clocks (or KDE Clock widget)'; C=100; Pr='Free (FOSS)'}
-    @{P='PowerToys';                     S='Not Available; Native Alternative';                  A='Text Extractor: Frog (tenderowl.com/frog - shortcut-triggered OCR, select->extract, FOSS). Keyboard accents: ibus-typing-booster or Compose key (built-in). Color Picker: gpick / KColorChooser (shortcut->click to pick hex). File Locksmith: fuser / lsof (CLI) or GNOME File Locksmith. Find My Mouse: GNOME "Show Pointer Location" or KDE "Track Mouse". Image Resizer: right-click in Nautilus + nautilus-image-converter, or ImageMagick `convert`. Mouse Without Borders: Barrier / Input Leap (software KVM, FOSS). ZoomIt: KMag / Zoom (GNOME) or screen-recorder. Shortcut Guide: GNOME Super key overlay or KDE shortcuts cheat sheet'; C=95; Pr='Free (FOSS)'}
-    @{P='Power ?Shell';                  S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'}
-    @{P='Windows Store|Microsoft Store';  S='Native Alternative';                                A="Your distro's software center (GNOME Software / KDE Discover) + Flathub"; C=100; Pr='Free (FOSS)'}
-    @{P='Bing';                          S='Available as WebApp';                                A='bing.com in any browser (or DuckDuckGo / Google)'; C=95; Pr='Free'}
-    @{P='Weather';                       S='Available as WebApp; Native Alternative';            A='GNOME Weather / KWeather (native); or any weather website'; C=100; Pr='Free (FOSS)'}
-    @{P='Power Automate';                S='Native Alternative';                                 A='No Linux client; use cron / systemd timers, n8n, or AutoKey for desktop macros'; C=65; Pr='Free (FOSS)'}
-    @{P='Ubuntu \(WSL\)';                S='Available on Linux';                                 A='You are already on Linux — WSL is not needed'; C=100; Pr='Free (FOSS)'}
+    @{P='Rufus';                         S='Not Available; Native Alternative';                  A='GNOME Disks, balenaEtcher, Ventoy, Fedora Media Writer, or `dd`'; C=90; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Windows Calculator';            S='Available on Linux';                                 A='GNOME Calculator / KCalc (pre-installed)'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='OneNote';                       S='Available as WebApp; Native Alternative';            A='OneNote for the web; or Obsidian / Joplin / Xournal++'; C=85; Pr='Free (FOSS)'; Sy='Yes'; }
+    @{P='Sticky Notes';                  S='Native Alternative';                                 A='GNOME Sticky Notes (sticky APT) + Joplin (Flatpak); Joplin enables cloud sync with Microsoft account via OneDrive plugin'; C=95; Pr='Free (FOSS)'; Sy='Yes'; }
+    @{P='Microsoft To Do';               S='Available as WebApp; Native Alternative';            A='to-do.microsoft.com (web); or Tasks.org / Planify / Super Productivity'; C=90; Pr='Free (FOSS)'; Sy='Yes'; }
+    @{P='Windows Terminal';              S='Native Alternative';                                 A='GNOME Console/Terminal, Konsole, Tabby, or Ghostty (built-in on Linux)'; C=110; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Sound Recorder';                S='Native Alternative';                                 A='GNOME Sound Recorder or Audacity'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Windows Camera';                S='Native Alternative';                                 A='Cheese, GNOME Snapshot, or Kamoso'; C=95; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Windows Notepad';               S='Native Alternative';                                 A='GNOME Text Editor / gedit / Kate (pre-installed)'; C=110; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='^Paint$|Microsoft Paint';       S='Native Alternative';                                 A='GIMP, Krita, Pinta, or Drawing'; C=200; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='^Photos$|Windows Photos';       S='Native Alternative';                                 A='Shotwell, gThumb, GNOME Loupe, or digiKam'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Zune Music|Groove|Media Player';S='Native Alternative';                                 A='Rhythmbox, Lollypop, Elisa, or VLC'; C=110; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Alarms';                        S='Native Alternative';                                 A='GNOME Clocks (or KDE Clock widget)'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='PowerToys';                     S='Not Available; Native Alternative';                  A='Text Extractor: Frog (tenderowl.com/frog - shortcut-triggered OCR, select->extract, FOSS). Keyboard accents: ibus-typing-booster or Compose key (built-in). Color Picker: gpick / KColorChooser (shortcut->click to pick hex). File Locksmith: fuser / lsof (CLI) or GNOME File Locksmith. Find My Mouse: GNOME "Show Pointer Location" or KDE "Track Mouse". Image Resizer: right-click in Nautilus + nautilus-image-converter, or ImageMagick `convert`. Mouse Without Borders: Barrier / Input Leap (software KVM, FOSS). ZoomIt: KMag / Zoom (GNOME) or screen-recorder. Shortcut Guide: GNOME Super key overlay or KDE shortcuts cheat sheet'; C=95; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Power ?Shell';                  S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Windows Store|Microsoft Store';  S='Native Alternative';                                A="Your distro's software center (GNOME Software / KDE Discover) + Flathub"; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Bing';                          S='Available as WebApp';                                A='bing.com in any browser (or DuckDuckGo / Google)'; C=95; Pr='Free'; Sy='No, manual transfer'; }
+    @{P='Weather';                       S='Available as WebApp; Native Alternative';            A='GNOME Weather / KWeather (native); or any weather website'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Power Automate';                S='Native Alternative';                                 A='No Linux client; use cron / systemd timers, n8n, or AutoKey for desktop macros'; C=65; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Ubuntu \(WSL\)';                S='Available on Linux';                                 A='You are already on Linux — WSL is not needed'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
 
     # --- Hard-coded inclusions (always migrate these) ---
-    @{P='Adobe Acrobat|Adobe Acrobat Pro|Acrobat DC|Adobe Acrobat DC'; S='Not Available; Native Alternative; Linux Docker'; A='Stirling PDF (FOSS, Docker or local JAR — full PDF toolkit: merge, split, OCR, sign, compress, convert) + PDF Arranger (native APT: merge/reorder/split) + LibreOffice Draw (edit). Free alternative to Acrobat Pro.'; C=90; Pr='Free (FOSS)'}
-    @{P='Advanced IP Scanner';           S='Not Available; Native Alternative';                  A='Angry IP Scanner (java-based, official .deb at angryip.org — scans IPs + ports with GUI) or nmap + Zenmap / RustScan (CLI)'; C=105; Pr='Free (FOSS)'}
-    @{P='Advanced Port Scanner';         S='Not Available; Native Alternative';                  A='RustScan (blazing-fast Rust port scanner, CLI) or Zenmap (nmap GUI) or Angry IP Scanner (covers both IP + port scanning)'; C=110; Pr='Free (FOSS)'}
-    @{P='Telegram';                      S='Available on Linux';                                 A='telegram-desktop (APT/Flatpak/Snap — official client)'; C=100; Pr='Free (FOSS)'}
-    @{P='Terminator';                    S='Available on Linux';                                 A='terminator (APT — feature-rich terminal emulator with tiling/grouping/broadcasting)'; C=100; Pr='Free (FOSS)'}
-    @{P='WindTerm';                      S='Available on Linux';                                 A='WindTerm has a native Linux build (.deb/tarball from github.com/kingToolfish/WindTerm) — fast SSH/Telnet/Serial client with file manager'; C=98; Pr='Free'}
-    @{P='WinDirStat';                    S='Native Alternative';                                 A='QDirStat (APT — Qt-based disk usage analyzer + cleanup, closest match to WinDirStat) or GNOME Disk Usage Analyzer / baobab (pre-installed on GNOME)'; C=95; Pr='Free (FOSS)'}
+    @{P='Adobe Acrobat|Adobe Acrobat Pro|Acrobat DC|Adobe Acrobat DC'; S='Not Available; Native Alternative; Linux Docker'; A='Stirling PDF (FOSS, Docker or local JAR — full PDF toolkit: merge, split, OCR, sign, compress, convert) + PDF Arranger (native APT: merge/reorder/split) + LibreOffice Draw (edit). Free alternative to Acrobat Pro.'; C=90; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Advanced IP Scanner';           S='Not Available; Native Alternative';                  A='Angry IP Scanner (java-based, official .deb at angryip.org — scans IPs + ports with GUI) or nmap + Zenmap / RustScan (CLI)'; C=105; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Advanced Port Scanner';         S='Not Available; Native Alternative';                  A='RustScan (blazing-fast Rust port scanner, CLI) or Zenmap (nmap GUI) or Angry IP Scanner (covers both IP + port scanning)'; C=110; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='Telegram';                      S='Available on Linux';                                 A='telegram-desktop (APT/Flatpak/Snap — official client)'; C=100; Pr='Free (FOSS)'; Sy='Yes'; }
+    @{P='Terminator';                    S='Available on Linux';                                 A='terminator (APT — feature-rich terminal emulator with tiling/grouping/broadcasting)'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+    @{P='WindTerm';                      S='Available on Linux';                                 A='WindTerm has a native Linux build (.deb/tarball from github.com/kingToolfish/WindTerm) — fast SSH/Telnet/Serial client with file manager'; C=98; Pr='Free'; Sy='No, manual transfer'; }
+    @{P='WinDirStat';                    S='Native Alternative';                                 A='QDirStat (APT — Qt-based disk usage analyzer + cleanup, closest match to WinDirStat) or GNOME Disk Usage Analyzer / baobab (pre-installed on GNOME)'; C=95; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
 )
 
 # Canonical flag order so the Linux Availability column is consistent on every row.
@@ -432,7 +435,7 @@ function Resolve-Linux {
     foreach ($entry in $LinuxKB) {
         if ($Name -match $entry.P) {
             return [pscustomobject]@{
-                Status = $entry.S; Alt = $entry.A; Competency = $entry.C; Pricing = $entry.Pr; Free = $entry.F
+                Status = $entry.S; Alt = $entry.A; Competency = $entry.C; Pricing = $entry.Pr; Free = $entry.F; Sync = $entry.Sy
             }
         }
     }
@@ -468,12 +471,13 @@ function Resolve-LinuxOnline {
                 Competency = 100
                 Pricing    = 'Free (FOSS)'
                 Free       = ''
+                Sync       = 'No, manual transfer'
             }
         } else {
-            $result = [pscustomobject]@{ Status = 'Needs Review'; Alt = 'Not found on repology.org — check AlternativeTo'; Competency = $null; Pricing = ''; Free = '' }
+            $result = [pscustomobject]@{ Status = 'Needs Review'; Alt = 'Not found on repology.org — check AlternativeTo'; Competency = $null; Pricing = ''; Free = ''; Sync = '' }
         }
     } catch {
-        $result = [pscustomobject]@{ Status = 'Needs Review'; Alt = "Online lookup failed: $($_.Exception.Message)"; Competency = $null; Pricing = '' }
+        $result = [pscustomobject]@{ Status = 'Needs Review'; Alt = "Online lookup failed: $($_.Exception.Message)"; Competency = $null; Pricing = ''; Sync = '' }
     }
     $repoCache[$slug] = $result
     Start-Sleep -Milliseconds 700
@@ -500,6 +504,7 @@ $enriched = foreach ($app in $deduped) {
         Comp      = $comp
         Pricing   = if ($hit) { $hit.Pricing } else { '' }
         Free      = if ($hit) { $hit.Free }    else { '' }
+        Sync      = if ($hit) { $hit.Sync }    else { '' }
         Must      = 'no'
     }
 }
@@ -543,6 +548,7 @@ $rows = $enriched | Sort-Object Name | ForEach-Object {
         'Alternative Competency'    = if ($null -ne $_.Comp) { "$($_.Comp)%" } else { '' }
         'Pricing model'             = $_.Pricing
         'Must be included on Linux' = $_.Must
+        'Can be synched to Linux alternative' = $_.Sync
     })
 }
 
@@ -559,7 +565,7 @@ Write-Host ""
 Write-Host "Inventory written to: $OutputPath" -ForegroundColor Green
 Write-Host ("Total apps listed : {0}" -f $rows.Count)
 Write-Host ("Excluded as noise : {0} (updates/hotfixes" -f ($combined.Count - $filtered.Count)) -NoNewline
-Write-Host $(if ($IncludeSystemComponents) { ')' } else { ' + system components)' })
+Write-Host $(if ($IncludeSystemComponents) { ')'; } else { ' + system components)' })
 Write-Host ("Must install (yes): {0}  (competency >= {1}%)" -f ($rows | Where-Object 'Must be included on Linux' -eq 'yes').Count, $MustIncludeThreshold)
 Write-Host ""
 $enriched | Group-Object {
