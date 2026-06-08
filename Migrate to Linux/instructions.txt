@@ -9,7 +9,7 @@ able to read ONLY this file — and regenerate, with the latest up-to-date data:
 
   1. detect_installed_windows_software.ps1   (Windows inventory + Linux rating)
   2. installed_windows_software.csv          (the report the script produces)
-  2b. separate_Linux_software_requirments.csv  (hand-curated: hardcoded apps that
+  2b. additional_Linux_software_requirments.csv  (hand-curated: hardcoded apps that
                                                   the installer includes regardless
                                                   of whether they appear in the
                                                   Windows-generated CSV)
@@ -44,7 +44,7 @@ DIRECTORY LAYOUT
     windows_configs.csv                   <- settings CSV (produced by PS1)
     detect_installed_windows_software.ps1 <- the inventory script (Windows)
     installed_windows_software.csv        <- generated software report
-    separate_Linux_software_requirments.csv <- hand-curated: hardcoded apps beyond
+    additional_Linux_software_requirments.csv <- hand-curated: hardcoded apps beyond
                                              the machine-generated CSV
     detect_installed_drivers.ps1          <- device-driver inventory script (Windows)
     installed_windows_drivers.csv         <- generated driver report
@@ -140,7 +140,7 @@ NAME CLEANING + DE-DUPLICATION
     punctuation, so cosmetic Win32-vs-Store duplicates collapse. Prefer the Win32
     record when a collision occurs.
 
-THE 9 CSV COLUMNS (exact header text, in this order)
+THE 10 CSV COLUMNS (exact header text, in this order)
   Name                        (machine)
   Version                     (machine)
   Publisher                   (machine)
@@ -150,6 +150,11 @@ THE 9 CSV COLUMNS (exact header text, in this order)
   Alternative Competency      (curated; e.g. "100%", may exceed 100%)
   Pricing model               (curated; Free (FOSS) | Free | Freemium | Shareware | Paid)
   Must be included on Linux   (DERIVED in code; yes | no)
+  Can be synched to Linux alternative
+                              (curated; whether the app's data can be AUTOMATICALLY
+                               synced into the Linux alternative by signing in (cloud):
+                               "Yes" | "No, manual transfer". Blank only for Needs-Review
+                               rows. Sourced from the $LinuxKB 'Sy' field below.)
 
 LINUX AVAILABILITY FLAGS — a cell may hold several, ALWAYS normalised to this order:
   Available on Linux ; Not Available ; Native Alternative ;
@@ -185,7 +190,12 @@ KNOWLEDGE BASE ($LinuxKB) — the single place curated data lives
        A='<best alternative text>';
        C=<competency integer>;
        Pr='<pricing model>';
-       F='<free alternative — only needed when Pr=Paid>' }
+       F='<free alternative — only needed when Pr=Paid>';
+       Sy='<Yes | No, manual transfer — fills the "Can be synched to Linux
+            alternative" column: Yes when the app keeps its data in the cloud so
+            signing into the Linux alternative restores it (e.g. Telegram, Chrome,
+            Dropbox, OneDrive, To Do, Sticky Notes via Joplin/OneDrive); otherwise
+            No, manual transfer>' }
   To rate a new/unknown app: research the current best Linux option on the web and
   add an entry. Re-running the script regenerates the CSV; never hand-edit the
   machine columns in the CSV.
@@ -227,7 +237,7 @@ OPTIONAL ONLINE MODE (-Online)
   "scrape the internet for latest data" path for unknowns.
 
 OUTPUT + SUMMARY
-  Export the 9 columns to CSV (UTF-8). Print totals: apps listed, excluded as
+  Export the 10 columns to CSV (UTF-8). Print totals: apps listed, excluded as
   noise, count of "yes", and a breakdown by availability category.
 
 
@@ -441,6 +451,7 @@ WEB-APP DESKTOP SHORTCUTS
     Microsoft Outlook          -> https://outlook.live.com
     Microsoft OneDrive         -> https://onedrive.live.com
     Microsoft To Do            -> https://to-do.microsoft.com
+    Microsoft OneNote          -> https://www.onenote.com/notebooks
     Copilot                    -> https://copilot.microsoft.com
     Claude AI                  -> https://claude.ai
     Reverso                    -> https://www.reverso.net
@@ -476,9 +487,10 @@ MAPPING GUIDANCE (research current packages/URLs at generation time)
     python3-pip, python3-venv, openssh-client, openssh-server, openssl, putty, perl,
     cpanminus, pandoc, wkhtmltopdf, proxychains4, remmina (+ plugins),
     gnome-clocks, gnome-sound-recorder, cheese, gnome-weather, gnome-calculator,
-    gnome-terminal, gedit, sticky, gnome-disk-utility, usb-creator-gtk,
+    gnome-terminal, gedit, sticky (Sticky Notes alt), gnome-disk-utility, usb-creator-gtk,
     nautilus-dropbox, smartmontools, nvme-cli, openvpn, network-manager-openvpn-gnome,
-    glpk-utils, coinor-cbc, onedrive (abraunegg), notepadqq, geany, texlive-full).
+    glpk-utils, coinor-cbc, onedrive (abraunegg), notepadqq, geany, texlive-full,
+    xournalpp (OneNote handwriting/PDF-annotation alt)).
   * Vendor APT repo        -> google-chrome-stable (dl.google.com), microsoft-edge-stable
     (packages.microsoft.com/repos/edge), code (VS Code — packages.microsoft.com/repos/code),
     docker-ce + plugins (download.docker.com), PostgreSQL + postgresql-client (PGDG —
@@ -502,6 +514,8 @@ MAPPING GUIDANCE (research current packages/URLs at generation time)
       com.rtosta.zapzap (WhatsApp)
       org.localsend.localsend_app (LocalSend — Quick/Nearby Share)
       io.github.alainm23.planify (Microsoft To Do alt)
+      net.cozic.joplin_desktop (Sticky Notes / OneNote alt — cloud-syncs via OneDrive)
+      md.obsidian.Obsidian (OneNote alt — rich linked notes)
       com.github.PintaProject.Pinta (Pinta — for Ubuntu 24.04+)
   * Hard-coded (always installed) -> Adobe Acrobat Pro → Stirling PDF (Docker) + PDF Arranger (APT);
     Advanced IP Scanner → Angry IP Scanner (.deb); Advanced Port Scanner → nmap + RustScan + Zenmap;
@@ -995,7 +1009,7 @@ PART E2 — LINUX DRIVER INSTALLER  (<Target OS>/install_device_drivers.sh)
       per PART C for each target-OS subdirectory. Ensure:
         - Notepad++ Windows installer under Wine + Wine DPI 192
         - PowerToys split into 10 individual steps (Frog, Ulauncher, gpick, etc.)
-        - Web-app desktop shortcuts (Microsoft 365, Outlook, OneDrive, To Do, Copilot, Claude, Reverso)
+        - Web-app desktop shortcuts (Microsoft 365, Outlook, OneDrive, To Do, OneNote, Copilot, Claude, Reverso)
         - RealVNC as vendor .deb (not Flatpak)
         - Pinta via Flatpak (removed from noble APT repos)
         - RStudio auto-URL first, manual fallback
