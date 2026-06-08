@@ -60,20 +60,20 @@ sudo ./execute_all.sh
 
 ### گردش‌کار ۱ — مهاجرت نرم‌افزارهای نصب‌شده
 
-1. **تولید گزارش** *(ویندوز؛ اگر از قبل موجود است رد کنید)* — اسکریپت `detect_installed_windows_software.ps1` را روی کامپیوتر ویندوزی اجرا کنید.
-2. **بازبینی** `installed_windows_software.csv` — به‌ویژه ستون‌های `Must be included on Linux` و `Can be synched to Linux alternative`.
+1. **تولید گزارش** *(ویندوز؛ اگر از قبل موجود است رد کنید)* — اسکریپت `B_detect_B_installed_windows_software.ps1` را روی کامپیوتر ویندوزی اجرا کنید.
+2. **بازبینی** `B_installed_windows_software.csv` — به‌ویژه ستون‌های `Must be included on Linux` و `Can be synched to Linux alternative`.
 3. **نصب روی لینوکس** — اسکریپت `install_must_have_software.sh` را با دسترسی root اجرا کنید.
 
 ### گردش‌کار ۲ — مهاجرت تنظیمات ویندوز
 
-1. **استخراج تنظیمات** *(ویندوز؛ اگر از قبل موجود است رد کنید)* — اسکریپت `windows_settings_extract.ps1` را روی کامپیوتر ویندوزی اجرا کنید:
+1. **استخراج تنظیمات** *(ویندوز؛ اگر از قبل موجود است رد کنید)* — اسکریپت `C_detect_windows_settings.ps1` را روی کامپیوتر ویندوزی اجرا کنید:
 
    ```powershell
-   powershell -ExecutionPolicy Bypass -File windows_settings_extract.ps1
+   powershell -ExecutionPolicy Bypass -File C_detect_windows_settings.ps1
    ```
 
-   این فرمان `windows_configs.csv` را تولید می‌کند.
-2. **کپی** `windows_configs.csv` به پوشهٔ `Migrate to Linux/` روی دستگاه لینوکس.
+   این فرمان `C_windows_configs.csv` را تولید می‌کند.
+2. **کپی** `C_windows_configs.csv` به پوشهٔ `Migrate to Linux/` روی دستگاه لینوکس.
 3. **اعمال** — از داخل پوشهٔ توزیع، با دسترسی root اجرا کنید:
 
    ```bash
@@ -81,7 +81,7 @@ sudo ./execute_all.sh
    sudo ./apply_settings.sh
    ```
 
-   این فرمان `../windows_configs.csv` را می‌خواند و اعمال می‌کند (**برای همهٔ کاربران** — یادداشت زیر را ببینید):
+   این فرمان `../C_windows_configs.csv` را می‌خواند و اعمال می‌کند (**برای همهٔ کاربران** — یادداشت زیر را ببینید):
 
    - **برق (Power):** کنش بستن درب لپ‌تاپ (باتری و برق شهر) → `logind.conf`
    - **نمایش (Display):** رزولوشن → `xrandr`، مقیاس‌بندی → مقدار پیش‌فرض سراسری dconf
@@ -100,14 +100,14 @@ sudo ./execute_all.sh
 
 ### گردش‌کار ۳ — مهاجرت درایورهای دستگاه
 
-1. **تولید گزارش** *(ویندوز؛ اگر از قبل موجود است رد کنید)* — اسکریپت `detect_installed_drivers.ps1` را روی کامپیوتر ویندوزی اجرا کنید:
+1. **تولید گزارش** *(ویندوز؛ اگر از قبل موجود است رد کنید)* — اسکریپت `A_detect_installed_drivers.ps1` را روی کامپیوتر ویندوزی اجرا کنید:
    ```powershell
-   powershell -ExecutionPolicy Bypass -File detect_installed_drivers.ps1
+   powershell -ExecutionPolicy Bypass -File A_detect_installed_drivers.ps1
    ```
 
    این فرمان همهٔ درایورهای امضاشدهٔ PnP (`Win32_PnPSignedDriver`) را شمارش می‌کند و
-   `installed_windows_drivers.csv` را می‌نویسد و هر دستگاه را برای لینوکس دسته‌بندی می‌کند.
-2. **کپی** `installed_windows_drivers.csv` به پوشهٔ `Migrate to Linux/` روی دستگاه لینوکس (اختیاری — نصب‌کننده سخت‌افزار را به‌صورت زنده هم تشخیص می‌دهد).
+   `A_installed_windows_drivers.csv` را می‌نویسد و هر دستگاه را برای لینوکس دسته‌بندی می‌کند.
+2. **کپی** `A_installed_windows_drivers.csv` به پوشهٔ `Migrate to Linux/` روی دستگاه لینوکس (اختیاری — نصب‌کننده سخت‌افزار را به‌صورت زنده هم تشخیص می‌دهد).
 3. **نصب روی لینوکس** — از داخل پوشهٔ توزیع، با دسترسی root اجرا کنید:
    ```bash
    cd "Migrate to Linux/Linux Mint (Ubuntu)"
@@ -132,13 +132,13 @@ sudo ./execute_all.sh
 
 | فایل | چیست |
 | ---- | ---- |
-| [`detect_installed_windows_software.ps1`](detect_installed_windows_software.ps1) | اسکریپت PowerShell: نرم‌افزارهای نصب‌شده را پویش می‌کند، سازگاری با لینوکس را رتبه‌بندی می‌کند، و CSV می‌نویسد. |
-| [`installed_windows_software.csv`](installed_windows_software.csv) | گزارش تولیدشده (۱۰ ستون، یک سطر برای هر برنامه). |
-| [`additional_Linux_software_requirments.csv`](additional_Linux_software_requirments.csv) | فهرست **دستی‌تنظیم‌شده** از برنامه‌های سخت‌کدشده که نصب‌کننده فارغ از CSV ویندوز آن‌ها را شامل می‌کند — هم برنامه‌هایی که روی کامپیوتر ویندوز نیستند و هم برنامه‌هایی که منطق نصبشان فراتر از چیزی است که CSV می‌تواند بیان کند (مثلاً نصب با Wine، تقسیم چندبسته‌ای مانند PowerToys، میان‌برهای وب‌اپلیکیشن). |
-| [`detect_installed_drivers.ps1`](detect_installed_drivers.ps1) | اسکریپت PowerShell: **همهٔ درایورهای دستگاه** (`Win32_PnPSignedDriver`) را فهرست می‌کند، هرکدام را به درایور/ماژول لینوکسی‌اش نگاشت می‌کند، و CSV می‌نویسد. |
-| [`installed_windows_drivers.csv`](installed_windows_drivers.csv) | گزارش درایور تولیدشده (۱۲ ستون، یک سطر برای هر دستگاه). |
-| [`windows_settings_extract.ps1`](windows_settings_extract.ps1) | اسکریپت PowerShell: تنظیمات برق/درب، نمایش، صفحه‌کلید، تله‌متری و به‌روزرسانی خودکار را استخراج می‌کند و `windows_configs.csv` را می‌نویسد. |
-| [`windows_configs.csv`]() | CSV تنظیمات تولیدشده (محصول `windows_settings_extract.ps1`). |
+| [`B_detect_B_installed_windows_software.ps1`](B_detect_B_installed_windows_software.ps1) | اسکریپت PowerShell: نرم‌افزارهای نصب‌شده را پویش می‌کند، سازگاری با لینوکس را رتبه‌بندی می‌کند، و CSV می‌نویسد. |
+| [`B_installed_windows_software.csv`](B_installed_windows_software.csv) | گزارش تولیدشده (۱۰ ستون، یک سطر برای هر برنامه). |
+| [`D_additional_Linux_software_requirments.csv`](D_additional_Linux_software_requirments.csv) | فهرست **دستی‌تنظیم‌شده** از برنامه‌های سخت‌کدشده که نصب‌کننده فارغ از CSV ویندوز آن‌ها را شامل می‌کند — هم برنامه‌هایی که روی کامپیوتر ویندوز نیستند و هم برنامه‌هایی که منطق نصبشان فراتر از چیزی است که CSV می‌تواند بیان کند (مثلاً نصب با Wine، تقسیم چندبسته‌ای مانند PowerToys، میان‌برهای وب‌اپلیکیشن). |
+| [`A_detect_installed_drivers.ps1`](A_detect_installed_drivers.ps1) | اسکریپت PowerShell: **همهٔ درایورهای دستگاه** (`Win32_PnPSignedDriver`) را فهرست می‌کند، هرکدام را به درایور/ماژول لینوکسی‌اش نگاشت می‌کند، و CSV می‌نویسد. |
+| [`A_installed_windows_drivers.csv`](A_installed_windows_drivers.csv) | گزارش درایور تولیدشده (۱۲ ستون، یک سطر برای هر دستگاه). |
+| [`C_detect_windows_settings.ps1`](C_detect_windows_settings.ps1) | اسکریپت PowerShell: تنظیمات برق/درب، نمایش، صفحه‌کلید، تله‌متری و به‌روزرسانی خودکار را استخراج می‌کند و `C_windows_configs.csv` را می‌نویسد. |
+| [`C_windows_configs.csv`]() | CSV تنظیمات تولیدشده (محصول `C_detect_windows_settings.ps1`). |
 | [`instructions.txt`](instructions.txt) | مشخصات خودبسنده برای **بازتولید** همهٔ خروجی‌ها از صفر با دادهٔ تازه (فایلی که عامل هوش مصنوعی می‌خواند). |
 
 ### سمت لینوکس (روی دستگاه مقصد اجرا می‌شوند، در `<Target OS>/`)
@@ -148,19 +148,19 @@ sudo ./execute_all.sh
 | `Linux Mint (Ubuntu)/execute_all.sh` | **هماهنگ‌کنندهٔ تک‌فرمانی** — سه اسکریپت را `chmod +x` می‌کند و به‌ترتیب اجرا می‌کند (تنظیمات → برنامه‌ها → درایورها)، با ادامه‌در‌صورت‌خطا. |
 | `Linux Mint (Ubuntu)/install_must_have_software.sh` | **نصب‌کنندهٔ root** بدون نظارت — هر برنامهٔ علامت‌خوردهٔ `Must be included on Linux = yes` را نصب می‌کند. |
 | `Linux Mint (Ubuntu)/install_device_drivers.sh` | **نصب‌کنندهٔ درایور root** بدون نظارت — سخت‌افزار را زنده تشخیص می‌دهد (lspci/lsusb/DMI)، درایورهای لینوکسی متناظر را نصب می‌کند، و میان‌افزار را از سازنده از طریق fwupd/LVFS می‌گیرد. |
-| `Linux Mint (Ubuntu)/apply_settings.sh` | اجراکنندهٔ تنظیمات **خودبسنده** — `../windows_configs.csv` را می‌خواند و هر تنظیم را با توابع اعمال داخلی‌اش + جدول اعزام اعمال می‌کند (بدون فایل پیکربندی جداگانه). |
+| `Linux Mint (Ubuntu)/apply_settings.sh` | اجراکنندهٔ تنظیمات **خودبسنده** — `../C_windows_configs.csv` را می‌خواند و هر تنظیم را با توابع اعمال داخلی‌اش + جدول اعزام اعمال می‌کند (بدون فایل پیکربندی جداگانه). |
 
 ### چیدمان پوشه‌ها
 
 ```text
 Migrate to Linux/
-├─ detect_installed_windows_software.ps1   # Windows: software inventory + Linux rating
-├─ installed_windows_software.csv          # generated software report
-├─ additional_Linux_software_requirments.csv # hand-curated: hardcoded apps beyond the CSV
-├─ detect_installed_drivers.ps1            # Windows: device-driver inventory + Linux mapping
-├─ installed_windows_drivers.csv           # generated driver report
-├─ windows_settings_extract.ps1            # Windows: settings scraper
-├─ windows_configs.csv                     # generated settings CSV
+├─ B_detect_B_installed_windows_software.ps1   # Windows: software inventory + Linux rating
+├─ B_installed_windows_software.csv          # generated software report
+├─ D_additional_Linux_software_requirments.csv # hand-curated: hardcoded apps beyond the CSV
+├─ A_detect_installed_drivers.ps1            # Windows: device-driver inventory + Linux mapping
+├─ A_installed_windows_drivers.csv           # generated driver report
+├─ C_detect_windows_settings.ps1            # Windows: settings scraper
+├─ C_windows_configs.csv                     # generated settings CSV
 ├─ settings_config.txt                     # human-readable mapping reference
 ├─ instructions.txt                        # reproducibility spec
 ├─ README.md
@@ -181,7 +181,7 @@ Migrate to Linux/
 
 ```powershell
 # از داخل پوشهٔ Migrate to Linux/، در PowerShell 5.1 یا PowerShell 7+:
-.\detect_installed_windows_software.ps1
+.\B_detect_B_installed_windows_software.ps1
 ```
 
 به دسترسی مدیر (Administrator) نیازی نیست.
@@ -190,7 +190,7 @@ Migrate to Linux/
 
 | پارامتر | پیش‌فرض | هدف |
 | ------- | ------- | --- |
-| `-OutputPath <path>` | `installed_windows_software.csv` (کنار اسکریپت) | محل نوشتن CSV. |
+| `-OutputPath <path>` | `B_installed_windows_software.csv` (کنار اسکریپت) | محل نوشتن CSV. |
 | `-MustIncludeThreshold <int>` | `70` | حداقل *Alternative Competency* (٪) برای **Must be included on Linux = yes**. |
 | `-IncludeSystemComponents` | خاموش | نگه‌داشتن بسته‌های توزیع‌مجدد، رانتایم‌ها و درایورها. |
 | `-IncludeStoreApps <bool>` | `$true` | شامل‌کردن برنامه‌های فیلترشدهٔ Microsoft Store/UWP. |
@@ -211,7 +211,7 @@ Migrate to Linux/
 | **Must be included on Linux** | مشتق‌شده | `yes` / `no` — از روی آستانهٔ شایستگی محاسبه می‌شود. |
 | **Can be synched to Linux alternative** | دستی | اینکه آیا دادهٔ برنامه با ورود به حساب (ابری) به‌طور خودکار به جایگزین لینوکسی همگام می‌شود: `Yes` یا `No, manual transfer`. |
 
-### ستون‌های CSV (مهاجرت تنظیمات — `windows_configs.csv`)
+### ستون‌های CSV (مهاجرت تنظیمات — `C_windows_configs.csv`)
 
 | ستون | منبع | معنا |
 | ---- | ---- | ---- |
@@ -221,9 +221,9 @@ Migrate to Linux/
 | **LinuxCommand** | از کامپیوتر | برچسب‌های زبان ورودی برای نگاشت صفحه‌کلید (اختیاری). |
 | **Notes** | از کامپیوتر | یادداشت خوانا دربارهٔ نگاشت لینوکسی. |
 
-### ستون‌های CSV (فهرست درایور — `installed_windows_drivers.csv`)
+### ستون‌های CSV (فهرست درایور — `A_installed_windows_drivers.csv`)
 
-با `.\detect_installed_drivers.ps1` تولید کنید (بدون نیاز به دسترسی مدیر). سوییچ‌ها:
+با `.\A_detect_installed_drivers.ps1` تولید کنید (بدون نیاز به دسترسی مدیر). سوییچ‌ها:
 `-IncludeVirtualDevices` دستگاه‌های نرم‌افزاری `ROOT\`/`SW\`/`SWD\` را نگه می‌دارد؛
 `-IncludeMicrosoftInbox` درایورهای عمومی درون‌جعبهٔ مایکروسافت را که به اقدام لینوکسی نیاز ندارند نگه می‌دارد.
 
@@ -244,7 +244,7 @@ Migrate to Linux/
 
 ---
 
-### ستون‌های فایل additional_Linux_software_requirments.csv
+### ستون‌های فایل D_additional_Linux_software_requirments.csv
 
 این یک فایل **دستی‌تنظیم‌شده** است — توسط هیچ اسکریپت PowerShell تولید نمی‌شود.
 این فایل هر برنامه‌ای را مستند می‌کند که نصب‌کنندهٔ لینوکس آن را از طریق **منطق
@@ -262,7 +262,7 @@ Migrate to Linux/
 | **Name** | دستی | نام خوانای برنامهٔ ویندوزی اصلی یا مورد سخت‌کدشده. |
 | **Category** | دستی | دستهٔ کارکردی (PDF، Network، Editor، Utilities و غیره). |
 | **Windows App?** | دستی | اینکه آیا این برنامه روی ویندوز وجود دارد/ندارد، و آیا یک مورد سخت‌کدشده است. |
-| **In installed_windows_software.csv?** | دستی | اینکه آیا سطر متناظری در CSV ماشین‌تولید وجود دارد. |
+| **In B_installed_windows_software.csv?** | دستی | اینکه آیا سطر متناظری در CSV ماشین‌تولید وجود دارد. |
 | **Linux Package(s)** | دستی | بستهٔ دقیق لینوکسی نصب‌شده — ممکن است APT، Flatpak، Docker، ‏.deb یا Wine باشد. |
 | **Source / URL** | دستی | منبع رسمی یا نشانی دانلود بستهٔ لینوکسی. |
 | **Notes** | دستی | چرا این مورد سخت‌کدشده است و نصب‌کننده چه منطق خاصی اعمال می‌کند. |
@@ -273,11 +273,11 @@ Migrate to Linux/
 ## رتبه‌بندی‌های لینوکس از کجا می‌آیند
 
 توصیه‌ها **از وب تحقیق شده‌اند** و داخل آرایهٔ `$LinuxKB` در
-`detect_installed_windows_software.ps1` جای گرفته‌اند. برای تنظیم یک رتبه یا افزودن
+`B_detect_B_installed_windows_software.ps1` جای گرفته‌اند. برای تنظیم یک رتبه یا افزودن
 برنامهٔ جدید، آن جدول را ویرایش و دوباره اجرا کنید. حالت اختیاری `-Online` برنامه‌های
 *ناشناخته* را از طریق Repology API پر می‌کند.
 
-برای درایورها، نگاشت در جدول قواعد `$DriverKB` در `detect_installed_drivers.ps1` قرار
+برای درایورها، نگاشت در جدول قواعد `$DriverKB` در `A_detect_installed_drivers.ps1` قرار
 دارد. هر دستگاه از روی **کلاس PnP** و **شناسهٔ سازندهٔ PCI/USB** نهفته در Hardware ID
 دسته‌بندی می‌شود (اولین قاعدهٔ منطبق برنده است). برای رتبه‌بندی دوبارهٔ یک دستگاه یا
 افزودن یک تراشهٔ جدید، آن جدول را ویرایش و دوباره اجرا کنید.
@@ -425,7 +425,7 @@ sudo ./install_device_drivers.sh
   را می‌گیرد. `apply_settings.sh` اکنون یک فایل خودبسندهٔ واحد است (فایل پیشین
   `settings_config.sh` در آن ادغام شده است).
 - **درایورها روی لینوکس زنده تشخیص داده می‌شوند**، نه رونویسی از ویندوز: فایل
-  `installed_windows_drivers.csv` یک مرجع متقابل است، در حالی که `lspci`/`lsusb`/DMI روی
+  `A_installed_windows_drivers.csv` یک مرجع متقابل است، در حالی که `lspci`/`lsusb`/DMI روی
   خودِ دستگاه معتبرند (نام دستگاه‌های ویندوز به‌طور تمیز به ماژول‌های لینوکس نگاشته نمی‌شود).
 
 ## پیش‌نیازها

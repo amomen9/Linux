@@ -2,7 +2,7 @@
 #
 # apply_settings.sh
 # -----------------------------------------------------------------------------
-# Reads windows_configs.csv (produced by ../windows_settings_extract.ps1) and
+# Reads C_windows_configs.csv (produced by ../C_detect_windows_settings.ps1) and
 # applies the extracted Windows settings to Linux.
 #
 # Run as root:   sudo ./apply_settings.sh
@@ -10,7 +10,7 @@
 # Design:
 #   * SELF-CONTAINED — the per-setting apply functions and the dispatch table
 #     live in THIS file (previously split into settings_config.sh, now merged).
-#   * Parses windows_configs.csv from the parent directory.
+#   * Parses C_windows_configs.csv from the parent directory.
 #   * For each CSV row, looks up the dispatch table and calls the right
 #     function with the appropriate arguments.
 #   * Fully unattended — no interactive prompts.
@@ -644,7 +644,7 @@ require_root
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PARENT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-CSV_FILE="${PARENT_DIR}/windows_configs.csv"
+CSV_FILE="${PARENT_DIR}/C_windows_configs.csv"
 
 echo ""
 echo "=============================================================================="
@@ -657,11 +657,11 @@ echo ""
 
 # ----------------------------- validate inputs -------------------------------
 if [ ! -f "$CSV_FILE" ]; then
-    printf '\n\033[1;33mwindows_configs.csv not found at:\033[0m\n  %s\n\n' "$CSV_FILE"
+    printf '\n\033[1;33mC_windows_configs.csv not found at:\033[0m\n  %s\n\n' "$CSV_FILE"
     printf 'To generate it:\n'
     printf '  1. On your Windows machine, open PowerShell and run:\n'
-    printf '       powershell -ExecutionPolicy Bypass -File windows_settings_extract.ps1\n'
-    printf '  2. Copy the resulting windows_configs.csv to:\n'
+    printf '       powershell -ExecutionPolicy Bypass -File C_detect_windows_settings.ps1\n'
+    printf '  2. Copy the resulting C_windows_configs.csv to:\n'
     printf '       %s\n\n' "$PARENT_DIR"
     exit 1
 fi
@@ -674,7 +674,7 @@ echo "Loaded ${#SETTINGS_DISPATCH[@]} built-in config mappings."
 echo ""
 
 # ----------------------------- parse & apply CSV -----------------------------
-echo "Reading settings from windows_configs.csv..."
+echo "Reading settings from C_windows_configs.csv..."
 echo ""
 
 # Read header

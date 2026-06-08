@@ -60,20 +60,20 @@ just one stage.
 
 ### Workflow 1 — Migrate installed software
 
-1. **Generate the report** *(Windows; skip if already present)* — run `detect_installed_windows_software.ps1` on the Windows PC.
-2. **Review** `installed_windows_software.csv` — especially the `Must be included on Linux` and `Can be synched to Linux alternative` columns.
+1. **Generate the report** *(Windows; skip if already present)* — run `B_detect_B_installed_windows_software.ps1` on the Windows PC.
+2. **Review** `B_installed_windows_software.csv` — especially the `Must be included on Linux` and `Can be synched to Linux alternative` columns.
 3. **Install on Linux** — run `install_must_have_software.sh` as root.
 
 ### Workflow 2 — Migrate Windows settings
 
-1. **Extract settings** *(Windows; skip if already present)* — run `windows_settings_extract.ps1` on the Windows PC:
+1. **Extract settings** *(Windows; skip if already present)* — run `C_detect_windows_settings.ps1` on the Windows PC:
 
    ```powershell
-   powershell -ExecutionPolicy Bypass -File windows_settings_extract.ps1
+   powershell -ExecutionPolicy Bypass -File C_detect_windows_settings.ps1
    ```
 
-   This produces `windows_configs.csv`.
-2. **Copy** `windows_configs.csv` to the `Migrate to Linux/` directory on the Linux machine.
+   This produces `C_windows_configs.csv`.
+2. **Copy** `C_windows_configs.csv` to the `Migrate to Linux/` directory on the Linux machine.
 3. **Apply** — from the distro directory, run as root:
 
    ```bash
@@ -81,7 +81,7 @@ just one stage.
    sudo ./apply_settings.sh
    ```
 
-   This reads `../windows_configs.csv` and applies (**to all users** — see note below):
+   This reads `../C_windows_configs.csv` and applies (**to all users** — see note below):
 
    - **Power:** lid-close action (battery & AC) → `logind.conf`
    - **Display:** resolution → `xrandr`, scaling → system-wide dconf default
@@ -100,14 +100,14 @@ just one stage.
 
 ### Workflow 3 — Migrate device drivers
 
-1. **Generate the report** *(Windows; skip if already present)* — run `detect_installed_drivers.ps1` on the Windows PC:
+1. **Generate the report** *(Windows; skip if already present)* — run `A_detect_installed_drivers.ps1` on the Windows PC:
    ```powershell
-   powershell -ExecutionPolicy Bypass -File detect_installed_drivers.ps1
+   powershell -ExecutionPolicy Bypass -File A_detect_installed_drivers.ps1
    ```
 
    This enumerates every signed PnP driver (`Win32_PnPSignedDriver`) and writes
-   `installed_windows_drivers.csv`, classifying each device for Linux.
-2. **Copy** `installed_windows_drivers.csv` to the `Migrate to Linux/` directory on the Linux machine (optional — the installer also detects hardware live).
+   `A_installed_windows_drivers.csv`, classifying each device for Linux.
+2. **Copy** `A_installed_windows_drivers.csv` to the `Migrate to Linux/` directory on the Linux machine (optional — the installer also detects hardware live).
 3. **Install on Linux** — from the distro directory, run as root:
    ```bash
    cd "Migrate to Linux/Linux Mint (Ubuntu)"
@@ -132,13 +132,13 @@ just one stage.
 
 | File                                                                                    | What it is                                                                                                                                                                                                                                                                                                |
 | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`detect_installed_windows_software.ps1`](detect_installed_windows_software.ps1)         | PowerShell script: scans installed software, rates Linux compatibility, writes CSV.                                                                                                                                                                                                                       |
-| [`installed_windows_software.csv`](installed_windows_software.csv)                       | Generated report (10 columns, one row per app).                                                                                                                                                                                                                                                            |
-| [`additional_Linux_software_requirments.csv`](additional_Linux_software_requirments.csv) | **Hand-curated** list of hardcoded applications that the installer includes regardless of the Windows CSV — both apps absent from the Windows PC and apps whose installer logic goes beyond what the CSV can express (e.g. Wine installs, multi-package splits like PowerToys, web-app shortcuts). |
-| [`detect_installed_drivers.ps1`](detect_installed_drivers.ps1)                           | PowerShell script: inventories**every device driver** (`Win32_PnPSignedDriver`), maps each to its Linux driver/module, writes CSV.                                                                                                                                                                |
-| [`installed_windows_drivers.csv`](installed_windows_drivers.csv)                         | Generated driver report (12 columns, one row per device).                                                                                                                                                                                                                                                 |
-| [`windows_settings_extract.ps1`](windows_settings_extract.ps1)                           | PowerShell script: extracts power/lid, display, keyboard, telemetry, and auto-update settings, writes `windows_configs.csv`.                                                                                                                                                                            |
-| [`windows_configs.csv`]()                                                                | Generated settings CSV (produced by `windows_settings_extract.ps1`).                                                                                                                                                                                                                                    |
+| [`B_detect_B_installed_windows_software.ps1`](B_detect_B_installed_windows_software.ps1)         | PowerShell script: scans installed software, rates Linux compatibility, writes CSV.                                                                                                                                                                                                                       |
+| [`B_installed_windows_software.csv`](B_installed_windows_software.csv)                       | Generated report (10 columns, one row per app).                                                                                                                                                                                                                                                            |
+| [`D_additional_Linux_software_requirments.csv`](D_additional_Linux_software_requirments.csv) | **Hand-curated** list of hardcoded applications that the installer includes regardless of the Windows CSV — both apps absent from the Windows PC and apps whose installer logic goes beyond what the CSV can express (e.g. Wine installs, multi-package splits like PowerToys, web-app shortcuts). |
+| [`A_detect_installed_drivers.ps1`](A_detect_installed_drivers.ps1)                           | PowerShell script: inventories**every device driver** (`Win32_PnPSignedDriver`), maps each to its Linux driver/module, writes CSV.                                                                                                                                                                |
+| [`A_installed_windows_drivers.csv`](A_installed_windows_drivers.csv)                         | Generated driver report (12 columns, one row per device).                                                                                                                                                                                                                                                 |
+| [`C_detect_windows_settings.ps1`](C_detect_windows_settings.ps1)                           | PowerShell script: extracts power/lid, display, keyboard, telemetry, and auto-update settings, writes `C_windows_configs.csv`.                                                                                                                                                                            |
+| [`C_windows_configs.csv`]()                                                                | Generated settings CSV (produced by `C_detect_windows_settings.ps1`).                                                                                                                                                                                                                                    |
 | [`instructions.txt`](instructions.txt)                                                   | Self-contained spec to**reproduce** all artifacts from scratch with fresh data (the file an AI agent reads).                                                                                                                                                                                                     |
 
 ### Linux-side (run on the target machine, in `<Target OS>/`)
@@ -148,19 +148,19 @@ just one stage.
 | `Linux Mint (Ubuntu)/execute_all.sh`                | **One-shot orchestrator** — `chmod +x`'s the three scripts and runs them in order (settings → apps → drivers), continue-on-error.                                        |
 | `Linux Mint (Ubuntu)/install_must_have_software.sh` | Unattended**root installer** — installs every app flagged `Must be included on Linux = yes`.                                                                               |
 | `Linux Mint (Ubuntu)/install_device_drivers.sh`     | Unattended**root driver installer** — detects hardware live (lspci/lsusb/DMI), installs the matching Linux drivers, and pulls firmware from the manufacturer via fwupd/LVFS. |
-| `Linux Mint (Ubuntu)/apply_settings.sh`             | **Self-contained** settings runner — reads `../windows_configs.csv` and applies each setting via its built-in apply functions + dispatch table (no separate config file).  |
+| `Linux Mint (Ubuntu)/apply_settings.sh`             | **Self-contained** settings runner — reads `../C_windows_configs.csv` and applies each setting via its built-in apply functions + dispatch table (no separate config file).  |
 
 ### Directory layout
 
 ```text
 Migrate to Linux/
-├─ detect_installed_windows_software.ps1   # Windows: software inventory + Linux rating
-├─ installed_windows_software.csv          # generated software report
-├─ additional_Linux_software_requirments.csv # hand-curated: hardcoded apps beyond the CSV
-├─ detect_installed_drivers.ps1            # Windows: device-driver inventory + Linux mapping
-├─ installed_windows_drivers.csv           # generated driver report
-├─ windows_settings_extract.ps1            # Windows: settings scraper
-├─ windows_configs.csv                     # generated settings CSV
+├─ B_detect_B_installed_windows_software.ps1   # Windows: software inventory + Linux rating
+├─ B_installed_windows_software.csv          # generated software report
+├─ D_additional_Linux_software_requirments.csv # hand-curated: hardcoded apps beyond the CSV
+├─ A_detect_installed_drivers.ps1            # Windows: device-driver inventory + Linux mapping
+├─ A_installed_windows_drivers.csv           # generated driver report
+├─ C_detect_windows_settings.ps1            # Windows: settings scraper
+├─ C_windows_configs.csv                     # generated settings CSV
 ├─ settings_config.txt                     # human-readable mapping reference
 ├─ instructions.txt                        # reproducibility spec
 ├─ README.md
@@ -181,7 +181,7 @@ folder and generating the scripts in it (see [`instructions.txt`](instructions.t
 
 ```powershell
 # From the Migrate to Linux/ folder, in PowerShell 5.1 or PowerShell 7+:
-.\detect_installed_windows_software.ps1
+.\B_detect_B_installed_windows_software.ps1
 ```
 
 No administrator rights required.
@@ -190,7 +190,7 @@ No administrator rights required.
 
 | Parameter                       | Default                                                | Purpose                                                                              |
 | ------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| `-OutputPath <path>`          | `installed_windows_software.csv` (beside the script) | Where to write the CSV.                                                              |
+| `-OutputPath <path>`          | `B_installed_windows_software.csv` (beside the script) | Where to write the CSV.                                                              |
 | `-MustIncludeThreshold <int>` | `70`                                                 | Minimum*Alternative Competency* (%) for **Must be included on Linux = yes**. |
 | `-IncludeSystemComponents`    | off                                                    | Keep redistributables, runtimes and drivers.                                         |
 | `-IncludeStoreApps <bool>`    | `$true`                                              | Include filtered Microsoft Store/UWP apps.                                           |
@@ -211,7 +211,7 @@ No administrator rights required.
 | **Must be included on Linux**       | derived | `yes` / `no` — computed from competency threshold.                                                |
 | **Can be synched to Linux alternative** | curated | Whether the app's data auto-syncs into the Linux alternative by signing in (cloud): `Yes` or `No, manual transfer`. |
 
-### The CSV columns (settings migration — `windows_configs.csv`)
+### The CSV columns (settings migration — `C_windows_configs.csv`)
 
 | Column                 | Source  | Meaning                                                                                  |
 | ---------------------- | ------- | ---------------------------------------------------------------------------------------- |
@@ -221,9 +221,9 @@ No administrator rights required.
 | **LinuxCommand** | from PC | Input language tags for keyboard mapping (optional).                                     |
 | **Notes**        | from PC | Human-readable note about the Linux mapping.                                             |
 
-### The CSV columns (driver inventory — `installed_windows_drivers.csv`)
+### The CSV columns (driver inventory — `A_installed_windows_drivers.csv`)
 
-Generate with `.\detect_installed_drivers.ps1` (no admin rights). Switches:
+Generate with `.\A_detect_installed_drivers.ps1` (no admin rights). Switches:
 `-IncludeVirtualDevices` keeps `ROOT\`/`SW\`/`SWD\` software devices;
 `-IncludeMicrosoftInbox` keeps generic Microsoft in-box drivers that need no Linux action.
 
@@ -244,7 +244,7 @@ Generate with `.\detect_installed_drivers.ps1` (no admin rights). Switches:
 
 ---
 
-### The additional_Linux_software_requirments.csv columns
+### The D_additional_Linux_software_requirments.csv columns
 
 This is a **hand-curated** file — it is NOT machine-generated by any PowerShell script.
 It documents every application that the Linux installer installs through **hardcoded
@@ -262,7 +262,7 @@ These fall into three groups:
 | **Name**                               | curated | Human-readable name of the original Windows app or hardcoded inclusion.             |
 | **Category**                           | curated | Functional category (PDF, Network, Editor, Utilities, etc.).                        |
 | **Windows App?**                       | curated | Whether this app exists/doesn't on Windows, and whether it's a hardcoded inclusion. |
-| **In installed_windows_software.csv?** | curated | Whether a corresponding row appears in the machine-generated CSV.                   |
+| **In B_installed_windows_software.csv?** | curated | Whether a corresponding row appears in the machine-generated CSV.                   |
 | **Linux Package(s)**                   | curated | The exact Linux package(s) installed — may be APT, Flatpak, Docker, .deb, or Wine. |
 | **Source / URL**                       | curated | The official source or download URL for the Linux package.                          |
 | **Notes**                              | curated | Why this is hardcoded, what special logic the installer applies.                    |
@@ -273,11 +273,11 @@ These fall into three groups:
 ## How the Linux ratings are sourced
 
 Recommendations are **researched from the web** and baked into the `$LinuxKB` array in
-`detect_installed_windows_software.ps1`. To adjust a rating or add a new app, edit that
+`B_detect_B_installed_windows_software.ps1`. To adjust a rating or add a new app, edit that
 table and re-run. The optional `-Online` mode fills *unknown* apps via the Repology API.
 
 For drivers, the mapping lives in the `$DriverKB` rule table in
-`detect_installed_drivers.ps1`. Each device is classified from its **PnP class** and
+`A_detect_installed_drivers.ps1`. Each device is classified from its **PnP class** and
 the **PCI/USB vendor ID** embedded in its Hardware ID (first matching rule wins). To
 re-rate a device or add a new chip, edit that table and re-run.
 
@@ -424,7 +424,7 @@ This is the **only** part of the project that benefits from an AI agent — ever
   own copy. `apply_settings.sh` is now a single self-contained file (the former
   `settings_config.sh` has been merged into it).
 - **Drivers are detected live on Linux**, not transcribed from Windows: the
-  `installed_windows_drivers.csv` is a cross-reference, while `lspci`/`lsusb`/DMI on
+  `A_installed_windows_drivers.csv` is a cross-reference, while `lspci`/`lsusb`/DMI on
   the actual machine are authoritative (Windows device names don't map cleanly to
   Linux modules).
 

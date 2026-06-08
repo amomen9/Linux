@@ -5,7 +5,7 @@
     competency, the Linux pricing model, and whether it is worth installing on Linux.
 
 .DESCRIPTION
-    The script produces installed_windows_software.csv with 10 columns:
+    The script produces B_installed_windows_software.csv with 10 columns:
 
       MACHINE-DERIVED (read live from this PC, never hand-authored):
         Name                       human-friendly product name
@@ -41,7 +41,7 @@
     -IncludeSystemComponents) redistributables, runtimes, drivers and SDK fragments.
 
 .PARAMETER OutputPath
-    CSV path. Default: installed_windows_software.csv beside this script.
+    CSV path. Default: B_installed_windows_software.csv beside this script.
 .PARAMETER MustIncludeThreshold
     Minimum Alternative Competency (%) for "Must be included on Linux" = yes. Default 70.
 .PARAMETER IncludeSystemComponents
@@ -53,8 +53,8 @@
     packaging. Results are cached next to the CSV.
 
 .EXAMPLE
-    .\detect_installed_windows_software.ps1
-    .\detect_installed_windows_software.ps1 -Online -MustIncludeThreshold 80
+    .\B_detect_B_installed_windows_software.ps1
+    .\B_detect_B_installed_windows_software.ps1 -Online -MustIncludeThreshold 80
 #>
 
 [CmdletBinding()]
@@ -77,7 +77,7 @@ if (-not $OutputPath) {
     if (-not $scriptDir -and $PSCommandPath)            { $scriptDir = Split-Path -Parent $PSCommandPath }
     if (-not $scriptDir -and $MyInvocation.MyCommand.Path) { $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path }
     if (-not $scriptDir)                               { $scriptDir = (Get-Location).Path }
-    $OutputPath = Join-Path $scriptDir 'installed_windows_software.csv'
+    $OutputPath = Join-Path $scriptDir 'B_installed_windows_software.csv'
 }
 
 # ---------------------------------------------------------------------------

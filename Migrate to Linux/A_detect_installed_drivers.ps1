@@ -7,7 +7,7 @@
     needed), and whether you must actively install something on Linux.
 
 .DESCRIPTION
-    The script produces installed_windows_drivers.csv with 12 columns:
+    The script produces A_installed_windows_drivers.csv with 12 columns:
 
       MACHINE-DERIVED (read live from this PC via Win32_PnPSignedDriver, never
       hand-authored):
@@ -47,7 +47,7 @@
     virtual devices are dropped unless -IncludeVirtualDevices is given.
 
 .PARAMETER OutputPath
-    CSV path. Default: installed_windows_drivers.csv beside this script.
+    CSV path. Default: A_installed_windows_drivers.csv beside this script.
 .PARAMETER IncludeVirtualDevices
     Keep ROOT\, SW\ and SWD\ software/virtual devices (off by default).
 .PARAMETER IncludeMicrosoftInbox
@@ -55,8 +55,8 @@
     on Linux (off by default — they only add noise to the report).
 
 .EXAMPLE
-    .\detect_installed_drivers.ps1
-    .\detect_installed_drivers.ps1 -IncludeVirtualDevices
+    .\A_detect_installed_drivers.ps1
+    .\A_detect_installed_drivers.ps1 -IncludeVirtualDevices
 #>
 
 [CmdletBinding()]
@@ -77,7 +77,7 @@ if (-not $OutputPath) {
     if (-not $scriptDir -and $PSCommandPath)               { $scriptDir = Split-Path -Parent $PSCommandPath }
     if (-not $scriptDir -and $MyInvocation.MyCommand.Path) { $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path }
     if (-not $scriptDir)                                   { $scriptDir = (Get-Location).Path }
-    $OutputPath = Join-Path $scriptDir 'installed_windows_drivers.csv'
+    $OutputPath = Join-Path $scriptDir 'A_installed_windows_drivers.csv'
 }
 
 # ---------------------------------------------------------------------------

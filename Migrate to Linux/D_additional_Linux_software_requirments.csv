@@ -1,4 +1,4 @@
-Name,Category,Windows App?,In installed_windows_software.csv?,Linux Package(s),Source / URL,Notes,Can be synched to Linux alternative
+Name,Category,Windows App?,In B_installed_windows_software.csv?,Linux Package(s),Source / URL,Notes,Can be synched to Linux alternative
 Adobe Acrobat Pro,PDF,"No, hardcoded inclusion",No,Stirling PDF (Docker) + PDF Arranger (APT),stirlingtools.com (Docker Hub); pdfarranger (APT),Full PDF toolkit: merge/split/OCR/sign/compress/convert. Hardcoded in $LinuxKB and installer.,No, manual transfer
 Advanced IP Scanner,Network,"No, hardcoded inclusion",No,Angry IP Scanner (.deb),angryip.org,Scans IPs + ports with GUI. Hardcoded in $LinuxKB and installer.,No, manual transfer
 Advanced Port Scanner,Network,"No, hardcoded inclusion",No,RustScan + nmap + Zenmap,github.com/RustScan/RustScan; nmap.org,Fast port scanning. Hardcoded in $LinuxKB and installer.,No, manual transfer
