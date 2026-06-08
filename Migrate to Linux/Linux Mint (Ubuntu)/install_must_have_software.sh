@@ -123,7 +123,7 @@ _capture_reason() {  # _capture_reason FILE RC
 _progress() {  # _progress ITER "label" "detail"
   local w=$(( ${COLUMNS:-100} - 16 )); [ "$w" -lt 30 ] && w=70
   local d="$3"
-  [ -n "$d" ] && d=" — $(printf '%s' "$d" | tr -d '\r' | tr -s ' ' | cut -c1-"$w")"
+  [ -n "$d" ] && d=" — $(printf '%s' "$d" | tr -d '\r\n' | tr -s ' ' | cut -c1-"$w")"
   printf '\r\033[K       \033[2m[%s]\033[0m %s%s' "${SPIN:$(( $1 % 4 )):1}" "$2" "$d" >&3
 }
 
@@ -434,7 +434,7 @@ _install_idm_wine() {
       run_spin_quiet "installing IDM under Wine" \
         bash -c "export WINEARCH=win64 WINEPREFIX='\${HOME}/.wine'; wineboot -u 2>/dev/null || true; wine '$idm_exe' /S /D='C:\\Program Files\\Internet Download Manager'" || true
     fi
-    info "installed: IDM (Internet Download Manager) via Wine"
+    info "installed: Internet Download Manager ------> IDM (Internet Download Manager) via Wine (same, wine)"
   else
     warn "download failed: IDM — trying fallback URL"
     # Fallback: try the main download page URL format
@@ -444,7 +444,7 @@ _install_idm_wine() {
         run_spin_quiet "installing IDM under Wine (fallback)" \
           bash -c "export HOME='$USER_HOME' WINEARCH=win64 WINEPREFIX='\${HOME}/.wine'; wineboot -u 2>/dev/null || true; wine '$idm_exe' /S /D='C:\\Program Files\\Internet Download Manager'" || true
       fi
-      info "installed: IDM via Wine (fallback build)"
+      info "installed: Internet Download Manager ------> IDM via Wine (fallback build) (same, wine)"
     else
       warn "IDM download failed — manual install needed"
       return 1
@@ -795,12 +795,12 @@ if deb_installed peazip 2>/dev/null; then
 else
   if download_file "downloading PeaZip" "$PEAZIP_URL" "$PEAZIP_DEB"; then
     if apt_run "installing PeaZip" install "$PEAZIP_DEB"; then
-      info "installed: PeaZip (native RAR/ZIP/7z GUI)"
+      info "installed: WinRAR ------> PeaZip (native RAR/ZIP/7z GUI) (alt, native)"
       mark_ok "PeaZip"
     else
       warn "PeaZip .deb install failed — trying Flatpak"
       if install_flatpak io.github.peazip.PeaZip; then
-        info "installed: PeaZip via Flatpak"
+        info "installed: WinRAR ------> PeaZip via Flatpak (alt, native)"
         mark_ok "PeaZip"
       else
         mark_fail "PeaZip" "$LAST_ERR"
@@ -809,7 +809,7 @@ else
   else
     warn "PeaZip download failed — trying Flatpak"
     if install_flatpak io.github.peazip.PeaZip; then
-      info "installed: PeaZip via Flatpak"
+      info "installed: WinRAR ------> PeaZip via Flatpak (alt, native)"
       mark_ok "PeaZip"
     else
       mark_fail "PeaZip (download+flatpak)" "$LAST_ERR"
@@ -857,7 +857,7 @@ if have_cmd docker 2>/dev/null; then
   docker rm -f stirling-pdf 2>/dev/null || true
   if run_spin "pulling Stirling PDF" docker pull stirlingtools/stirling-pdf:latest; then
     if run_spin "starting Stirling PDF" docker run -d --name stirling-pdf -p 8080:8080 --restart unless-stopped stirlingtools/stirling-pdf:latest; then
-      info "installed: Stirling PDF at http://localhost:8080 (merge, split, OCR, sign, compress, convert)"; mark_ok "Stirling PDF"
+      info "installed: Adobe Acrobat Pro ------> Stirling PDF at http://localhost:8080 (merge, split, OCR, sign, compress, convert) (alt, native)"; mark_ok "Stirling PDF"
     else mark_fail "Stirling PDF (docker run)" "$LAST_ERR"; fi
   else mark_fail "Stirling PDF (docker pull)" "$LAST_ERR"; fi
 else warn "Docker not available — Stirling PDF skipped (install Docker first)"; mark_skip "Stirling PDF" "Docker not available"; fi
@@ -869,7 +869,7 @@ if deb_installed angryipscanner 2>/dev/null || have_cmd ipscan 2>/dev/null; then
 else
   if download_file "downloading Angry IP Scanner" "https://github.com/angryip/ipscan/releases/latest/download/ipscan_${DEB_ARCH}.deb" "$ANGRY_IP_DEB"; then
     if apt_run "installing Angry IP Scanner" install "$ANGRY_IP_DEB"; then
-      info "installed: Angry IP Scanner (network scanner, GUI)"; mark_ok "Angry IP Scanner"
+      info "installed: Advanced IP Scanner ------> Angry IP Scanner (network scanner, GUI) (alt, native)"; mark_ok "Angry IP Scanner"
     else mark_fail "Angry IP Scanner (install)" "$LAST_ERR"; fi
   else
     warn "Angry IP Scanner download failed — installing nmap as fallback"; apt_pkgs nmap && info "installed: nmap (CLI network scanner)" && mark_ok "Angry IP Scanner (nmap fallback)" || mark_fail "Angry IP Scanner" "$LAST_ERR"
@@ -898,7 +898,7 @@ step "Port Scanner alt: nmap + Zenmap + RustScan" bash -c '
 step "Telegram Desktop" bash -c '
   if have_cmd telegram-desktop 2>/dev/null; then info "telegram-desktop already installed"; exit 0; fi
   apt_pkgs telegram-desktop 2>/dev/null || install_flatpak org.telegram.desktop 2>/dev/null || { warn "Telegram install failed (APT + Flatpak)"; exit 1; }
-  info "installed: Telegram Desktop"
+  info "installed: Telegram ------> Telegram Desktop (same, native)"
 '
 
 # Terminator — feature-rich terminal emulator with tiling/grouping (APT)
@@ -912,7 +912,7 @@ else
   step "WindTerm (SSH/Telnet/Serial client with file manager)" bash -c '
     if run_spin "downloading WindTerm" curl -fsSL --retry 3 -o "'"$WINDTERM_DEB"'" "https://github.com/kingToolfish/WindTerm/releases/latest/download/WindTerm_${DEB_ARCH}.deb"; then
       if apt_run "installing WindTerm" install "'"$WINDTERM_DEB"'"; then
-        info "installed: WindTerm"; mark_ok "WindTerm"
+        info "installed: WindTerm ------> WindTerm (same, native)"; mark_ok "WindTerm"
       else mark_fail "WindTerm (install)" "$LAST_ERR"; fi
     else warn "WindTerm download failed — skipping (may need manual install)"; mark_skip "WindTerm" "download failed"; fi
   '
@@ -939,7 +939,7 @@ _papercut_extract_install() {
       chmod +x "$inst" 2>/dev/null || true
       run_spin "running PaperCut installer" bash "$inst" || warn "PaperCut bundled installer returned non-zero (files are in /opt/papercut-print-deploy)"
     fi
-    info "installed: PaperCut Print Deploy client -> /opt/papercut-print-deploy"
+    info "installed: PaperCut ------> PaperCut Print Deploy client -> /opt/papercut-print-deploy (same, native)"
     return 0
   else
     warn "PaperCut client extraction failed"
@@ -1016,7 +1016,7 @@ step "Planify (Microsoft To Do alt)" install_flatpak io.github.alainm23.planify
 # =============================================================================
 log "rclone (Google Drive)"
 if run_spin "installing rclone" bash -c 'curl -fsSL https://rclone.org/install.sh | bash || rclone selfupdate'; then
-  info "installed: rclone"; mark_ok "rclone"
+  info "installed: Google Drive ------> rclone (alt, native)"; mark_ok "rclone"
 else mark_fail "rclone" "$LAST_ERR"; fi
 
 log "Miniconda (Anaconda ecosystem)"
@@ -1354,7 +1354,7 @@ if prompt_for_file "SpotPlayer" "$SPOT_DEB" \
    for checking the authenticity of the downloaded .deb before installing it.
    Download the Linux/Ubuntu .deb from https://spotplayer.ir"; then
   if run_spin "installing SpotPlayer" apt_get install -y "$SPOT_DEB"; then
-    info "installed: spotplayer"; mark_manual "SpotPlayer" "user-accepted risk; installed from spotplayer.ir .deb"
+    info "installed: SpotPlayer ------> spotplayer (same, native)"; mark_manual "SpotPlayer" "user-accepted risk; installed from spotplayer.ir .deb"
   else mark_fail "SpotPlayer (manual)" "$LAST_ERR"; fi
 fi
 
