@@ -13,7 +13,8 @@
         Publisher                  vendor
         Source                     Win32 (registry) or Store (UWP/Appx)
 
-      KNOWLEDGE-DERIVED (curated in the $LinuxKB table below / derived in code):
+      KNOWLEDGE-DERIVED (looked up offline from B_applications.json, the companion
+      JSON manifest that maps every Windows app to its Linux options):
         Linux Availability         one or more flags, normalised to a fixed order:
                                      Available on Linux ; Not Available ;
                                      Native Alternative ; Available as WebApp ;
@@ -31,11 +32,15 @@
                                      automatically synced with the Linux alternative
                                      through signing in (cloud): "Yes" or "No, manual transfer"
 
-    How the data is sourced (honouring "fill the judgement columns by tweaking, not by
-    pretending the PC reported them"): the four curated columns come from the $LinuxKB
-    knowledge base (researched from the web, June 2026) — the single place to tweak —
-    while "Must be included on Linux" is computed from the competency figures. The
-    machine columns are always read fresh from the registry / Appx and are never edited.
+    How the data is sourced: the curated columns come from the offline
+    B_applications.json manifest (the authoritative source, built from web research)
+    via the Get-OfflineManifest function.  "Must be included on Linux" is computed
+    from the competency figures.  The machine columns (Name, Version, Publisher,
+    Source) are always read fresh from the registry / Appx and are never edited.
+
+    Apps NOT found in B_applications.json are flagged with a WARNING and their
+    curated columns are set to "Needs Review" / "Not in manifest".  You can
+    manually edit the CSV afterwards.
 
     Noise removed before rating: Windows updates / hotfixes / KBs, and (unless
     -IncludeSystemComponents) redistributables, runtimes, drivers and SDK fragments.
@@ -276,307 +281,260 @@ $deduped = $clean |
     ForEach-Object { $_.Group[0] }
 
 # ---------------------------------------------------------------------------
-# 4. KNOWLEDGE BASE  -- availability (S), best alternative (A),
-#    competency % (C), Linux pricing model (Pr), and syncability (Sy).
-#    First matching pattern wins, so list specific entries before generic ones.
 # ---------------------------------------------------------------------------
-$LinuxKB = @(
-    # --- Browsers ---
-    @{P='Google Chrome';                 S='Available on Linux';                                 A=''; C=100; Pr='Free'; Sy='Yes'; }
-    @{P='Microsoft Edge';                S='Available on Linux';                                 A=''; C=98;  Pr='Free'; Sy='Yes'; }
-    @{P='Mozilla Firefox|Firefox';       S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='Yes'; }
-
-    # --- Communication / meetings ---
-    @{P='Discord';                       S='Available on Linux';                                 A=''; C=100; Pr='Free'; Sy='Yes'; }
-    @{P='Zoom';                          S='Available on Linux';                                 A=''; C=98;  Pr='Freemium'; Sy='Yes'; }
-    @{P='Cisco Jabber';                  S='Not Available; Available as WebApp';                 A='Cisco Webex (native Linux) or Jami / Linphone (FOSS SIP)'; C=85; Pr='Freemium'; Sy='No, manual transfer'; }
-    @{P='Teams';                         S='Available as WebApp; Native Alternative';            A='Teams PWA via Edge/Chrome (Microsoft-recommended); or the unofficial "teams-for-linux" app'; C=85; Pr='Freemium'; Sy='Yes'; }
-
-    # --- Cloud storage / sync ---
-    @{P='Dropbox';                       S='Available on Linux';                                 A=''; C=100; Pr='Freemium'; Sy='Yes'; }
-    @{P='Google Drive';                  S='Native Alternative; Available as WebApp';            A='Insync (paid GUI) or rclone (free CLI); GNOME Online Accounts for basic mounting'; C=85; Pr='Free (FOSS)'; Sy='Yes'; }
-    @{P='OneDrive';                      S='Native Alternative; Available as WebApp';            A='abraunegg "onedrive" client (free, full sync) or Insync / rclone'; C=88; Pr='Free (FOSS)'; Sy='Yes'; }
-    @{P='Quick Share';                   S='Native Alternative';                                 A='LocalSend, or "Packet" / RQuickShare (brings Google Quick Share to Linux)'; C=105; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-
-    # --- Developer tools ---
-    @{P='Visual Studio Code';            S='Available on Linux';                                 A=''; C=100; Pr='Free'; Sy='Yes'; }
-    @{P='Visual Studio Build Tools';     S='Native Alternative';                                 A='.NET SDK (`dotnet` CLI), MSBuild via Mono, or build with gcc/clang + make/CMake'; C=95; Pr='Free'; Sy='No, manual transfer'; }
-    @{P='Visual Studio Community|Visual Studio \d|Visual Studio 20'; S='Not Available; Native Alternative'; A='VS Code or JetBrains Rider + .NET SDK CLI (all native on Linux)'; C=85; Pr='Freemium'; Sy='No, manual transfer'; }
-    @{P='GitHub Desktop';                S='Not Available; Native Alternative';                  A='GitKraken, or the "github-desktop-plus" community fork; gitg / Git Cola for FOSS'; C=85; Pr='Freemium'; Sy='Yes'; }
-    @{P='^Git\b|^Git$|^Git ';            S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Docker Desktop';                S='Available on Linux';                                 A='Docker Desktop for Linux, or native Docker Engine / Podman (no VM needed)'; C=120; Pr='Free (FOSS)'; Sy='Yes'; }
-    @{P='DBeaver';                       S='Available on Linux';                                 A=''; C=100; Pr='Freemium'; Sy='No, manual transfer'; }
-    @{P='pgAdmin';                       S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='pgNow';                         S='Native Alternative';                                 A='pgAdmin 4, DBeaver, or the psql CLI'; C=95; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='SQL Server Management Studio';  S='Not Available; Native Alternative; Linux Docker';    A='DBeaver or VS Code "mssql" extension as the client; run SQL Server itself via Docker (mcr.microsoft.com/mssql/server)'; C=80; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='CMake';                         S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='^ninja';                        S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Node\.js';                      S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Anaconda';                      S='Available on Linux';                                 A=''; C=100; Pr='Freemium'; Sy='No, manual transfer'; }
-    @{P='^Python';                       S='Available on Linux';                                 A='python3 is pre-installed; manage versions with pyenv'; C=105; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='^R for Windows|^R \d|^R$';      S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='RStudio';                       S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='PowerShell 7';                  S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='OpenSSH';                       S='Available on Linux';                                 A='OpenSSH client/server is standard on Linux'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='OpenSSL';                       S='Available on Linux';                                 A='OpenSSL is pre-installed'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='OpenVPN';                       S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Strawberry Perl|Perl';          S='Available on Linux';                                 A='Perl is pre-installed; add modules with cpanminus'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='MiKTeX';                        S='Available on Linux; Native Alternative';             A='MiKTeX has a Linux build, or use TeX Live (the Linux standard)'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Pandoc';                        S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='wkhtmltox|wkhtmltopdf';         S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Gurobi';                        S='Available on Linux';                                 A='Gurobi runs natively on Linux (commercial; free academic license)'; C=100; Pr='Paid'; F='HiGHS, SCIP, Google OR-Tools or GLPK'; Sy='No, manual transfer'; }
-    @{P='Java \d|Java\(TM\)|^JDK|^JRE';  S='Available on Linux; Native Alternative';             A='OpenJDK (e.g. Eclipse Temurin / "openjdk-*-jdk" packages)'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='\.NET SDK';                     S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='GnuWin32: Grep|^Grep';          S='Available on Linux';                                 A='GNU grep is pre-installed'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='MobaXterm';                     S='Native Alternative; Windows Emulator (Wine/Proton)'; A='Built-in terminal + OpenSSH; Remmina (RDP/VNC/SSH), Tabby, or Termius'; C=90; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='PuTTY';                         S='Available on Linux';                                 A='PuTTY is packaged for Linux, though native `ssh` is the norm'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Bitvise SSH';                   S='Not Available; Native Alternative';                  A='OpenSSH (ssh/sftp/scp), Termius, or FileZilla for SFTP'; C=95; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Proxifier';                     S='Not Available; Native Alternative';                  A='proxychains-ng or redsocks'; C=75; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='RealVNC|VNC Viewer';            S='Available on Linux';                                 A=''; C=95; Pr='Freemium'; Sy='No, manual transfer'; }
-    @{P='AnyDesk';                       S='Available on Linux';                                 A=''; C=97; Pr='Freemium'; Sy='No, manual transfer'; }
-    @{P='Parsec';                        S='Available on Linux';                                 A=''; C=95; Pr='Freemium'; Sy='No, manual transfer'; }
-    @{P='VMware Workstation';            S='Available on Linux';                                 A='VMware Workstation Pro for Linux (now free) — or KVM/virt-manager, VirtualBox'; C=100; Pr='Free'; Sy='No, manual transfer'; }
-
-    # --- Media / utilities ---
-    @{P='calibre';                       S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Anki';                          S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='Yes'; }
-    @{P='KMPlayer';                      S='Not Available; Native Alternative';                  A='VLC or mpv'; C=150; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='K-Lite|Codec Pack';             S='Not Available';                                      A='Not needed on Linux — VLC/mpv + GStreamer/ffmpeg cover all codecs'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='oCam';                          S='Not Available; Native Alternative';                  A='OBS Studio or SimpleScreenRecorder (record); Flameshot (stills)'; C=110; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Camtasia';                      S='Not Available; Native Alternative';                  A='OBS Studio (capture) + Kdenlive / Shotcut (edit); or ScreenPal (web)'; C=85; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Lightshot';                     S='Not Available; Native Alternative';                  A='Flameshot (or Spectacle / Ksnip)'; C=115; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='WinRAR';                        S='Not Available; Native Alternative';                  A='p7zip / PeaZip / Ark (GUI); `rar`/`unrar` CLI also available'; C=95; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Torrent';                       S='Not Available; Native Alternative';                  A='qBittorrent (or Transmission / Deluge)'; C=130; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Internet Download Manager';     S='Not Available; Native Alternative';                  A='uGet (closest match) or Free Download Manager / JDownloader 2 / XDM; aria2 for CLI'; C=85; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Notepad\+\+';                   S='Native Alternative; Windows Emulator (Wine/Proton)'; A='Notepadqq, Geany, Kate or VS Code; Notepad++ also runs well under Wine'; C=95; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-
-    # --- Office / productivity / writing ---
-    @{P='Microsoft 365|Microsoft Office|Office \d|^Office'; S='Available as WebApp; Native Alternative; Windows Emulator (Wine/Proton)'; A='Office for the web (office.com); or LibreOffice / OnlyOffice / WPS Office (native)'; C=78; Pr='Free (FOSS)'; Sy='Yes'; }
-    @{P='Grammarly';                     S='Not Available; Available as WebApp; Native Alternative'; A='LanguageTool (FOSS desktop + browser); or Grammarly browser extension / web'; C=80; Pr='Freemium'; Sy='Yes'; }
-    @{P='Reverso';                       S='Available as WebApp; Native Alternative';            A='reverso.net (web); GoldenDict for offline dictionary/translation'; C=80; Pr='Freemium'; Sy='Yes'; }
-    @{P='Longman Dictionary';            S='Not Available; Native Alternative';                  A='GoldenDict / GoldenDict-ng (can load the Longman dictionary files)'; C=85; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Babylon';                       S='Not Available; Native Alternative';                  A='GoldenDict (reads Babylon .BGL dictionaries)'; C=90; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='AlterEgo|Lexique';              S='Not Available; Native Alternative; Windows Emulator (Wine/Proton)'; A='GoldenDict with the relevant dictionary files; or run under Wine'; C=65; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='QUICKfind';                     S='Not Available; Windows Emulator (Wine/Proton)';      A='GoldenDict / a StarDict reader; QUICKfind may run under Wine'; C=50; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Copilot';                       S='Available as WebApp';                                A='copilot.microsoft.com (web/PWA); local LLMs via Ollama'; C=95; Pr='Freemium'; Sy='Yes'; }
-
-    # --- VPN / DRM / e-learning ---
-    @{P='SpotPlayer|Spot Player';        S='Available on Linux';                                 A='SpotPlayer has an Ubuntu/Linux build at spotplayer.ir'; C=95; Pr='Free'; Sy='No, manual transfer'; }
-    @{P='Hotspot Shield';                S='Available on Linux; Native Alternative';             A='Hotspot Shield has an Ubuntu/Debian client; stronger FOSS option: Proton VPN (or Mullvad)'; C=105; Pr='Freemium'; Sy='No, manual transfer'; }
-    @{P='Adobe AIR';                     S='Not Available';                                      A='Deprecated runtime (HARMAN AIR SDK only); most AIR apps have native/web replacements'; C=20; Pr='Free'; Sy='No, manual transfer'; }
-    @{P='Adobe Connect';                 S='Available as WebApp';                                A='Adobe Connect in-browser; or Jitsi / BigBlueButton for FOSS web meetings'; C=85; Pr='Paid'; Sy='No, manual transfer'; }
-    @{P='Adobe Digital Editions';        S='Not Available; Native Alternative';                  A='Thorium Reader (reads LCP DRM) or calibre + DeDRM; Foliate for DRM-free EPUB'; C=90; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-
-    # --- Hardware / vendor utilities ---
-    @{P='Lenovo Vantage|Lenovo Companion'; S='Not Available; Native Alternative';               A='No vendor app; use fwupd (firmware) and LenovoLegionLinux for Legion hardware'; C=40; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Lenovo Go Central|Lenovo Professional Wireless'; S='Not Available';                     A='Vendor utility — usually no Linux app needed; Solaar for Logitech-style combos'; C=20; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Legion Arena';                  S='Not Available; Native Alternative';                  A='Steam / Lutris / Heroic for games; LenovoLegionLinux for hardware control'; C=60; Pr='Free'; Sy='No, manual transfer'; }
-    @{P='Samsung Magician';              S='Not Available; Native Alternative';                  A='smartmontools (SMART), nvme-cli, fwupd; Samsung Magician DC (bootable) for firmware'; C=55; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Samsung Account';               S='Not Available; Available as WebApp';                 A='account.samsung.com (web)'; C=70; Pr='Free'; Sy='Yes'; }
-    @{P='PaperCut';                      S='Available on Linux';                                 A='Install the NATIVE PaperCut client for Linux (Print Deploy / User Client) from your PaperCut server — hard-coded inclusion, do NOT substitute CUPS'; C=95; Pr='Paid'; Sy='No, manual transfer'; }
-    @{P='Psiphon';                       S='Native Alternative';                                 A='Proton VPN, or Tor Browser / obfs4 bridges'; C=90; Pr='Freemium'; Sy='No, manual transfer'; }
-
-    # --- More communication / accounts ---
-    @{P='WhatsApp|Whats App';            S='Available as WebApp; Native Alternative';            A='web.whatsapp.com (PWA); native clients ZapZap or Whatsie'; C=90; Pr='Free'; Sy='Yes'; }
-    @{P='Outlook';                       S='Available as WebApp; Native Alternative';            A='Thunderbird or Evolution (native); outlook.com (web)'; C=88; Pr='Free (FOSS)'; Sy='Yes'; }
-    @{P='Claude';                        S='Available as WebApp';                                A='claude.ai (web/PWA); local LLMs via Ollama / Jan'; C=95; Pr='Freemium'; Sy='Yes'; }
-    @{P='Nearby Share';                  S='Native Alternative';                                 A='LocalSend, or "Packet" / RQuickShare (Quick Share for Linux)'; C=105; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-
-    # --- Store first-party small apps ---
-    @{P='Rufus';                         S='Not Available; Native Alternative';                  A='GNOME Disks, balenaEtcher, Ventoy, Fedora Media Writer, or `dd`'; C=90; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Windows Calculator';            S='Available on Linux';                                 A='GNOME Calculator / KCalc (pre-installed)'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='OneNote';                       S='Available as WebApp; Native Alternative';            A='OneNote for the web; or Obsidian / Joplin / Xournal++'; C=85; Pr='Free (FOSS)'; Sy='Yes'; }
-    @{P='Sticky Notes';                  S='Native Alternative';                                 A='GNOME Sticky Notes (sticky APT) + Joplin (Flatpak); Joplin enables cloud sync with Microsoft account via OneDrive plugin'; C=95; Pr='Free (FOSS)'; Sy='Yes'; }
-    @{P='Microsoft To Do';               S='Available as WebApp; Native Alternative';            A='to-do.microsoft.com (web); or Tasks.org / Planify / Super Productivity'; C=90; Pr='Free (FOSS)'; Sy='Yes'; }
-    @{P='Windows Terminal';              S='Native Alternative';                                 A='GNOME Console/Terminal, Konsole, Tabby, or Ghostty (built-in on Linux)'; C=110; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Sound Recorder';                S='Native Alternative';                                 A='GNOME Sound Recorder or Audacity'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Windows Camera';                S='Native Alternative';                                 A='Cheese, GNOME Snapshot, or Kamoso'; C=95; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Windows Notepad';               S='Native Alternative';                                 A='GNOME Text Editor / gedit / Kate (pre-installed)'; C=110; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='^Paint$|Microsoft Paint';       S='Native Alternative';                                 A='GIMP, Krita, Pinta, or Drawing'; C=200; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='^Photos$|Windows Photos';       S='Native Alternative';                                 A='Shotwell, gThumb, GNOME Loupe, or digiKam'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Zune Music|Groove|Media Player';S='Native Alternative';                                 A='Rhythmbox, Lollypop, Elisa, or VLC'; C=110; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Alarms';                        S='Native Alternative';                                 A='GNOME Clocks (or KDE Clock widget)'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='PowerToys';                     S='Not Available; Native Alternative';                  A='Text Extractor: Frog (tenderowl.com/frog - shortcut-triggered OCR, select->extract, FOSS). Keyboard accents: ibus-typing-booster or Compose key (built-in). Color Picker: gpick / KColorChooser (shortcut->click to pick hex). File Locksmith: fuser / lsof (CLI) or GNOME File Locksmith. Find My Mouse: GNOME "Show Pointer Location" or KDE "Track Mouse". Image Resizer: right-click in Nautilus + nautilus-image-converter, or ImageMagick `convert`. Mouse Without Borders: Barrier / Input Leap (software KVM, FOSS). ZoomIt: KMag / Zoom (GNOME) or screen-recorder. Shortcut Guide: GNOME Super key overlay or KDE shortcuts cheat sheet'; C=95; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Power ?Shell';                  S='Available on Linux';                                 A=''; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Windows Store|Microsoft Store';  S='Native Alternative';                                A="Your distro's software center (GNOME Software / KDE Discover) + Flathub"; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Bing';                          S='Available as WebApp';                                A='bing.com in any browser (or DuckDuckGo / Google)'; C=95; Pr='Free'; Sy='No, manual transfer'; }
-    @{P='Weather';                       S='Available as WebApp; Native Alternative';            A='GNOME Weather / KWeather (native); or any weather website'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Power Automate';                S='Native Alternative';                                 A='No Linux client; use cron / systemd timers, n8n, or AutoKey for desktop macros'; C=65; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Ubuntu \(WSL\)';                S='Available on Linux';                                 A='You are already on Linux — WSL is not needed'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-
-    # --- Hard-coded inclusions (always migrate these) ---
-    @{P='Adobe Acrobat|Adobe Acrobat Pro|Acrobat DC|Adobe Acrobat DC'; S='Not Available; Native Alternative; Linux Docker'; A='Stirling PDF (FOSS, Docker or local JAR — full PDF toolkit: merge, split, OCR, sign, compress, convert) + PDF Arranger (native APT: merge/reorder/split) + LibreOffice Draw (edit). Free alternative to Acrobat Pro.'; C=90; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Advanced IP Scanner';           S='Not Available; Native Alternative';                  A='Angry IP Scanner (java-based, official .deb at angryip.org — scans IPs + ports with GUI) or nmap + Zenmap / RustScan (CLI)'; C=105; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Advanced Port Scanner';         S='Not Available; Native Alternative';                  A='RustScan (blazing-fast Rust port scanner, CLI) or Zenmap (nmap GUI) or Angry IP Scanner (covers both IP + port scanning)'; C=110; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='Telegram';                      S='Available on Linux';                                 A='telegram-desktop (APT/Flatpak/Snap — official client)'; C=100; Pr='Free (FOSS)'; Sy='Yes'; }
-    @{P='Terminator';                    S='Available on Linux';                                 A='terminator (APT — feature-rich terminal emulator with tiling/grouping/broadcasting)'; C=100; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
-    @{P='WindTerm';                      S='Available on Linux';                                 A='WindTerm has a native Linux build (.deb/tarball from github.com/kingToolfish/WindTerm) — fast SSH/Telnet/Serial client with file manager'; C=98; Pr='Free'; Sy='No, manual transfer'; }
-    @{P='WinDirStat';                    S='Native Alternative';                                 A='QDirStat (APT — Qt-based disk usage analyzer + cleanup, closest match to WinDirStat) or GNOME Disk Usage Analyzer / baobab (pre-installed on GNOME)'; C=95; Pr='Free (FOSS)'; Sy='No, manual transfer'; }
+# 4. LOAD THE OFFLINE MANIFEST  -- B_applications.json
+#
+#    Every Windows application's availability, best alternative, competency,
+#    pricing, and sync data is defined in the companion JSON manifest.
+#    This script looks up every installed app in the manifest offline — no
+#    web scraping, no AI calls, no pre-baked knowledge base inside the script.
+# ---------------------------------------------------------------------------
+$ManifestPath = $null
+$candidates = @(
+    (Join-Path (Split-Path -Parent $OutputPath) 'B_applications.json'),
+    (Join-Path $PSScriptRoot 'B_applications.json'),
+    (Join-Path (Get-Location).Path 'B_applications.json'),
+    (Join-Path (Split-Path $PSScriptRoot) '..\B_applications.json')
 )
-
-# Canonical flag order so the Linux Availability column is consistent on every row.
-$FlagOrder = @(
-    'Available on Linux', 'Not Available', 'Native Alternative',
-    'Available as WebApp', 'Linux Docker', 'Windows Emulator (Wine/Proton)',
-    'Needs Review'
-)
-function Format-Flags {
-    param([string] $Status)
-    $parts = $Status -split ';' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
-    $ordered = $parts | Sort-Object {
-        $i = $FlagOrder.IndexOf($_)
-        if ($i -lt 0) { 99 } else { $i }
-    }
-    return ($ordered -join '; ')
+foreach ($c in $candidates) {
+    if (Test-Path $c) { $ManifestPath = $c; break }
 }
 
-function Resolve-Linux {
-    param([string] $Name)
-    foreach ($entry in $LinuxKB) {
-        if ($Name -match $entry.P) {
-            return [pscustomobject]@{
-                Status = $entry.S; Alt = $entry.A; Competency = $entry.C; Pricing = $entry.Pr; Free = $entry.F; Sync = $entry.Sy
-            }
+$Global:ManifestData = $null
+$Global:ManifestLoaded = $false
+
+function Get-OfflineManifest {
+    <#
+    .SYNOPSIS
+        Loads B_applications.json once per run and caches it globally.
+        Looks up an installed Windows app by fuzzy-matching its name against
+        the manifest, then extracts Linux Availability, Best Alternative,
+        Competency, Pricing, and Syncability from the top-ranked alternative.
+    .DESCRIPTION
+        Returns [PSCustomObject] with members:
+          Availability, BestAlternative, Competency, PricingModel, Syncability,
+          AltName, DestType, MatchedByName.
+        Returns $null if the app is not found in the manifest.
+    #>
+    param([string] $AppName)
+
+    if (-not $Global:ManifestLoaded) {
+        if (-not $ManifestPath -or -not (Test-Path $ManifestPath)) {
+            Write-Warning "B_applications.json NOT FOUND. No offline lookup possible — all curated columns will be 'Needs Review' / 'Not in manifest'."
+            $Global:ManifestLoaded = $true
+            $Global:ManifestData = @{}   # empty dict means all lookups fail
+            return $null
         }
-    }
-    return $null
-}
-
-# ---------------------------------------------------------------------------
-# 4b. OPTIONAL ONLINE LOOKUP  -- repology.org for apps not in the KB
-# ---------------------------------------------------------------------------
-$repoCachePath = [System.IO.Path]::ChangeExtension($OutputPath, '.repology-cache.json')
-$repoCache = @{}
-if ($Online -and (Test-Path $repoCachePath)) {
-    try { (Get-Content $repoCachePath -Raw | ConvertFrom-Json).PSObject.Properties |
-            ForEach-Object { $repoCache[$_.Name] = $_.Value } } catch {}
-}
-
-function Resolve-LinuxOnline {
-    param([string] $Name)
-    $slug = ($Name.ToLowerInvariant() -replace '[^a-z0-9]+', '-').Trim('-')
-    $slug = ($slug -replace '-(x64|x86|64|32|bit|version|for|windows).*$', '')
-    if (-not $slug) { return $null }
-    if ($repoCache.ContainsKey($slug)) { return $repoCache[$slug] }
-
-    $result = $null
-    try {
-        $headers = @{ 'User-Agent' = 'detect-installed-windows-software/3.0 (personal Linux migration audit)' }
-        $resp = Invoke-RestMethod -Uri "https://repology.org/api/v1/project/$slug" -Headers $headers -TimeoutSec 15
-        if ($resp -and $resp.Count -gt 0) {
-            $repos = ($resp | ForEach-Object { $_.repo } | Sort-Object -Unique)
-            $result = [pscustomobject]@{
-                Status     = 'Available on Linux'
-                Alt        = "Packaged on Linux (Repology: $($repos.Count) repos, e.g. $(( $repos | Select-Object -First 3) -join ', '))"
-                Competency = 100
-                Pricing    = 'Free (FOSS)'
-                Free       = ''
-                Sync       = 'No, manual transfer'
-            }
-        } else {
-            $result = [pscustomobject]@{ Status = 'Needs Review'; Alt = 'Not found on repology.org — check AlternativeTo'; Competency = $null; Pricing = ''; Free = ''; Sync = '' }
+        try {
+            $raw = Get-Content -Path $ManifestPath -Raw -Encoding UTF8 -ErrorAction Stop
+            $data = $raw | ConvertFrom-Json -ErrorAction Stop
+            $Global:ManifestData = $data
+            Write-Host "Loaded offline manifest: $($data.applications.Count) Windows apps, $($data.stats.totalAlternatives) total Linux alternatives." -ForegroundColor Cyan
+        } catch {
+            Write-Warning "Failed to parse B_applications.json at '$ManifestPath': $_"
+            $Global:ManifestLoaded = $true
+            $Global:ManifestData = @{}
+            return $null
         }
-    } catch {
-        $result = [pscustomobject]@{ Status = 'Needs Review'; Alt = "Online lookup failed: $($_.Exception.Message)"; Competency = $null; Pricing = ''; Sync = '' }
+        $Global:ManifestLoaded = $true
     }
-    $repoCache[$slug] = $result
-    Start-Sleep -Milliseconds 700
-    return $result
+
+    $data = $Global:ManifestData
+    if (-not $data -or -not $data.applications) { return $null }
+
+    # ---------- fuzzy matching ----------
+    function Get-MatchKey([string] $s) {
+        ($s.ToLowerInvariant() -replace '[^a-z0-9]','').Trim()
+    }
+
+    $lookupKey = Get-MatchKey $AppName
+    if ([string]::IsNullOrWhiteSpace($lookupKey)) { return $null }
+
+    $bestEntry = $null
+    $bestScore = 0
+
+    foreach ($entry in $data.applications) {
+        $entryKey = Get-MatchKey $entry.name
+        # Exact match
+        if ($entryKey -eq $lookupKey) { $bestEntry = $entry; $bestScore = 999; break }
+        # Token-overlap scoring: how many words of the installed name appear in the manifest entry
+        $entryTokens = ($entry.name.ToLowerInvariant() -split '[^a-z0-9]' | Where-Object { $_ })
+        $appTokens   = ([regex]::Replace($AppName, '[^a-z0-9 ]','').ToLowerInvariant() -split '\s+' | Where-Object { $_ })
+        $overlap = 0
+        foreach ($t in $appTokens) {
+            if ($entryTokens -contains $t -or $entryKey -match [regex]::Escape($t)) { $overlap++ }
+        }
+        # Bonus if one is a substring of the other
+        if ($entryKey.Contains($lookupKey) -or $lookupKey.Contains($entryKey)) { $overlap += 3 }
+        if ($overlap -gt $bestScore) { $bestScore = $overlap; $bestEntry = $entry }
+    }
+
+    if (-not $bestEntry -or $bestScore -lt 2) { return $null }
+
+    $entry = $bestEntry
+    $firstAlt = if ($entry.alternatives -and $entry.alternatives.Count -gt 0) { $entry.alternatives[0] } else { $null }
+    $avail = $entry.linuxAvailability
+    if (-not $avail) { $avail = 'Needs Review' }
+
+    # Build the "Best Alternative" description from the first alternative
+    $altName = ''
+    $dest = $entry.destType
+    if ($firstAlt -and $firstAlt.name) {
+        $altName = $firstAlt.name
+    } elseif ($dest) {
+        $altName = "See $dest alternative in manifest"
+    }
+
+    # Append install method for the primary alternative
+    if ($firstAlt -and $firstAlt.installMethod) {
+        $altName += " (install: $($firstAlt.installMethod))"
+    }
+
+    # Pricing model from the best alternative
+    $pricing = if ($firstAlt -and $firstAlt.pricingModel) { $firstAlt.pricingModel } else { 'Unknown' }
+
+    # Competency
+    $competency = 70
+    if ($firstAlt -and $firstAlt.competency) {
+        $cstr = [string]$firstAlt.competency
+        if ($cstr -eq 'N/A') { $competency = 0 }
+        else { try { [int]$cstr } catch { 70 } }
+    }
+
+    # Syncability
+    $sync = if ($firstAlt -and $firstAlt.canSync) { $firstAlt.canSync } else { 'No, manual transfer' }
+
+    return [PSCustomObject]@{
+        Availability    = $avail
+        BestAlternative = $altName
+        Competency      = $competency
+        PricingModel    = $pricing
+        Syncability     = $sync
+        AltName         = $altName
+        DestType        = $dest
+        MatchedByName   = $entry.name
+    }
 }
 
+Write-Host "Manifest search path: $ManifestPath" -ForegroundColor DarkGray
+
 # ---------------------------------------------------------------------------
-# 5. ENRICH
+# 5. ENRICH — match each installed app against the offline manifest.
+#
+#    IMPORTANT NOTICE:
+#    This script ONLY scans software that is ALREADY INSTALLED and REGISTERED
+#    on your Windows system.  Portable applications, non-registered tools,
+#    web-only services, and apps you plan to use on Linux that are not yet
+#    installed will NOT be detected automatically.
+#
+#    You can MANUALLY add any such applications to the output CSV file
+#    (B_installed_windows_software.csv) after this script finishes.
+#
+#    Apps NOT found in B_applications.json are flagged with a WARNING and
+#    their curated columns are set to "Needs Review" / "Not in manifest".
 # ---------------------------------------------------------------------------
+
+$matched   = 0
+$unmatched = 0
+$warnings  = @()
+
 $enriched = foreach ($app in $deduped) {
-    $hit = Resolve-Linux $app.Name
-    if (-not $hit -and $Online) { $hit = Resolve-LinuxOnline $app.Name }
+    $name  = $app.Name
+    $kb    = Get-OfflineManifest -AppName $name
 
-    $comp = $null
-    if ($hit -and $null -ne $hit.Competency -and "$($hit.Competency)" -ne '') { $comp = [int]$hit.Competency }
+    if (-not $kb) {
+        $unmatched++
+        $warningMsg = "WARNING: '$name' was NOT FOUND in B_applications.json. Curated columns set to 'Needs Review'. You may manually edit the output CSV to add proper alternatives."
+        Write-Warning $warningMsg
+        $warnings += $warningMsg
 
-    [pscustomobject]@{
-        Name      = $app.Name
-        Version   = $app.Version
-        Publisher = $app.Publisher
-        Source    = $app.Source
-        Status    = Format-Flags $(if ($hit) { $hit.Status } else { 'Needs Review' })
-        Alt       = if ($hit) { $hit.Alt }     else { '' }
-        Comp      = $comp
-        Pricing   = if ($hit) { $hit.Pricing } else { '' }
-        Free      = if ($hit) { $hit.Free }    else { '' }
-        Sync      = if ($hit) { $hit.Sync }    else { '' }
-        Must      = 'no'
+        # Placeholder for unmatched apps
+        [PSCustomObject]@{
+            Name                          = $name
+            Version                       = [string]$app.Version
+            Publisher                     = [string]$app.Publisher
+            Source                        = $app.Source
+            'Linux Availability'          = 'Needs Review — NOT IN MANIFEST'
+            'Best Linux Alternative'      = 'Not in manifest — research manually or add to B_applications.json'
+            'Alternative Competency'      = ''
+            'Pricing model'               = ''
+            'Must be included on Linux'   = 'no'
+            'Can be synched to Linux alternative' = 'No, manual transfer'
+        }
+    }
+    else {
+        $matched++
+
+        # Determine MustInclude
+        $mustInclude = if ($kb.Competency -ge $MustIncludeThreshold) { 'yes' } else { 'no' }
+
+        [PSCustomObject]@{
+            Name                          = $name
+            Version                       = [string]$app.Version
+            Publisher                     = [string]$app.Publisher
+            Source                        = $app.Source
+            'Linux Availability'          = $kb.Availability
+            'Best Linux Alternative'      = $kb.BestAlternative
+            'Alternative Competency'      = $kb.Competency
+            'Pricing model'               = $kb.PricingModel
+            'Must be included on Linux'   = $mustInclude
+            'Can be synched to Linux alternative' = $kb.Syncability
+        }
     }
 }
 
 # ---------------------------------------------------------------------------
-# 5b. DERIVE "Must be included on Linux"
-#     yes = the single most-competent INSTALLABLE option per product (native or
-#     alternative) whose competency reaches the threshold. Web-only / not-available
-#     rows are never "yes" (nothing to install); duplicate builds of one product
-#     (e.g. three Python versions) yield a single "yes".
+# 5b. POST-MATCH SUMMARY — print to console
 # ---------------------------------------------------------------------------
-$claimed = @{}
-foreach ($r in ($enriched |
-        Sort-Object @{E={ if ($null -ne $_.Comp) { $_.Comp } else { -1 } }; Descending=$true},
-                    @{E={ $_.Source -ne 'Win32' }})) {
-    $installable = ($r.Status -match 'Available on Linux' -or $r.Status -match 'Native Alternative')
-    $id = Get-IdentityKey $r.Name
-    if ($installable -and $null -ne $r.Comp -and $r.Comp -ge $MustIncludeThreshold -and -not $claimed.ContainsKey($id)) {
-        $r.Must = 'yes'
-        $claimed[$id] = $true
+Write-Host ''
+Write-Host '==================== MATCH SUMMARY ====================' -ForegroundColor Yellow
+Write-Host "Total installed apps scanned       : $($deduped.Count)" -ForegroundColor Cyan
+Write-Host "  Matched in B_applications.json    : $matched"        -ForegroundColor Green
+Write-Host "  NOT found in manifest (WARNING)   : $unmatched"       -ForegroundColor Red
+if ($unmatched -gt 0) {
+    Write-Host ''
+    Write-Host '==============================================================' -ForegroundColor Yellow
+    Write-Host 'IMPORTANT NOTICE:'                                              -ForegroundColor Yellow
+    Write-Host '  This script ONLY scans software that is ALREADY INSTALLED'     -ForegroundColor Yellow
+    Write-Host '  and REGISTERED on your Windows system.'                        -ForegroundColor Yellow
+    Write-Host ''                                                                -ForegroundColor Yellow
+    Write-Host '  Applications NOT found in the manifest are marked with'        -ForegroundColor Yellow
+    Write-Host '  "Needs Review" in the output CSV.  You can MANUALLY edit'      -ForegroundColor Yellow
+    Write-Host '  the CSV file to add proper Linux alternatives, or you can'     -ForegroundColor Yellow
+    Write-Host '  add entries to B_applications.json and re-run this script.'    -ForegroundColor Yellow
+    Write-Host ''                                                                -ForegroundColor Yellow
+    Write-Host '  Portable apps, non-registered tools, and web-only services'    -ForegroundColor Yellow
+    Write-Host '  are NOT detected by this script.  Add them to the CSV'         -ForegroundColor Yellow
+    Write-Host '  manually if you need their Linux alternatives evaluated.'      -ForegroundColor Yellow
+    Write-Host '==============================================================' -ForegroundColor Yellow
+    Write-Host ''
+    foreach ($w in $warnings) {
+        Write-Host $w -ForegroundColor DarkYellow
     }
 }
+Write-Host '=======================================================' -ForegroundColor Yellow
 
 # ---------------------------------------------------------------------------
-# 6. EXPORT  (fixed column order, including the user-named headings)
+# 6. EXPORT — write the enriched CSV
 # ---------------------------------------------------------------------------
-$rows = $enriched | Sort-Object Name | ForEach-Object {
-    [pscustomobject]([ordered]@{
-        'Name'                      = $_.Name
-        'Version'                   = $_.Version
-        'Publisher'                 = $_.Publisher
-        'Source'                    = $_.Source
-        'Linux Availability'        = $_.Status
-        'Best Linux Alternative'    = $(
-            # Task 1: if the recommended Linux option is paid, append the best free option.
-            $a = $_.Alt
-            if ($_.Pricing -eq 'Paid' -and $_.Free) {
-                if ($a) { "$a; free alternative: $($_.Free)" } else { "Free alternative: $($_.Free)" }
-            } else { $a }
-        )
-        'Alternative Competency'    = if ($null -ne $_.Comp) { "$($_.Comp)%" } else { '' }
-        'Pricing model'             = $_.Pricing
-        'Must be included on Linux' = $_.Must
-        'Can be synched to Linux alternative' = $_.Sync
-    })
+Write-Host "Writing CSV to $OutputPath ..." -ForegroundColor Cyan
+try {
+    $enriched | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
+    Write-Host "OK — CSV written with $($enriched.Count) rows." -ForegroundColor Green
+    Write-Host "  File: $OutputPath" -ForegroundColor Green
+    Write-Host ''
+} catch {
+    Write-Error "Failed to write CSV: $_"
+    exit 3
 }
 
-if ($Online) {
-    try { $repoCache | ConvertTo-Json -Depth 5 | Set-Content -Path $repoCachePath -Encoding UTF8 } catch {}
+# Summary stats
+if ($unmatched -gt 0) {
+    Write-Host "REMINDER: $unmatched app(s) were NOT found in B_applications.json." -ForegroundColor Yellow
+    Write-Host "  Their curated columns are placeholder values." -ForegroundColor Yellow
+    Write-Host "  You may manually edit the CSV to fill in proper alternatives," -ForegroundColor Yellow
+    Write-Host "  or add entries to B_applications.json and re-run this script." -ForegroundColor Yellow
+    Write-Host ''
 }
 
-$rows | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
-
-# ---------------------------------------------------------------------------
-# Summary
-# ---------------------------------------------------------------------------
-Write-Host ""
-Write-Host "Inventory written to: $OutputPath" -ForegroundColor Green
-Write-Host ("Total apps listed : {0}" -f $rows.Count)
-Write-Host ("Excluded as noise : {0} (updates/hotfixes" -f ($combined.Count - $filtered.Count)) -NoNewline
-Write-Host $(if ($IncludeSystemComponents) { ')'; } else { ' + system components)' })
-Write-Host ("Must install (yes): {0}  (competency >= {1}%)" -f ($rows | Where-Object 'Must be included on Linux' -eq 'yes').Count, $MustIncludeThreshold)
-Write-Host ""
-$enriched | Group-Object {
-        if ($_.Status -match '^Available on Linux') { 'Native on Linux' }
-        elseif ($_.Status -match 'Native Alternative') { 'Has Linux alternative' }
-        elseif ($_.Status -match 'WebApp')             { 'Web app only' }
-        elseif ($_.Status -match 'Not Available')      { 'Not available' }
-        else { 'Needs review' }
-    } | Sort-Object Count -Descending |
-    ForEach-Object { Write-Host ("  {0,-22} {1}" -f $_.Name, $_.Count) }
-Write-Host ""
-if (($enriched | Where-Object Status -eq 'Needs Review').Count -gt 0 -and -not $Online) {
-    Write-Host "Tip: re-run with -Online to auto-classify the 'Needs Review' apps via repology.org" -ForegroundColor Yellow
-}
+Write-Host "Done." -ForegroundColor Green
