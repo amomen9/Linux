@@ -1,15 +1,76 @@
 ===============================================================================
- MIGRATE TO LINUX — REPRODUCIBILITY INSTRUCTIONS
+ MIGRATE TO LINUX - REPRODUCIBILITY INSTRUCTIONS
+===============================================================================
+
+===============================================================================
+ CURRENT ARCHITECTURE (authoritative - read this first)
+===============================================================================
+The project was refactored to a UNIVERSAL, single-set installer. The detailed
+sections further below predate that refactor and remain useful for the detection
+logic and the per-app research, but where they conflict with this block, THIS
+BLOCK WINS.
+
+Pipeline (one entry point):
+  run_project.ps1  (project root) orchestrates:
+    1-3. Detection (submodules/C_, B_, A_*.ps1) -> writes CSVs to  documents/
+    4.   Generator (submodules/D_compile_and_generate_shell_script.ps1) -> writes
+         ONE universal installer set to  "Execute on Linux!/"
+
+Layout:
+  Migrate to Linux/
+    run_project.ps1
+    Additional_Manual_Linux_Software_Requirments.csv   (hand-curated hardcoded apps)
+    Supported Distributions.txt                        (distro families + CPU arches)
+    README.md / README_fa.md
+    submodules/      A_/B_/C_ detection, D_ generator, docker_discovery.sh,
+                     templates/ (_common.sh engine + 4 *.sh.tmpl)
+    documents/       A_/B_/C_ CSVs, B_applications.json manifest, this file
+    Execute on Linux!/   GENERATED universal scripts (execute_all / install_* / apply_settings)
+
+Universal installer model:
+  - The generated *.sh detect the distro FAMILY at runtime via /etc/os-release
+    (ID_LIKE -> debian=apt, rhel/fedora=dnf, suse=zypper, arch=pacman) and the CPU
+    ARCH via `uname -m` (x86_64 / aarch64 / armhf). One set runs on EVERY supported
+    distro - there are NO per-distro folders anymore.
+  - FLATPAK-FIRST: GUI apps install from Flathub (identical app id everywhere) with
+    a per-family native fallback. The native package manager is used only for the
+    base layer (installing Flatpak itself + Flathub, CLI/dev tools, drivers).
+  - The engine (submodules/templates/_common.sh) provides: detect_distro,
+    detect_arch, pm_install/pm_installed/pm_refresh, ensure_flatpak, install_flatpak,
+    and the multi-strategy install_app (flatpak/native/snap/webapp/docker/
+    wine-bottles/deb-url/github-deb/manual). The generator inlines it into each
+    output script (standalone, LF newlines, no BOM).
+
+Manifest schema (documents/B_applications.json):
+  Each installed alternative carries an "install" object the generator reads:
+    install: { method, flatpakId, snap, native:{apt,dnf,zypper,pacman}, arch:[...],
+               downloadUrl:{x86_64,aarch64}, webappUrl, dockerImage, githubRepo,
+               note, review }
+  method in: flatpak | native | snap | webapp | docker | wine-bottles |
+             deb-url | github-deb | manual.  "review:true" flags non-apt names that
+             still need verification on a real system of that family.
+
+Extra tool:
+  submodules/docker_discovery.sh  - snapshots local Docker (images/volumes/networks/
+  containers) and emits a cross-platform docker_rebuild.sh (auto-starts Docker if
+  stopped; volume DATA is not preserved).
+
+To regenerate the installer after editing the manifest or CSVs:
+  .\run_project.ps1 -SkipDetection      (regenerate scripts only)
+  .\run_project.ps1                      (full: detection + generation)
+
 ===============================================================================
 
 PURPOSE
 -------
 This file is a self-contained specification. An AI engine (or a human) should be
-able to read ONLY this file — and regenerate, with the latest up-to-date data:
+able to read ONLY this file - and regenerate, with the latest up-to-date data:
 
+  0. run_project.ps1                              (Windows one-shot orchestrator:
+                                                config → software → drivers)
   1. B_detect_B_installed_windows_software.ps1   (Windows inventory + Linux rating)
   2. B_installed_windows_software.csv          (the report the script produces)
-  2b. D_additional_Linux_software_requirments.csv  (hand-curated: hardcoded apps that
+  2b. Additional_Manual_Linux_Software_Requirments.csv  (hand-curated: hardcoded apps that
                                                   the installer includes regardless
                                                   of whether they appear in the
                                                   Windows-generated CSV)
@@ -27,7 +88,7 @@ able to read ONLY this file — and regenerate, with the latest up-to-date data:
   8. <Target OS>/install_device_drivers.sh   (driver installer: live hardware
                                                   detection + manufacturer firmware)
   9. <Target OS>/execute_all.sh              (one-shot orchestrator: runs settings,
-                                                  apps, drivers — continue-on-error)
+                                                  apps, drivers - continue-on-error)
 
 Everything below reflects exactly what these artifacts must do. When data such as
 "the best Linux alternative", version numbers, repository URLs or package names is
@@ -40,11 +101,12 @@ DIRECTORY LAYOUT
   Migrate to Linux/
     instructions.txt                      <- this file (the spec)
     README.md                             <- human-facing overview
+    run_project.ps1                           <- Windows one-shot orchestrator (config→software→drivers)
     C_detect_windows_settings.ps1          <- settings scraper (Windows)
     C_windows_configs.csv                   <- settings CSV (produced by PS1)
     B_detect_B_installed_windows_software.ps1 <- the inventory script (Windows)
     B_installed_windows_software.csv        <- generated software report
-    D_additional_Linux_software_requirments.csv <- hand-curated: hardcoded apps beyond
+    Additional_Manual_Linux_Software_Requirments.csv <- hand-curated: hardcoded apps beyond
                                              the machine-generated CSV
     A_detect_installed_drivers.ps1          <- device-driver inventory script (Windows)
     A_installed_windows_drivers.csv         <- generated driver report
@@ -60,8 +122,13 @@ DIRECTORY LAYOUT
   generating the installers in it per the INSTALLER SPECS below.
 
 
-WORKFLOW (IMPORTANT — the human runs the PowerShell step)
----------------------------------------------------------
+WORKFLOW (IMPORTANT - the human runs the PowerShell steps)
+----------------------------------------------------------
+Step W0  For a full one-shot inventory, the HUMAN can run run_project.ps1 on Windows:
+             powershell -ExecutionPolicy Bypass -File run_project.ps1
+         This runs config → software → drivers in sequence, producing all three
+         CSV files at once. See the script's -Help for parameters.
+
 Step 1  The AI generates / updates B_detect_B_installed_windows_software.ps1.
 Step 2  The HUMAN runs that .ps1 on the Windows machine being migrated:
             powershell -ExecutionPolicy Bypass -File B_detect_B_installed_windows_software.ps1
@@ -75,7 +142,7 @@ Step 5  The HUMAN runs the installer as root on the target OS.
 
 
 ===============================================================================
- PART A — POWERSHELL INVENTORY SCRIPT SPEC
+ PART A - POWERSHELL INVENTORY SCRIPT SPEC
  (file: B_detect_B_installed_windows_software.ps1)
 ===============================================================================
 
@@ -91,7 +158,7 @@ PARAMETERS
   -IncludeStoreApps <bool>      default: $true
   -Online                       switch, default off (live Repology lookups)
 
-ERROR HANDLING (critical — must not crash on missing properties)
+ERROR HANDLING (critical - must not crash on missing properties)
   Some registry keys returned by Get-ItemProperty and some Appx packages returned by
   Get-AppxPackage can lack properties that the script expects (e.g. a registry key
   with no values has only PS* provider properties, no DisplayName). Accessing a
@@ -110,7 +177,7 @@ ERROR HANDLING (critical — must not crash on missing properties)
       IsFramework, SignatureKind, NonRemovable, Name, Version, Publisher (Appx).
 
 COLLECTION (machine-derived; read live, never hand-authored)
-  Win32 apps: enumerate these registry uninstall hives —
+  Win32 apps: enumerate these registry uninstall hives -
       HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*
       HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*
       HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*   (do not omit HKCU)
@@ -135,8 +202,8 @@ NOISE REMOVAL (the user's "no redundant entries" rule)
 NAME CLEANING + DE-DUPLICATION
   Clean display names: strip "(remove only)", "(User)", trailing architecture
     parentheticals "(x64)/(64-bit)/(64 bit)" and trailing bare arch words.
-  De-dup KEY keeps version digits (so genuinely distinct versions — e.g. three
-    Python installs — remain separate) but drops vendor prefix, parentheticals and
+  De-dup KEY keeps version digits (so genuinely distinct versions - e.g. three
+    Python installs - remain separate) but drops vendor prefix, parentheticals and
     punctuation, so cosmetic Win32-vs-Store duplicates collapse. Prefer the Win32
     record when a collision occurs.
 
@@ -145,7 +212,7 @@ THE 10 CSV COLUMNS (exact header text, in this order)
   Version                     (machine)
   Publisher                   (machine)
   Source                      (machine: Win32 | Store)
-  Linux Availability          (curated; flags — see below)
+  Linux Availability          (curated; flags - see below)
   Best Linux Alternative      (curated; see paid->free rule below)
   Alternative Competency      (curated; e.g. "100%", may exceed 100%)
   Pricing model               (curated; Free (FOSS) | Free | Freemium | Shareware | Paid)
@@ -156,7 +223,7 @@ THE 10 CSV COLUMNS (exact header text, in this order)
                                "Yes" | "No, manual transfer". Blank only for Needs-Review
                                rows. Sourced from the $LinuxKB 'Sy' field below.)
 
-LINUX AVAILABILITY FLAGS — a cell may hold several, ALWAYS normalised to this order:
+LINUX AVAILABILITY FLAGS - a cell may hold several, ALWAYS normalised to this order:
   Available on Linux ; Not Available ; Native Alternative ;
   Available as WebApp ; Linux Docker ; Windows Emulator (Wine/Proton)
   (Unknown apps get "Needs Review".)
@@ -179,19 +246,19 @@ PAID -> FREE RULE (do not omit)
     * installable on Linux: Linux Availability contains "Available on Linux" OR
       "Native Alternative" (web-only / not-available => no, nothing to install);
     * Alternative Competency >= -MustIncludeThreshold (default 70);
-    * it is the single most-competent build of that product — collapse duplicate
+    * it is the single most-competent build of that product - collapse duplicate
       installs of one product to ONE yes (identity key = name minus version, arch
       and generic suffix words; pick highest competency, Win32 preferred).
 
-KNOWLEDGE BASE ($LinuxKB) — the single place curated data lives
+KNOWLEDGE BASE ($LinuxKB) - the single place curated data lives
   An ordered array; first matching pattern wins (specific before generic). Each row:
     @{ P='<regex matched against Name>';
        S='<availability flags>';
        A='<best alternative text>';
        C=<competency integer>;
        Pr='<pricing model>';
-       F='<free alternative — only needed when Pr=Paid>';
-       Sy='<Yes | No, manual transfer — fills the "Can be synched to Linux
+       F='<free alternative - only needed when Pr=Paid>';
+       Sy='<Yes | No, manual transfer - fills the "Can be synched to Linux
             alternative" column: Yes when the app keeps its data in the cloud so
             signing into the Linux alternative restores it (e.g. Telegram, Chrome,
             Dropbox, OneDrive, To Do, Sticky Notes via Joplin/OneDrive); otherwise
@@ -200,7 +267,7 @@ KNOWLEDGE BASE ($LinuxKB) — the single place curated data lives
   add an entry. Re-running the script regenerates the CSV; never hand-edit the
   machine columns in the CSV.
 
-  IMPORTANT — PowerToys KB entry rules:
+  IMPORTANT - PowerToys KB entry rules:
     PowerToys is NOT a single app on Linux. Its KB must list each feature's separate
     Linux replacement, with competency set to cover the overall replacement quality.
     The individual features and their Linux equivalents (researched June 2026):
@@ -208,14 +275,14 @@ KNOWLEDGE BASE ($LinuxKB) — the single place curated data lives
                                   shortcut-triggered OCR, select a screen region →
                                   extract text. This is the most important feature.
       * Keyboard accents      -> ibus-typing-booster (APT) or the Compose key (built-in)
-      * Color Picker          -> gpick (APT) or KColorChooser — shortcut→click to pick hex
-      * File Locksmith        -> fuser / lsof (APT) — CLI; GNOME File Locksmith for GUI
+      * Color Picker          -> gpick (APT) or KColorChooser - shortcut→click to pick hex
+      * File Locksmith        -> fuser / lsof (APT) - CLI; GNOME File Locksmith for GUI
       * Find My Mouse         -> GNOME Settings > Mouse > "Show Pointer Location"
                                   (shake Ctrl to locate); KDE "Track Mouse" feature
       * Image Resizer         -> nautilus-image-converter (APT, right-click in Nautilus)
                                   or ImageMagick `convert` (CLI)
       * Mouse Without Borders -> Barrier / Input Leap (Flatpak: com.github.debauchee.barrier)
-                                  — software KVM, share keyboard+mouse across PCs
+                                  - software KVM, share keyboard+mouse across PCs
       * ZoomIt                -> KMag (APT) or GNOME built-in zoom (Super+scroll)
       * Shortcut Guide        -> GNOME Super key overlay (hold Super) or KDE shortcuts
                                   cheat sheet
@@ -223,7 +290,7 @@ KNOWLEDGE BASE ($LinuxKB) — the single place curated data lives
     Set C=95 and Pr='Free (FOSS)' for PowerToys overall. The A field should concisely
     list each feature→replacement pair.
 
-  IMPORTANT — Notepad++ KB entry rules:
+  IMPORTANT - Notepad++ KB entry rules:
     Notepad++ is classified as "Native Alternative; Windows Emulator (Wine/Proton)".
     The A field must list both native alternatives (notepadqq, geany, kate, VS Code)
     AND mention that the REAL Notepad++ runs well under Wine. The installer will
@@ -242,19 +309,19 @@ OUTPUT + SUMMARY
 
 
 ===============================================================================
- PART B — CSV CONSUMPTION
+ PART B - CSV CONSUMPTION
  (file: B_installed_windows_software.csv)
 ===============================================================================
   Treat the CSV as the source of truth for what to install on a target OS.
   The installer is built from rows where "Must be included on Linux" = yes,
   installing the native Linux app when "Linux Availability" includes "Available on
-  Linux", otherwise the product named in "Best Linux Alternative" — noting that
+  Linux", otherwise the product named in "Best Linux Alternative" - noting that
   some entries (like PowerToys and Notepad++) name MULTIPLE alternatives that the
   installer must install individually.
 
 
 ===============================================================================
- PART C — PER-TARGET-OS INSTALLER SPEC
+ PART C - PER-TARGET-OS INSTALLER SPEC
  (file: <Target OS>/install_must_have_software.sh)
 ===============================================================================
 
@@ -269,12 +336,12 @@ EXECUTION MODEL
   * Fully unattended (DEBIAN_FRONTEND=noninteractive on Debian/Ubuntu).
   * Idempotent: if an app is already installed, run its UPDATE path instead of
     reinstalling.
-  * Never abort the whole run on one failure — wrap each install, record
+  * Never abort the whole run on one failure - wrap each install, record
     OK/FAIL/SKIP, and print a summary at the end.
   * CLEAN TERMINAL UI: save the real terminal on a spare fd (exec 3>&1 4>&2) and
     redirect everything else to a log file (exec >>"$LOG" 2>&1). Print ONLY the
-    curated lines to fd 3 — "==> <step>" headers and indented "installed:/updated:"
-    detail — so package-manager noise never reaches the screen. Prompts and the final
+    curated lines to fd 3 - "==> <step>" headers and indented "installed:/updated:"
+    detail - so package-manager noise never reaches the screen. Prompts and the final
     summary also go to fd 3; show the log path at start and end.
   * LIVE PROGRESS (not just a spinner): while a step runs, show a SINGLE transient
     line on fd 3 that updates in place with real progress, and CLEAR it the moment that
@@ -282,7 +349,7 @@ EXECUTION MODEL
     format differs by operation type:
 
     **Downloads** (curl/wget): use curl's hash-bar (`curl -#`) which prints a
-    self-overwriting progress meter to stderr — tail it and display to fd 3. See the
+    self-overwriting progress meter to stderr - tail it and display to fd 3. See the
     `download_file` function.
 
     **Installations with native progress** (apt, flatpak, pip, docker pull):
@@ -290,13 +357,13 @@ EXECUTION MODEL
         apt-get with -o APT::Status-Fd=9 redirected to a temp file and tail it).
       - flatpak: use `--show-progress` flag. Verbose output is suppressed; only the
         progress gauge is shown. See the `install_flatpak` function.
-      - docker: `docker pull` already prints layers + status — tail from output.
+      - docker: `docker pull` already prints layers + status - tail from output.
 
     **Installations without progress API** (Wine .exe, .deb scripts, tar extraction,
     conda, snap, dpkg -i): these commands can produce many lines of verbose output.
     Instead of showing their last output line (which may be a random diagnostic),
-    show a **non-interactive auto-progress indicator** — a live elapsed-time counter
-    ("running… 45s") — while the command runs, and redirect ALL its output to the
+    show a **non-interactive auto-progress indicator** - a live elapsed-time counter
+    ("running… 45s") - while the command runs, and redirect ALL its output to the
     log. See the `run_spin_quiet` function. This keeps the UI clean and avoids
     printing confusing internal output while still confirming the step is active.
 
@@ -313,7 +380,7 @@ EXECUTION MODEL
 
   * TWO LOG FILES (both printed at the end):
       - install.log         : the full, verbose command output (for deep debugging).
-      - install-results.log : a SHORT results log — one tab-separated line per step,
+      - install-results.log : a SHORT results log - one tab-separated line per step,
         "<timestamp> <status> <item> <reason>", where status is OK / FAIL / SKIP and
         <reason> is a concise failure reason. Capture the reason by teeing each step's
         output to a temp file inside the spinner helper and, on non-zero exit, pulling
@@ -323,14 +390,14 @@ EXECUTION MODEL
 
 AUTO-DETECT THE TARGET ENVIRONMENT (nothing hard-coded)
   Detect at runtime, on the machine the script is executing on, and use these
-  everywhere a repo line, download URL or package name needs them — never hard-code
+  everywhere a repo line, download URL or package name needs them - never hard-code
   amd64/x86_64 or a distro release:
     * Distro/base release codename + version: parse /etc/os-release; on Linux Mint use
       UBUNTU_CODENAME (fallback VERSION_CODENAME) and map it to the Ubuntu x.y number
       (e.g. jammy=22.04, noble=24.04) for codename/version-specific repos
       (Docker, PGDG, pgAdmin, Microsoft "prod").
     * Debian/apt architecture:  DEB_ARCH = `dpkg --print-architecture`
-      (amd64 | arm64 | armhf | i386) — use in every apt "[arch=...]" source line and in
+      (amd64 | arm64 | armhf | i386) - use in every apt "[arch=...]" source line and in
       vendor .deb URLs (Zoom zoom_${DEB_ARCH}.deb, GitKraken gitkraken-${DEB_ARCH}.deb,
       RStudio rstudio-latest-${DEB_ARCH}.deb, RealVNC .deb, etc.).
     * Kernel/tarball architecture:  KARCH = `uname -m` (x86_64 | aarch64 | ...), mapped
@@ -342,9 +409,9 @@ AUTO-DETECT THE TARGET ENVIRONMENT (nothing hard-coded)
 PPA / BACKPORTS FOR NEWER UBUNTU RELEASES
   On Ubuntu 24.04 (noble) specifically, some packages need extra PPAs because the
   vendor repos or main archives lag. Detect the codename and conditionally add:
-    * dotnet/backports PPA — the Microsoft prod repo only carries .NET 8.0 on noble;
+    * dotnet/backports PPA - the Microsoft prod repo only carries .NET 8.0 on noble;
       .NET 9.0 SDK (dotnet-sdk-9.0) needs the ppa:dotnet/backports PPA added first.
-    * Ulauncher PPA — ulauncher is not in the default noble repos; add
+    * Ulauncher PPA - ulauncher is not in the default noble repos; add
       ppa:agornostal/ulauncher via add-apt-repository.
 
 TRUSTED SOURCES ONLY (hard rule)
@@ -352,7 +419,7 @@ TRUSTED SOURCES ONLY (hard rule)
   MUST come from an absolutely trusted, verifiable source. Apply these checks to
   every source before including it in the generated .sh script:
 
-    a) Official first-party domain — the source MUST be the software's OWN official
+    a) Official first-party domain - the source MUST be the software's OWN official
        domain (e.g. google.com for Chrome, microsoft.com for Edge/VS Code/PS/.NET,
        docker.com for Docker, postgresql.org for PostgreSQL/PGDG/pgAdmin, dbeaver.io
        for DBeaver, zoom.us for Zoom, discord.com for Discord, parsec.app for Parsec,
@@ -361,29 +428,29 @@ TRUSTED SOURCES ONLY (hard rule)
        Node.js, protonvpn.com for Proton VPN, anydesk.com for AnyDesk, winehq.org for
        WineHQ, virtualbox.org for Oracle VirtualBox, realvnc.com for RealVNC Viewer).
 
-    b) HTTPS mandatory — all downloads, repos, and key URLs MUST use HTTPS. Reject
+    b) HTTPS mandatory - all downloads, repos, and key URLs MUST use HTTPS. Reject
        any source that is HTTP-only or redirects to HTTP. (Exception: the distro's
        own APT repos which are GPG-signed and use trusted mirrors.)
 
-    c) GPG signature verification — every third-party APT repo MUST add its keyring
+    c) GPG signature verification - every third-party APT repo MUST add its keyring
        via `signed-by=/etc/apt/keyrings/<name>.gpg` in the sources.list line. Fetch
        keys over HTTPS with `curl -fsSL` and store in /etc/apt/keyrings/. The
        sources.list entry must use [signed-by=...] pointing to this keyring.
 
-    d) No curl-pipe-bash from untrusted domains — `curl ... | bash` is acceptable
+    d) No curl-pipe-bash from untrusted domains - `curl ... | bash` is acceptable
        ONLY from absolutely trusted first-party domains (e.g. rclone.org). Never pipe
        to bash from third-party sites, shortened URLs, or redirect services.
 
-    e) Manual downloads (login-gated) — the script MUST print the EXACT official URL
+    e) Manual downloads (login-gated) - the script MUST print the EXACT official URL
        the user should visit, not a search suggestion or a third-party mirror. The
        URL must resolve to the vendor's own domain.
 
-    f) SpotPlayer — this app is distributed from spotplayer.ir, a domain that cannot
+    f) SpotPlayer - this app is distributed from spotplayer.ir, a domain that cannot
        be verified as a trusted first-party source by the standards above. It MUST
        remain in the MANUAL section and the user MUST be warned that they are
        responsible for verifying the download's authenticity before installing it.
 
-    g) Any source that cannot satisfy (a)–(c) MUST NOT be included in the automated
+    g) Any source that cannot satisfy (a)-(c) MUST NOT be included in the automated
        section. Move it to MANUAL with a clear warning about verifying authenticity.
        Include a prominent "TRUSTED SOURCES GUARANTEE" comment block at the top of
        the generated script, after the header comment, stating that every source
@@ -397,7 +464,7 @@ SOURCE-OF-PACKAGE PRIORITY (per the user's rule)
   Always install the LATEST available version.
 
 DEPENDENCIES
-  Install build/runtime deps that package managers won't pull automatically — in
+  Install build/runtime deps that package managers won't pull automatically - in
   particular the kernel-module build chain for VMware:
     build-essential, gcc, make, dkms, linux-headers-$(uname -r), default-jdk (for
     Java-based tools such as LanguageTool), unzip, curl, wget, gnupg, gdebi, flatpak.
@@ -430,7 +497,7 @@ POWERTOYS REPLACEMENTS (explicit requirements)
     * Keyboard Accents         -> ibus-typing-booster  APT
     * File Locksmith           -> lsof          APT
     * Find My Mouse            -> info-only (GNOME Settings > Mouse > Show Pointer Location)
-    * Shortcut Guide           -> info-only (press Super key — built into GNOME)
+    * Shortcut Guide           -> info-only (press Super key - built into GNOME)
   Install EACH of these as individual steps, with descriptive labels like
   "PowerToys: OCR (Text Extractor)". For the info-only features, use `info` to
   print the configuration instructions.
@@ -492,18 +559,18 @@ MAPPING GUIDANCE (research current packages/URLs at generation time)
     glpk-utils, coinor-cbc, onedrive (abraunegg), notepadqq, geany, texlive-full,
     xournalpp (OneNote handwriting/PDF-annotation alt)).
   * Vendor APT repo        -> google-chrome-stable (dl.google.com), microsoft-edge-stable
-    (packages.microsoft.com/repos/edge), code (VS Code — packages.microsoft.com/repos/code),
-    docker-ce + plugins (download.docker.com), PostgreSQL + postgresql-client (PGDG —
+    (packages.microsoft.com/repos/edge), code (VS Code - packages.microsoft.com/repos/code),
+    docker-ce + plugins (download.docker.com), PostgreSQL + postgresql-client (PGDG -
     apt.postgresql.org), pgadmin4-desktop (ftp.postgresql.org), dbeaver-ce (dbeaver.io),
     anydesk (deb.anydesk.com), proton-vpn-gnome-desktop (repo.protonvpn.com), nodejs
-    (NodeSource — deb.nodesource.com), winehq-stable (dl.winehq.org), virtualbox-7.1
-    (download.virtualbox.org), powershell + dotnet-sdk-9.0 (Microsoft prod repo —
+    (NodeSource - deb.nodesource.com), winehq-stable (dl.winehq.org), virtualbox-7.1
+    (download.virtualbox.org), powershell + dotnet-sdk-9.0 (Microsoft prod repo -
     packages.microsoft.com/config/ubuntu/<ver>/packages-microsoft-prod.deb).
   * Vendor .deb            -> Discord (discord.com), Zoom (zoom.us, arch-aware URL),
     Parsec (builds.parsec.app), GitKraken (release.gitkraken.com, arch-aware),
-    XDM (Xtreme Download Manager — github.com/subhra74/xdm releases,
+    XDM (Xtreme Download Manager - github.com/subhra74/xdm releases,
     version pinned), RealVNC Viewer (downloads.realvnc.com, arch-aware).
-  * Script/binary          -> rclone (rclone.org install.sh via curl|bash — trusted),
+  * Script/binary          -> rclone (rclone.org install.sh via curl|bash - trusted),
     Miniconda (repo.anaconda.com, KARCH-aware installer to /opt/miniconda3),
     LanguageTool (stable .zip from languagetool.org to /opt/languagetool, with
     a wrapper script at /usr/local/bin/languagetool).
@@ -512,18 +579,18 @@ MAPPING GUIDANCE (research current packages/URLs at generation time)
       com.github.debauchee.barrier (PowerToys Mouse Without Borders)
       com.github.IsmaelMartinez.teams_for_linux (Teams)
       com.rtosta.zapzap (WhatsApp)
-      org.localsend.localsend_app (LocalSend — Quick/Nearby Share)
+      org.localsend.localsend_app (LocalSend - Quick/Nearby Share)
       io.github.alainm23.planify (Microsoft To Do alt)
-      net.cozic.joplin_desktop (Sticky Notes / OneNote alt — cloud-syncs via OneDrive)
-      md.obsidian.Obsidian (OneNote alt — rich linked notes)
-      com.github.PintaProject.Pinta (Pinta — for Ubuntu 24.04+)
+      net.cozic.joplin_desktop (Sticky Notes / OneNote alt - cloud-syncs via OneDrive)
+      md.obsidian.Obsidian (OneNote alt - rich linked notes)
+      com.github.PintaProject.Pinta (Pinta - for Ubuntu 24.04+)
   * Hard-coded (always installed) -> Adobe Acrobat Pro → Stirling PDF (Docker) + PDF Arranger (APT);
     Advanced IP Scanner → Angry IP Scanner (.deb); Advanced Port Scanner → nmap + RustScan + Zenmap;
     Telegram → telegram-desktop (APT/Flatpak); Terminator → terminator (APT);
     WindTerm → .deb from GitHub (kingToolfish/WindTerm); WinDirStat → qdirstat + baobab (APT);
-    PaperCut → the NATIVE PaperCut Print Deploy client (see PAPERCUT below) — NEVER the
+    PaperCut → the NATIVE PaperCut Print Deploy client (see PAPERCUT below) - NEVER the
     CUPS alternative.
-  * PAPERCUT (hard-coded — install the real client, not a substitute):
+  * PAPERCUT (hard-coded - install the real client, not a substitute):
     PaperCut's Linux client is served by the customer's OWN PaperCut Print Deploy
     server, which IS the trusted first-party source for it (there is no universal
     public download). The installer exposes PAPERCUT_SERVER + PAPERCUT_PORT (default
@@ -532,13 +599,13 @@ MAPPING GUIDANCE (research current packages/URLs at generation time)
     --insecure retry for the user's self-signed server) and runs the bundled
     installer UNATTENDED; otherwise it DEFERS to the manual section at the end and
     prompts for the Linux client .tar.gz downloaded from that server's client page.
-    Either way the NATIVE PaperCut client is installed — CUPS is never substituted.
+    Either way the NATIVE PaperCut client is installed - CUPS is never substituted.
     The $LinuxKB entry for PaperCut therefore carries NO "free alternative" (no F=),
     so the paid→free rule does not append CUPS.
-  * MANUAL (end)           -> VMware Workstation Pro (.bundle from Broadcom —
+  * MANUAL (end)           -> VMware Workstation Pro (.bundle from Broadcom -
     support.broadcom.com, free account), SpotPlayer (.deb from spotplayer.ir with
     explicit warning about unverified source), Gurobi (commercial .tar.gz from
-    gurobi.com, optional — free solvers glpk/cbc already installed), RStudio
+    gurobi.com, optional - free solvers glpk/cbc already installed), RStudio
     (fallback prompt if the direct URL failed).
 
   Detect the Ubuntu base codename even on Mint via UBUNTU_CODENAME in /etc/os-release
@@ -567,7 +634,7 @@ FONT IMPORT (INTERACTIVE, AFTER POST-INSTALL, BEFORE MANUAL)
     * If no matching files are found, warn the user and reprompt.
     * Copy each font file to /usr/local/share/fonts/user-import/ (create the
       directory first). Skip files that already exist with the same byte size
-      (idempotent — safe to re-run).
+      (idempotent - safe to re-run).
     * If an individual file cannot be copied (permission denied, read error),
       warn about that file and continue with the rest. Track counts: total found,
       successfully installed, and failed.
@@ -596,7 +663,7 @@ POST-INSTALL
   docker group. Recommend a reboot at the end (kernel modules, group changes).
 
 
- PART D — SETTINGS MIGRATION SPEC
+ PART D - SETTINGS MIGRATION SPEC
  (files: C_detect_windows_settings.ps1, <Target OS>/apply_settings.sh)
 
 GOAL
@@ -604,19 +671,19 @@ GOAL
   C_windows_configs.csv (in the parent Migrate to Linux/ directory), then apply
   them on the target Linux distro using the per-distro apply_settings.sh.
 
-  NOTE — SINGLE-FILE DESIGN: the apply functions and the dispatch table were
+  NOTE - SINGLE-FILE DESIGN: the apply functions and the dispatch table were
   formerly split into a separate settings_config.sh that apply_settings.sh sourced.
   They are now MERGED into apply_settings.sh, which is fully self-contained. Do NOT
   regenerate a separate settings_config.sh.
 
-  NOTE — ALL USERS (hard requirement): every setting MUST apply to EVERY user on the
+  NOTE - ALL USERS (hard requirement): every setting MUST apply to EVERY user on the
   target machine, not just root. System config (logind.conf, systemd units,
   localectl, APT, NetworkManager.conf, service masking) is already machine-wide.
   GNOME/desktop keys (display scaling, location, lock-screen timeout) MUST be written
   as SYSTEM-WIDE dconf DEFAULTS in /etc/dconf/db/local.d via a _dconf_system_set
   helper (ensure a /etc/dconf/profile/user with "system-db:local", write one small
   keyfile per [schema] key, then `dconf update`). NEVER apply them with `gsettings
-  set ...` as root — that only changes root's own profile and reaches no real user.
+  set ...` as root - that only changes root's own profile and reaches no real user.
 
 DIRECTORY LAYOUT (settings-migration files)
   Migrate to Linux/
@@ -638,7 +705,7 @@ WORKFLOW (settings migration)
            It reads ../C_windows_configs.csv and calls the appropriate built-in
            _apply_* function for each row (no external file is sourced).
 
-CATEGORY 1 — POWER SETTINGS (lid-close action)
+CATEGORY 1 - POWER SETTINGS (lid-close action)
 
   Windows extract (C_detect_windows_settings.ps1):
     * Reads active power plan GUID from WMI (Win32_PowerPlan).
@@ -661,7 +728,7 @@ CATEGORY 1 — POWER SETTINGS (lid-close action)
     * Restarts systemd-logind.
     * Prints structured output: [OK] / [ERROR] / [INFO] per sub-step.
 
-CATEGORY 2 — DISPLAY RESOLUTION & SCALING
+CATEGORY 2 - DISPLAY RESOLUTION & SCALING
 
   Windows extract:
     * Resolution from CIM_VideoController (CurrentHorizontalResolution ×
@@ -674,12 +741,12 @@ CATEGORY 2 — DISPLAY RESOLUTION & SCALING
 
   Linux apply:
     * Resolution: xrandr --output <primary> --mode <WxH> if the mode exists
-      (runtime/session — display config is not a per-user persistent setting).
+      (runtime/session - display config is not a per-user persistent setting).
     * Scaling (ALL USERS via _dconf_system_set, NOT gsettings-as-root):
         org/gnome/desktop/interface text-scaling-factor <float>
         org/gnome/desktop/interface scaling-factor uint32 N (≥175%→2, ≥250%→3, ≥350%→4).
 
-CATEGORY 3 — KEYBOARD LAYOUT & SHORTCUTS
+CATEGORY 3 - KEYBOARD LAYOUT & SHORTCUTS
 
   Windows extract:
     * Current culture from [System.Globalization.CultureInfo]::CurrentCulture.
@@ -694,7 +761,7 @@ CATEGORY 3 — KEYBOARD LAYOUT & SHORTCUTS
     * Applies via localectl set-x11-keymap (system-wide) and setxkbmap (session).
     * Shortcuts: prints informational reference (Win→GNOME equivalent table).
 
-CATEGORY 4 — DISABLE TELEMETRY; LIMIT LOCATION
+CATEGORY 4 - DISABLE TELEMETRY; LIMIT LOCATION
 
   Windows extract:
     * Telemetry level from HKLM\...\DataCollection\AllowTelemetry
@@ -716,7 +783,7 @@ CATEGORY 4 — DISABLE TELEMETRY; LIMIT LOCATION
       (NOT gsettings-as-root).
     * Enables Wi-Fi MAC randomization in NetworkManager.
 
-CATEGORY 5 — AUTO-UPDATE SERVICE FILES
+CATEGORY 5 - AUTO-UPDATE SERVICE FILES
 
   Windows extract:
     * Placeholder flag (no extractable Windows equivalent).
@@ -730,19 +797,19 @@ CATEGORY 5 — AUTO-UPDATE SERVICE FILES
     * systemctl daemon-reload.
     * systemctl enable --now system_update.timer.
 
-CATEGORY 6 — LOCK SCREEN TIMEOUT (idle → lock/blank)
+CATEGORY 6 - LOCK SCREEN TIMEOUT (idle → lock/blank)
 
   Windows extract:
-    * Primary signal: a SECURE screen saver — HKCU\Control Panel\Desktop with
+    * Primary signal: a SECURE screen saver - HKCU\Control Panel\Desktop with
       ScreenSaveActive=1, ScreenSaverIsSecure=1, ScreenSaveTimeOut=<seconds>.
     * Fallback: power "turn off display after" (SUB_VIDEO 7516b95f...\VIDEOIDLE
       3c0bc021...) ACSettingIndex (seconds) under PowerSchemes.
     * Emit minutes, or "never" when nothing locks the screen (so Linux disables the
-      lock/blank too — mirroring a Windows box with no lock-screen timeout).
+      lock/blank too - mirroring a Windows box with no lock-screen timeout).
     * Produces CSV row:
         Screen | lock_screen_timeout | <N> min   (or "never")
 
-  Linux apply (_apply_lock_screen_timeout — ALL USERS via _dconf_system_set):
+  Linux apply (_apply_lock_screen_timeout - ALL USERS via _dconf_system_set):
     * "never"/0  -> org/gnome/desktop/session idle-delay uint32 0 (never blank),
                     org/gnome/desktop/screensaver lock-enabled false,
                     org/gnome/desktop/screensaver idle-activation-enabled false.
@@ -750,14 +817,14 @@ CATEGORY 6 — LOCK SCREEN TIMEOUT (idle → lock/blank)
                     screensaver lock-delay uint32 0.
 
 APPLY_SETTINGS.SH STRUCTURE (single self-contained file)
-  apply_settings.sh holds EVERYTHING — there is no separate settings_config.sh.
+  apply_settings.sh holds EVERYTHING - there is no separate settings_config.sh.
   Generate it as one file containing, in order:
 
   A) Apply-function block (formerly settings_config.sh):
     * Output helpers:
-        _cfg_ok()    — green  [OK]    to stdout
-        _cfg_info()  — dim    [INFO]  to stdout
-        _cfg_error() — red    [ERROR] to stderr
+        _cfg_ok()    - green  [OK]    to stdout
+        _cfg_info()  - dim    [INFO]  to stdout
+        _cfg_error() - red    [ERROR] to stderr
     * The _dconf_system_set SCHEMA KEY GVARIANT helper (ALL-USERS mechanism): ensures
       dconf-cli; ensures /etc/dconf/profile/user has "system-db:local"; writes ONE
       deterministic keyfile per (schema,key) under /etc/dconf/db/local.d (rewritten
@@ -787,7 +854,7 @@ APPLY_SETTINGS.SH STRUCTURE (single self-contained file)
     * Must use `rc=0; func || rc=$?` pattern, not set +e/set -e dance.
     * Does NOT source any external file (it already contains the functions/table).
 
-  ROBUSTNESS REQUIREMENTS (regressions found in real runs — do NOT reintroduce):
+  ROBUSTNESS REQUIREMENTS (regressions found in real runs - do NOT reintroduce):
     * QUOTE-AWARE CSV PARSING: parse each data row with a real CSV parser
       (parse_csv_line -> CSV_FIELDS) that honours double-quoted fields containing
       commas and "" escapes, and strips a trailing CR (PowerShell writes CRLF). The
@@ -826,7 +893,7 @@ OUTPUT FORMAT (from the built-in _apply_* functions in apply_settings.sh)
 
 
 ===============================================================================
- PART E — DEVICE DRIVER MIGRATION SPEC
+ PART E - DEVICE DRIVER MIGRATION SPEC
  (files: A_detect_installed_drivers.ps1, A_installed_windows_drivers.csv,
          <Target OS>/install_device_drivers.sh)
 ===============================================================================
@@ -834,18 +901,18 @@ OUTPUT FORMAT (from the built-in _apply_* functions in apply_settings.sh)
 GOAL
   Inventory EVERY device driver on the Windows PC and rate how each device is
   handled on Linux; then, on the target Linux machine, install the Linux driver
-  for every device that needs one beyond the in-box kernel — downloading from the
+  for every device that needs one beyond the in-box kernel - downloading from the
   manufacturer where required.
 
 KEY PRINCIPLE (do not violate)
   On Linux, the AUTHORITATIVE source of truth for drivers is the LIVE hardware
-  (lspci/lsusb/lscpu/DMI on the target), NOT the Windows device names — those don't
+  (lspci/lsusb/lscpu/DMI on the target), NOT the Windows device names - those don't
   map cleanly to Linux modules. The CSV is a cross-reference/report; the installer
   detects hardware itself and installs accordingly. Absent hardware => "skipped",
   never "failed".
 
 
-PART E1 — POWERSHELL DRIVER INVENTORY  (A_detect_installed_drivers.ps1)
+PART E1 - POWERSHELL DRIVER INVENTORY  (A_detect_installed_drivers.ps1)
 
   PARAMETERS
     -OutputPath <path>           default: A_installed_windows_drivers.csv beside script
@@ -873,18 +940,18 @@ PART E1 — POWERSHELL DRIVER INVENTORY  (A_detect_installed_drivers.ps1)
     Driver Date            (machine: yyyy-MM-dd)
     Driver Provider        (machine)
     Hardware ID            (machine: PCI\VEN_xxxx&DEV_xxxx / USB\VID_xxxx&PID_xxxx)
-    Linux Driver Status    (curated flags — see below)
+    Linux Driver Status    (curated flags - see below)
     Linux Driver / Module  (curated: kernel module or package name)
     Vendor Download        (curated: manufacturer Linux page; only when a vendor
                             download is actually needed)
     Notes                  (curated)
     Must install on Linux  (DERIVED in code: yes | no)
 
-  LINUX DRIVER STATUS FLAGS — a cell may hold several, ALWAYS in this order:
+  LINUX DRIVER STATUS FLAGS - a cell may hold several, ALWAYS in this order:
     In-Kernel ; Generic Driver ; Firmware Required ; Kernel Module (DKMS) ;
     Proprietary Driver ; Vendor Driver ; Not Applicable ; Needs Review
 
-  CLASSIFICATION ($DriverKB) — the single place curated data lives
+  CLASSIFICATION ($DriverKB) - the single place curated data lives
     An ordered rule array; first matching rule wins (specific before generic).
     Match on: Device Class (regex), the PCI/USB VENDOR ID extracted from the
     Hardware ID (VEN_/VID_ -> 4 hex, e.g. 10DE=NVIDIA, 8086=Intel, 1002=AMD,
@@ -914,7 +981,7 @@ PART E1 — POWERSHELL DRIVER INVENTORY  (A_detect_installed_drivers.ps1)
 
   "MUST INSTALL ON LINUX" (computed, not hand-set)
     yes when the Status contains "Proprietary Driver" OR "Kernel Module (DKMS)" OR
-    "Vendor Driver" — i.e. something must be actively installed beyond the in-box
+    "Vendor Driver" - i.e. something must be actively installed beyond the in-box
     kernel + the base linux-firmware package. Otherwise no (In-Kernel / firmware-
     covered / Not Applicable rows are "no").
 
@@ -923,7 +990,7 @@ PART E1 — POWERSHELL DRIVER INVENTORY  (A_detect_installed_drivers.ps1)
     listed, "Must install" count, and a breakdown by status category.
 
 
-PART E2 — LINUX DRIVER INSTALLER  (<Target OS>/install_device_drivers.sh)
+PART E2 - LINUX DRIVER INSTALLER  (<Target OS>/install_device_drivers.sh)
 
   EXECUTION MODEL  (identical conventions to install_must_have_software.sh)
     * Bash, run as ROOT. set -uo pipefail. Never abort on one failure; record
@@ -932,7 +999,7 @@ PART E2 — LINUX DRIVER INSTALLER  (<Target OS>/install_device_drivers.sh)
       command noise to a log (exec >>"$LOG" 2>&1), print only curated "==> step"
       lines + a live spinner; APT progress via APT::Status-Fd. TWO logs:
       driver-install.log (verbose) and driver-install-results.log (one line/step).
-    * Auto-detect CODENAME/UBU_VER, DEB_ARCH, KARCH — nothing hard-coded.
+    * Auto-detect CODENAME/UBU_VER, DEB_ARCH, KARCH - nothing hard-coded.
 
   LIVE HARDWARE DETECTION (authoritative)
     Ensure pciutils + usbutils exist, then capture once: lspci -nn, lspci -nnk,
@@ -948,7 +1015,7 @@ PART E2 — LINUX DRIVER INSTALLER  (<Target OS>/install_device_drivers.sh)
   WHAT IT INSTALLS (gate every step on a detection flag)
     1. Base: linux-firmware, pciutils, usbutils, lshw, build-essential, dkms,
        linux-headers-$(uname -r), ubuntu-drivers-common, fwupd. Warn if Secure Boot
-       is enabled (mokutil --sb-state) — DKMS/NVIDIA modules need MOK enrollment.
+       is enabled (mokutil --sb-state) - DKMS/NVIDIA modules need MOK enrollment.
     2. GPU: NVIDIA -> ubuntu-drivers install (NVIDIA's packaged binary; fall back to
        autoinstall, then nvidia-driver-NNN metapackage). AMD -> Mesa + VA-API/Vulkan
        (amdgpu is in-kernel). Intel -> Mesa + intel-media-va-driver.
@@ -965,7 +1032,7 @@ PART E2 — LINUX DRIVER INSTALLER  (<Target OS>/install_device_drivers.sh)
        LVFS serves firmware uploaded & signed by Lenovo/Dell/HP/Intel/etc.
     8. OPTIONAL manual vendor installers LAST, behind a skippable prompt: NVIDIA .run
        from nvidia.com; AMDGPU-PRO from amd.com. The packaged drivers already cover
-       these — the prompt is for users who specifically want the vendor's installer.
+       these - the prompt is for users who specifically want the vendor's installer.
 
   TRUSTED SOURCES (same hard rule as PART C)
     Distro APT mirrors (GPG-signed); NVIDIA's driver from Ubuntu restricted; fwupd
@@ -979,12 +1046,12 @@ PART E2 — LINUX DRIVER INSTALLER  (<Target OS>/install_device_drivers.sh)
 
 
 ===============================================================================
- PART F — ONE-SHOT ORCHESTRATOR  (<Target OS>/execute_all.sh)
+ PART F - ONE-SHOT ORCHESTRATOR  (<Target OS>/execute_all.sh)
 ===============================================================================
   A single entry point that runs the whole migration on the target machine.
     * Bash; cd to its own dir (SCRIPT_DIR) so child scripts resolve ../*.csv.
     * require root (children each need root).
-    * For each stage IN ORDER — settings, apps, drivers —
+    * For each stage IN ORDER - settings, apps, drivers -
         apply_settings.sh, install_must_have_software.sh, install_device_drivers.sh:
       chmod +x the script, then run "./<script>" inheriting the terminal (each child
       has its own clean UI + logs).
@@ -1015,7 +1082,7 @@ PART E2 — LINUX DRIVER INSTALLER  (<Target OS>/install_device_drivers.sh)
         - RStudio auto-URL first, manual fallback
         - Conditional PPAs for noble (dotnet/backports, Ulauncher)
         - PaperCut hard-coded: NATIVE Print Deploy client from PAPERCUT_SERVER
-          (unattended) or the manual prompt — NEVER the CUPS alternative
+          (unattended) or the manual prompt - NEVER the CUPS alternative
         - Trusted Sources Guarantee comment block at top of script
   [ ] (Re)generate A_detect_installed_drivers.ps1 per PART E1 (Win32_PnPSignedDriver
       inventory + $DriverKB classification -> A_installed_windows_drivers.csv).
@@ -1042,7 +1109,7 @@ PART E2 — LINUX DRIVER INSTALLER  (<Target OS>/install_device_drivers.sh)
   [ ] (Re)generate <Target OS>/execute_all.sh per PART F (chmod +x then run
       settings -> apps -> drivers, continue-on-error, per-stage summary).
   [ ] Update README.md to match.
-  [ ] Confirm the installers hard-code NO architecture or release — codename,
+  [ ] Confirm the installers hard-code NO architecture or release - codename,
       DEB_ARCH and KARCH are all auto-detected on the target and used everywhere.
   [ ] Validate: PowerShell parses (AST), every bash script passes `bash -n`.
   [ ] Confirm SpotPlayer remains MANUAL only with explicit user warning about

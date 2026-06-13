@@ -2,7 +2,7 @@
 .SYNOPSIS
     Inventories EVERY device driver on this Windows PC and rates how each device is
     handled on Linux: whether the driver is in-kernel, needs a DKMS/proprietary
-    module, needs firmware, or needs a vendor download — plus the Linux module/
+    module, needs firmware, or needs a vendor download - plus the Linux module/
     package name, the manufacturer's Linux download page (when a vendor driver is
     needed), and whether you must actively install something on Linux.
 
@@ -18,10 +18,10 @@
         Driver Date        driver date (yyyy-MM-dd)
         Driver Provider    who signed/provides the driver (NVIDIA, Microsoft, ...)
         Hardware ID        the bus ID (PCI\VEN_10DE&DEV_... or USB\VID_...&PID_...)
-                           — the only reliable key to the real silicon
+                           - the only reliable key to the real silicon
 
       KNOWLEDGE-DERIVED (classified in code from the class + the PCI/USB vendor ID
-      in the Hardware ID — the single place to tweak is the $DriverKB table below):
+      in the Hardware ID - the single place to tweak is the $DriverKB table below):
         Linux Driver Status   one or more flags, normalised to a fixed order:
                                 In-Kernel ; Generic Driver ; Firmware Required ;
                                 Kernel Module (DKMS) ; Proprietary Driver ;
@@ -32,7 +32,7 @@
         Vendor Download       the manufacturer's official Linux driver page, filled
                               only when a vendor download is actually needed
         Notes                 short human note about the Linux situation
-        Must install on Linux yes/no — DERIVED: "yes" when the device needs an
+        Must install on Linux yes/no - DERIVED: "yes" when the device needs an
                               actively-installed driver (proprietary, DKMS, or a
                               vendor download); "no" when the in-box kernel + the
                               base linux-firmware package already cover it.
@@ -52,7 +52,7 @@
     Keep ROOT\, SW\ and SWD\ software/virtual devices (off by default).
 .PARAMETER IncludeMicrosoftInbox
     Keep generic Microsoft in-box drivers for standard devices that need no action
-    on Linux (off by default — they only add noise to the report).
+    on Linux (off by default - they only add noise to the report).
 
 .EXAMPLE
     .\A_detect_installed_drivers.ps1
@@ -139,12 +139,12 @@ $VendorIdName = @{
 $DriverKB = @(
     # ---- Paired Bluetooth peripherals (host BT radio handles the link) ----
     @{ Cls=''; Ven=''; Name=''; Bus='^BTH'; S='Not Applicable';
-       D='BlueZ (bluez) — pairs via the in-kernel Bluetooth radio';
-       U=''; N='Paired Bluetooth peripheral (headset/phone/etc.) — no driver to install; BlueZ handles pairing.' }
+       D='BlueZ (bluez) - pairs via the in-kernel Bluetooth radio';
+       U=''; N='Paired Bluetooth peripheral (headset/phone/etc.) - no driver to install; BlueZ handles pairing.' }
 
     # ---- USB4 / Thunderbolt ----
     @{ Cls=''; Ven=''; Name='USB4|Thunderbolt'; Bus=''; S='In-Kernel';
-       D='thunderbolt (in-kernel) + boltd'; U=''; N='USB4/Thunderbolt — in-kernel; "boltctl" authorises devices.' }
+       D='thunderbolt (in-kernel) + boltd'; U=''; N='USB4/Thunderbolt - in-kernel; "boltctl" authorises devices.' }
 
     # ---- Neural / AI accelerators (NPU) ----
     @{ Cls='ComputeAccelerator'; Ven='8086'; Name='AI Boost|NPU|Neural|VPU';
@@ -152,16 +152,16 @@ $DriverKB = @(
        U='https://github.com/intel/linux-npu-driver';
        N='Intel AI Boost NPU: intel_vpu lands in recent kernels; user-space stack from intel/linux-npu-driver.' }
     @{ Cls='ComputeAccelerator'; Ven=''; Name=''; S='In-Kernel; Needs Review';
-       D='vendor accelerator driver (check on Linux)'; U=''; N='Compute accelerator — verify Linux support for the exact part.' }
+       D='vendor accelerator driver (check on Linux)'; U=''; N='Compute accelerator - verify Linux support for the exact part.' }
 
     # ---- Audio post-processing software (no Linux driver) ----
     @{ Cls='AudioProcessingObject'; Ven=''; Name=''; S='Not Applicable';
        D='EasyEffects (PipeWire DSP) provides comparable EQ/effects';
-       U=''; N='Vendor audio enhancement (Nahimic/Dolby/DTS APO) — no Linux driver; EasyEffects is the closest equivalent.' }
+       U=''; N='Vendor audio enhancement (Nahimic/Dolby/DTS APO) - no Linux driver; EasyEffects is the closest equivalent.' }
 
     # ---- GPU / Display ----
     @{ Cls='Display'; Ven='10DE'; Name=''; S='Proprietary Driver; Kernel Module (DKMS)';
-       D='nvidia-driver-NNN (proprietary) — or in-kernel "nouveau" as a fallback';
+       D='nvidia-driver-NNN (proprietary) - or in-kernel "nouveau" as a fallback';
        U='https://www.nvidia.com/Download/index.aspx';
        N='NVIDIA GPU: install the proprietary driver (ubuntu-drivers / nvidia-driver-NNN). nouveau works but is slower.' }
     @{ Cls='Display'; Ven='1002'; Name=''; S='In-Kernel; Firmware Required';
@@ -171,15 +171,15 @@ $DriverKB = @(
        D='i915 / xe (in-kernel) + Mesa + intel-media-va-driver';
        U=''; N='Intel iGPU: driver is in the kernel; install Mesa + the Intel VA-API media driver.' }
     @{ Cls='Display'; Ven=''; Name=''; S='In-Kernel; Generic Driver';
-       D='Mesa / generic KMS'; U=''; N='Generic display — covered by the in-kernel driver + Mesa.' }
+       D='Mesa / generic KMS'; U=''; N='Generic display - covered by the in-kernel driver + Mesa.' }
 
     # ---- Networking: Wi-Fi vs Ethernet split by name where it matters ----
-    @{ Cls='Net'; Ven='10DE'; Name=''; S='In-Kernel'; D='forcedeth (in-kernel)'; U=''; N='NVIDIA nForce Ethernet — in-kernel.' }
+    @{ Cls='Net'; Ven='10DE'; Name=''; S='In-Kernel'; D='forcedeth (in-kernel)'; U=''; N='NVIDIA nForce Ethernet - in-kernel.' }
     @{ Cls='Net'; Ven='8086'; Name='Wireless|Wi-?Fi|WLAN|802\.11|AX\d|AC \d|Wireless-AC';
        S='In-Kernel; Firmware Required'; D='iwlwifi (in-kernel) + linux-firmware';
        U=''; N='Intel Wi-Fi: iwlwifi is in the kernel; firmware ships in linux-firmware.' }
     @{ Cls='Net'; Ven='8086'; Name='';
-       S='In-Kernel'; D='e1000e / igb / igc / e1000 (in-kernel)'; U=''; N='Intel Ethernet — in-kernel.' }
+       S='In-Kernel'; D='e1000e / igb / igc / e1000 (in-kernel)'; U=''; N='Intel Ethernet - in-kernel.' }
     @{ Cls='Net'; Ven='10EC'; Name='Wireless|Wi-?Fi|WLAN|802\.11|8821|8822|8811|8812|88x2|8852|8723';
        S='Kernel Module (DKMS)'; D='rtw88 / rtw89 (newer kernels) or rtl88x2bu-dkms / rtl8821ce-dkms';
        U='https://www.realtek.com/Download/List?cate_id=584';
@@ -189,27 +189,27 @@ $DriverKB = @(
        U='https://www.realtek.com/Download/List?cate_id=584';
        N='Realtek 2.5GbE: in-kernel r8169 works; r8125-dkms (Realtek source) fixes link/throughput quirks.' }
     @{ Cls='Net'; Ven='10EC'; Name='';
-       S='In-Kernel; Kernel Module (DKMS)'; D='r8169 (in-kernel) — r8168-dkms if the NIC drops/links flaky';
+       S='In-Kernel; Kernel Module (DKMS)'; D='r8169 (in-kernel) - r8168-dkms if the NIC drops/links flaky';
        U='https://www.realtek.com/Download/List?cate_id=584';
        N='Realtek GbE: in-kernel r8169 normally works; r8168-dkms (Realtek source) fixes some flaky links.' }
     @{ Cls='Net'; Ven='14E4'; Name='Wireless|Wi-?Fi|WLAN|802\.11|BCM43';
-       S='Proprietary Driver; Kernel Module (DKMS)'; D='broadcom-sta-dkms (wl) — or in-kernel b43/brcmfmac for some chips';
+       S='Proprietary Driver; Kernel Module (DKMS)'; D='broadcom-sta-dkms (wl) - or in-kernel b43/brcmfmac for some chips';
        U='https://www.broadcom.com/support/download-search';
        N='Broadcom Wi-Fi: most need the proprietary wl (broadcom-sta-dkms); some work with in-kernel brcmfmac + firmware.' }
     @{ Cls='Net'; Ven='14E4'; Name=''; S='In-Kernel; Firmware Required'; D='tg3 / bnx2 (in-kernel) + linux-firmware';
-       U=''; N='Broadcom Ethernet — in-kernel (tg3), firmware in linux-firmware.' }
+       U=''; N='Broadcom Ethernet - in-kernel (tg3), firmware in linux-firmware.' }
     @{ Cls='Net'; Ven='168C|17CB|0CF3'; Name=''; S='In-Kernel; Firmware Required';
-       D='ath9k / ath10k / ath11k (in-kernel) + linux-firmware'; U=''; N='Qualcomm Atheros Wi-Fi — in-kernel + firmware.' }
-    @{ Cls='Net'; Ven='1969'; Name=''; S='In-Kernel'; D='alx / atl1c (in-kernel)'; U=''; N='Qualcomm Atheros/Killer Ethernet — in-kernel.' }
+       D='ath9k / ath10k / ath11k (in-kernel) + linux-firmware'; U=''; N='Qualcomm Atheros Wi-Fi - in-kernel + firmware.' }
+    @{ Cls='Net'; Ven='1969'; Name=''; S='In-Kernel'; D='alx / atl1c (in-kernel)'; U=''; N='Qualcomm Atheros/Killer Ethernet - in-kernel.' }
     @{ Cls='Net'; Ven='14C3|0E8D|1814'; Name=''; S='In-Kernel; Firmware Required';
-       D='mt76 / mt7601u (in-kernel) + linux-firmware'; U=''; N='MediaTek/Ralink Wi-Fi — in-kernel + firmware.' }
+       D='mt76 / mt7601u (in-kernel) + linux-firmware'; U=''; N='MediaTek/Ralink Wi-Fi - in-kernel + firmware.' }
     @{ Cls='Net'; Ven='0BDA'; Name='';
-       S='Kernel Module (DKMS)'; D='rtl8812au-dkms / rtl88x2bu-dkms (USB Wi-Fi) — r8152 for USB Ethernet';
+       S='Kernel Module (DKMS)'; D='rtl8812au-dkms / rtl88x2bu-dkms (USB Wi-Fi) - r8152 for USB Ethernet';
        U='https://www.realtek.com/Download/List?cate_id=584';
        N='Realtek USB Wi-Fi dongles usually need a DKMS module; USB Ethernet (r8152) is in-kernel.' }
-    @{ Cls='Net'; Ven='11AB'; Name=''; S='In-Kernel'; D='sky2 / mvneta (in-kernel)'; U=''; N='Marvell Ethernet — in-kernel.' }
+    @{ Cls='Net'; Ven='11AB'; Name=''; S='In-Kernel'; D='sky2 / mvneta (in-kernel)'; U=''; N='Marvell Ethernet - in-kernel.' }
     @{ Cls='Net'; Ven=''; Name=''; S='In-Kernel; Needs Review'; D='generic net driver (check lspci -k on Linux)';
-       U=''; N='Network device — most NICs are in-kernel; confirm the module with "lspci -k" on Linux.' }
+       U=''; N='Network device - most NICs are in-kernel; confirm the module with "lspci -k" on Linux.' }
 
     # ---- Bluetooth ----
     @{ Cls='Bluetooth'; Ven=''; Name=''; S='In-Kernel; Firmware Required'; D='btusb / btintel / btrtl (in-kernel) + linux-firmware';
@@ -224,20 +224,20 @@ $DriverKB = @(
     @{ Cls='Camera|Image'; Ven=''; Name='Camera|Webcam|HD User Facing|Integrated Camera|IR Camera';
        S='In-Kernel'; D='uvcvideo (in-kernel)'; U=''; N='UVC webcams are driven by uvcvideo in-kernel (v4l2).' }
     @{ Cls='Image'; Ven='03F0'; Name=''; S='Vendor Driver'; D='hplip (HP scanners) + SANE';
-       U='https://developers.hp.com/hp-linux-imaging-and-printing'; N='HP scanner — use HPLIP + SANE.' }
+       U='https://developers.hp.com/hp-linux-imaging-and-printing'; N='HP scanner - use HPLIP + SANE.' }
     @{ Cls='Image'; Ven=''; Name='Scanner';
        S='Vendor Driver; Generic Driver'; D='SANE (sane-utils) + vendor backend';
-       U='http://www.sane-project.org/'; N='Scanner — SANE drives most; some need a vendor backend.' }
+       U='http://www.sane-project.org/'; N='Scanner - SANE drives most; some need a vendor backend.' }
 
     # ---- Printers ----
     @{ Cls='Printer|PrintQueue'; Ven='03F0'; Name='';
        S='Vendor Driver'; D='hplip (HP Linux Imaging & Printing)';
-       U='https://developers.hp.com/hp-linux-imaging-and-printing'; N='HP printer — install HPLIP (covers print + scan).' }
+       U='https://developers.hp.com/hp-linux-imaging-and-printing'; N='HP printer - install HPLIP (covers print + scan).' }
     @{ Cls='Printer|PrintQueue'; Ven=''; Name='HP ';
-       S='Vendor Driver'; D='hplip'; U='https://developers.hp.com/hp-linux-imaging-and-printing'; N='HP printer — install HPLIP.' }
+       S='Vendor Driver'; D='hplip'; U='https://developers.hp.com/hp-linux-imaging-and-printing'; N='HP printer - install HPLIP.' }
     @{ Cls='Printer|PrintQueue'; Ven=''; Name='';
-       S='Generic Driver; Vendor Driver'; D='CUPS driverless (IPP Everywhere) — or vendor PPD / printer-driver-* package';
-       U='https://www.openprinting.org/printers'; N='Printer — most modern printers are driverless via CUPS/IPP; older ones need a PPD.' }
+       S='Generic Driver; Vendor Driver'; D='CUPS driverless (IPP Everywhere) - or vendor PPD / printer-driver-* package';
+       U='https://www.openprinting.org/printers'; N='Printer - most modern printers are driverless via CUPS/IPP; older ones need a PPD.' }
 
     # ---- Fingerprint / biometric ----
     @{ Cls='Biometric'; Ven='06CB|27C6|138A|08FF|1C7A|138a';
@@ -246,13 +246,13 @@ $DriverKB = @(
        N='Fingerprint reader: install fprintd + libpam-fprintd; support depends on the exact chip (see libfprint list).' }
     @{ Cls='Biometric'; Ven=''; Name='';
        S='Vendor Driver; Needs Review'; D='fprintd + libfprint';
-       U='https://fprint.freedesktop.org/supported-devices.html'; N='Biometric device — fprintd/libfprint covers many readers; verify yours.' }
+       U='https://fprint.freedesktop.org/supported-devices.html'; N='Biometric device - fprintd/libfprint covers many readers; verify yours.' }
 
     # ---- Storage ----
     @{ Cls='DiskDrive|SCSIAdapter|HDC|NVMe'; Ven=''; Name='NVMe';
-       S='In-Kernel'; D='nvme (in-kernel)'; U=''; N='NVMe SSD — in-kernel, no driver needed.' }
+       S='In-Kernel'; D='nvme (in-kernel)'; U=''; N='NVMe SSD - in-kernel, no driver needed.' }
     @{ Cls='DiskDrive|SCSIAdapter|HDC'; Ven=''; Name='';
-       S='In-Kernel'; D='ahci / nvme / sd (in-kernel)'; U=''; N='Storage controller/disk — in-kernel.' }
+       S='In-Kernel'; D='ahci / nvme / sd (in-kernel)'; U=''; N='Storage controller/disk - in-kernel.' }
 
     # ---- Chipset / CPU / platform ----
     @{ Cls='Processor'; Ven='8086'; Name=''; S='In-Kernel; Firmware Required'; D='kernel cpufreq + intel-microcode';
@@ -260,36 +260,36 @@ $DriverKB = @(
     @{ Cls='Processor'; Ven='1022|AMD'; Name=''; S='In-Kernel; Firmware Required'; D='kernel cpufreq + amd64-microcode';
        U=''; N='AMD CPU: install amd64-microcode for security/stability updates.' }
     @{ Cls='Processor'; Ven=''; Name=''; S='In-Kernel; Firmware Required'; D='kernel cpufreq + CPU microcode';
-       U=''; N='CPU — in-kernel; install the matching microcode package.' }
+       U=''; N='CPU - in-kernel; install the matching microcode package.' }
     @{ Cls='System'; Ven=''; Name='Management Engine|MEI|IPMI|Platform Controller|Thermal|GPIO|SMBus|LPC|PCI Express Root|Host Bridge';
-       S='In-Kernel'; D='in-kernel platform/MEI/i2c modules'; U=''; N='Chipset/platform device — in-kernel.' }
+       S='In-Kernel'; D='in-kernel platform/MEI/i2c modules'; U=''; N='Chipset/platform device - in-kernel.' }
 
     # ---- USB controllers / hubs / HID ----
-    @{ Cls='USB'; Ven=''; Name=''; S='In-Kernel'; D='xhci_hcd / ehci_hcd / usbcore (in-kernel)'; U=''; N='USB controller/hub — in-kernel.' }
+    @{ Cls='USB'; Ven=''; Name=''; S='In-Kernel'; D='xhci_hcd / ehci_hcd / usbcore (in-kernel)'; U=''; N='USB controller/hub - in-kernel.' }
     @{ Cls='HIDClass|HID|Keyboard|Mouse'; Ven=''; Name=''; S='In-Kernel'; D='usbhid / hid-generic (in-kernel)';
-       U=''; N='Keyboard/mouse/HID — in-kernel. Vendor RGB/macro apps differ (Piper/OpenRGB/ckb-next).' }
+       U=''; N='Keyboard/mouse/HID - in-kernel. Vendor RGB/macro apps differ (Piper/OpenRGB/ckb-next).' }
 
     # ---- Memory-card / smartcard readers ----
-    @{ Cls='SDHostController|MTD'; Ven=''; Name=''; S='In-Kernel'; D='sdhci / rtsx_pci (in-kernel)'; U=''; N='Card reader — in-kernel.' }
+    @{ Cls='SDHostController|MTD'; Ven=''; Name=''; S='In-Kernel'; D='sdhci / rtsx_pci (in-kernel)'; U=''; N='Card reader - in-kernel.' }
     @{ Cls='SmartCardReader|SmartCard'; Ven=''; Name=''; S='In-Kernel; Generic Driver'; D='pcsc-lite + CCID';
-       U=''; N='Smartcard reader — install pcscd + libccid (CCID).' }
+       U=''; N='Smartcard reader - install pcscd + libccid (CCID).' }
 
     # ---- Battery / ACPI / firmware ----
-    @{ Cls='Battery|ACPI'; Ven=''; Name=''; S='In-Kernel'; D='ACPI battery/AC (in-kernel)'; U=''; N='Battery/ACPI — in-kernel.' }
+    @{ Cls='Battery|ACPI'; Ven=''; Name=''; S='In-Kernel'; D='ACPI battery/AC (in-kernel)'; U=''; N='Battery/ACPI - in-kernel.' }
     @{ Cls='Firmware|SoftwareComponent'; Ven=''; Name='';
        S='Firmware Required'; D='fwupd + LVFS (system & device firmware from the manufacturer)';
        U='https://fwupd.org/'; N='System firmware/UEFI: update via fwupd/LVFS (downloads directly from the manufacturer).' }
 
     # ---- Monitors ----
     @{ Cls='Monitor'; Ven=''; Name=''; S='Not Applicable'; D='handled by the GPU driver (EDID)';
-       U=''; N='Monitors need no driver on Linux — the GPU driver reads EDID.' }
+       U=''; N='Monitors need no driver on Linux - the GPU driver reads EDID.' }
 
     # ---- Virtual / software / Microsoft inbox catch-alls ----
     @{ Cls='Net'; Ven=''; Name='WAN Miniport|Virtual|TAP|VPN|Loopback|WireGuard|WFP|Kernel Debug';
        S='Not Applicable'; D='Linux networking stack (NetworkManager/systemd-networkd)';
-       U=''; N='Virtual network adapter — no driver; configure with NetworkManager/wireguard-tools.' }
+       U=''; N='Virtual network adapter - no driver; configure with NetworkManager/wireguard-tools.' }
     @{ Cls='System|SoftwareDevice|SoftwareComponent|Computer|Volume|UCM'; Ven=''; Name='';
-       S='In-Kernel; Generic Driver'; D='in-kernel / generic'; U=''; N='Standard system device — covered by the kernel.' }
+       S='In-Kernel; Generic Driver'; D='in-kernel / generic'; U=''; N='Standard system device - covered by the kernel.' }
 )
 
 # Canonical flag order so the status column reads consistently on every row.
@@ -375,7 +375,7 @@ $rows = foreach ($d in $rawDrivers) {
     if (-not $hit) {
         $hit = [pscustomobject]@{
             Status = 'Needs Review'
-            Driver = 'unknown — run "lspci -nnk" / "lsusb" on Linux to find the module'
+            Driver = 'unknown - run "lspci -nnk" / "lsusb" on Linux to find the module'
             Url    = ''
             Notes  = "Unclassified $class device (vendor $vendorId). Most are in-kernel; verify on Linux."
         }
@@ -434,5 +434,5 @@ Write-Host ""
     } | Sort-Object Name |
     ForEach-Object { Write-Host ("  {0,-32} {1}" -f ($_.Name -replace '^\d ',''), $_.Count) }
 Write-Host ""
-Write-Host "Next: run 'install_device_drivers.sh' on the target Linux machine — it" -ForegroundColor Cyan
+Write-Host "Next: run 'install_device_drivers.sh' on the target Linux machine - it" -ForegroundColor Cyan
 Write-Host "detects the hardware live and installs the drivers flagged above." -ForegroundColor Cyan

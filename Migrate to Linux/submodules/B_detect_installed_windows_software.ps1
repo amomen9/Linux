@@ -25,7 +25,7 @@
                                    filled for natively-available apps too (~100%)
         Pricing model              Free (FOSS) / Free / Freemium / Shareware / Paid
                                    of the recommended Linux option
-        Must be included on Linux  yes/no — DERIVED by the script: "yes" for the most
+        Must be included on Linux  yes/no - DERIVED by the script: "yes" for the most
                                    competent installable option per product (native or
                                    alternative) whose competency >= -MustIncludeThreshold
         Can be synched to Linux alternative  whether the Windows app's data can be
@@ -75,14 +75,16 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# Resolve the output path robustly: prefer the script's own folder, then the folder
-# of the running command, then the current directory.
+# Resolve the output path robustly: default to the parent (Migrate to Linux/) directory
+# rather than the submodules/ folder.
 if (-not $OutputPath) {
     $scriptDir = $PSScriptRoot
     if (-not $scriptDir -and $PSCommandPath)            { $scriptDir = Split-Path -Parent $PSCommandPath }
     if (-not $scriptDir -and $MyInvocation.MyCommand.Path) { $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path }
     if (-not $scriptDir)                               { $scriptDir = (Get-Location).Path }
-    $OutputPath = Join-Path $scriptDir 'B_installed_windows_software.csv'
+    # Output to parent of submodules/ so the CSV lands in Migrate to Linux/
+    $parentDir = Split-Path -Parent $scriptDir
+    $OutputPath = Join-Path $parentDir 'B_installed_windows_software.csv'
 }
 
 # ---------------------------------------------------------------------------
@@ -286,15 +288,20 @@ $deduped = $clean |
 #
 #    Every Windows application's availability, best alternative, competency,
 #    pricing, and sync data is defined in the companion JSON manifest.
-#    This script looks up every installed app in the manifest offline — no
+#    This script looks up every installed app in the manifest offline - no
 #    web scraping, no AI calls, no pre-baked knowledge base inside the script.
 # ---------------------------------------------------------------------------
 $ManifestPath = $null
 $candidates = @(
+    # Same folder as the CSV output (default: the project's documents/ subfolder).
     (Join-Path (Split-Path -Parent $OutputPath) 'B_applications.json'),
+    # Canonical location: <project root>\documents\B_applications.json
+    (Join-Path (Split-Path $PSScriptRoot) 'documents\B_applications.json'),
+    # Fallbacks for older layouts / standalone runs.
+    (Join-Path (Split-Path $PSScriptRoot) 'B_applications.json'),
     (Join-Path $PSScriptRoot 'B_applications.json'),
-    (Join-Path (Get-Location).Path 'B_applications.json'),
-    (Join-Path (Split-Path $PSScriptRoot) '..\B_applications.json')
+    (Join-Path (Get-Location).Path 'documents\B_applications.json'),
+    (Join-Path (Get-Location).Path 'B_applications.json')
 )
 foreach ($c in $candidates) {
     if (Test-Path $c) { $ManifestPath = $c; break }
@@ -318,11 +325,12 @@ function Get-OfflineManifest {
     #>
     param([string] $AppName)
 
+    # Lazy-load the manifest on first call
     if (-not $Global:ManifestLoaded) {
+        $Global:ManifestLoaded = $true
         if (-not $ManifestPath -or -not (Test-Path $ManifestPath)) {
-            Write-Warning "B_applications.json NOT FOUND. No offline lookup possible — all curated columns will be 'Needs Review' / 'Not in manifest'."
-            $Global:ManifestLoaded = $true
-            $Global:ManifestData = @{}   # empty dict means all lookups fail
+            Write-Warning "B_applications.json NOT FOUND. No offline lookup possible."
+            $Global:ManifestData = @{}
             return $null
         }
         try {
@@ -330,70 +338,60 @@ function Get-OfflineManifest {
             $data = $raw | ConvertFrom-Json -ErrorAction Stop
             $Global:ManifestData = $data
             Write-Host "Loaded offline manifest: $($data.applications.Count) Windows apps, $($data.stats.totalAlternatives) total Linux alternatives." -ForegroundColor Cyan
-        } catch {
-            Write-Warning "Failed to parse B_applications.json at '$ManifestPath': $_"
-            $Global:ManifestLoaded = $true
+        }
+        catch {
+            Write-Warning "Failed to parse B_applications.json: $_"
             $Global:ManifestData = @{}
             return $null
         }
-        $Global:ManifestLoaded = $true
     }
 
     $data = $Global:ManifestData
     if (-not $data -or -not $data.applications) { return $null }
 
-    # ---------- fuzzy matching ----------
-    function Get-MatchKey([string] $s) {
-        ($s.ToLowerInvariant() -replace '[^a-z0-9]','').Trim()
-    }
-
-    $lookupKey = Get-MatchKey $AppName
-    if ([string]::IsNullOrWhiteSpace($lookupKey)) { return $null }
+    # Helper: strip a string down to identity for fuzzy matching
+    $matchKey = ($AppName.ToLowerInvariant() -replace '[^a-z0-9]', '').Trim()
+    if ([string]::IsNullOrWhiteSpace($matchKey)) { return $null }
 
     $bestEntry = $null
     $bestScore = 0
 
     foreach ($entry in $data.applications) {
-        $entryKey = Get-MatchKey $entry.name
-        # Exact match
-        if ($entryKey -eq $lookupKey) { $bestEntry = $entry; $bestScore = 999; break }
-        # Token-overlap scoring: how many words of the installed name appear in the manifest entry
+        $entryKey = ($entry.name.ToLowerInvariant() -replace '[^a-z0-9]', '').Trim()
+        if ($entryKey -eq $matchKey) {
+            $bestEntry = $entry
+            $bestScore = 999
+            break
+        }
         $entryTokens = ($entry.name.ToLowerInvariant() -split '[^a-z0-9]' | Where-Object { $_ })
-        $appTokens   = ([regex]::Replace($AppName, '[^a-z0-9 ]','').ToLowerInvariant() -split '\s+' | Where-Object { $_ })
+        $appTokens   = ([regex]::Replace($AppName, '[^a-z0-9 ]', '').ToLowerInvariant() -split '\s+' | Where-Object { $_ })
         $overlap = 0
         foreach ($t in $appTokens) {
             if ($entryTokens -contains $t -or $entryKey -match [regex]::Escape($t)) { $overlap++ }
         }
-        # Bonus if one is a substring of the other
-        if ($entryKey.Contains($lookupKey) -or $lookupKey.Contains($entryKey)) { $overlap += 3 }
+        if ($entryKey.Contains($matchKey) -or $matchKey.Contains($entryKey)) { $overlap += 3 }
         if ($overlap -gt $bestScore) { $bestScore = $overlap; $bestEntry = $entry }
     }
 
     if (-not $bestEntry -or $bestScore -lt 2) { return $null }
 
-    $entry = $bestEntry
+    $entry    = $bestEntry
     $firstAlt = if ($entry.alternatives -and $entry.alternatives.Count -gt 0) { $entry.alternatives[0] } else { $null }
-    $avail = $entry.linuxAvailability
-    if (-not $avail) { $avail = 'Needs Review' }
+    $avail    = if ($entry.linuxAvailability) { $entry.linuxAvailability } else { 'Needs Review' }
 
-    # Build the "Best Alternative" description from the first alternative
+    # Build the "Best Alternative" description
     $altName = ''
-    $dest = $entry.destType
     if ($firstAlt -and $firstAlt.name) {
         $altName = $firstAlt.name
-    } elseif ($dest) {
-        $altName = "See $dest alternative in manifest"
+        if ($firstAlt.installMethod) { $altName += " (install: $($firstAlt.installMethod))" }
+    }
+    elseif ($entry.destType) {
+        $altName = "See $($entry.destType) alternative in manifest"
     }
 
-    # Append install method for the primary alternative
-    if ($firstAlt -and $firstAlt.installMethod) {
-        $altName += " (install: $($firstAlt.installMethod))"
-    }
+    $pricing    = if ($firstAlt -and $firstAlt.pricingModel) { $firstAlt.pricingModel } else { 'Unknown' }
+    $sync       = if ($firstAlt -and $firstAlt.canSync)      { $firstAlt.canSync }      else { 'No, manual transfer' }
 
-    # Pricing model from the best alternative
-    $pricing = if ($firstAlt -and $firstAlt.pricingModel) { $firstAlt.pricingModel } else { 'Unknown' }
-
-    # Competency
     $competency = 70
     if ($firstAlt -and $firstAlt.competency) {
         $cstr = [string]$firstAlt.competency
@@ -401,8 +399,9 @@ function Get-OfflineManifest {
         else { try { [int]$cstr } catch { 70 } }
     }
 
-    # Syncability
-    $sync = if ($firstAlt -and $firstAlt.canSync) { $firstAlt.canSync } else { 'No, manual transfer' }
+    # Extract downloadUrl and appType from the best alternative
+    $downloadUrl = if ($firstAlt -and $firstAlt.downloadUrl) { $firstAlt.downloadUrl } else { '' }
+    $appType     = if ($firstAlt -and $firstAlt.appType)     { $firstAlt.appType }     else { $entry.destType }
 
     return [PSCustomObject]@{
         Availability    = $avail
@@ -411,15 +410,17 @@ function Get-OfflineManifest {
         PricingModel    = $pricing
         Syncability     = $sync
         AltName         = $altName
-        DestType        = $dest
+        DestType        = $entry.destType
         MatchedByName   = $entry.name
+        DownloadUrl     = $downloadUrl
+        AppType         = $appType
     }
 }
 
 Write-Host "Manifest search path: $ManifestPath" -ForegroundColor DarkGray
 
 # ---------------------------------------------------------------------------
-# 5. ENRICH — match each installed app against the offline manifest.
+# 5. ENRICH - match each installed app against the offline manifest.
 #
 #    IMPORTANT NOTICE:
 #    This script ONLY scans software that is ALREADY INSTALLED and REGISTERED
@@ -454,12 +455,14 @@ $enriched = foreach ($app in $deduped) {
             Version                       = [string]$app.Version
             Publisher                     = [string]$app.Publisher
             Source                        = $app.Source
-            'Linux Availability'          = 'Needs Review — NOT IN MANIFEST'
-            'Best Linux Alternative'      = 'Not in manifest — research manually or add to B_applications.json'
+            'Linux Availability'          = 'Needs Review - NOT IN MANIFEST'
+            'Best Linux Alternative'      = 'Not in manifest - research manually or add to B_applications.json'
             'Alternative Competency'      = ''
             'Pricing model'               = ''
             'Must be included on Linux'   = 'no'
             'Can be synched to Linux alternative' = 'No, manual transfer'
+            'Linux Alternative Type'      = ''
+            'Download URL'                = ''
         }
     }
     else {
@@ -479,12 +482,14 @@ $enriched = foreach ($app in $deduped) {
             'Pricing model'               = $kb.PricingModel
             'Must be included on Linux'   = $mustInclude
             'Can be synched to Linux alternative' = $kb.Syncability
+            'Linux Alternative Type'      = $kb.AppType
+            'Download URL'                = $kb.DownloadUrl
         }
     }
 }
 
 # ---------------------------------------------------------------------------
-# 5b. POST-MATCH SUMMARY — print to console
+# 5b. POST-MATCH SUMMARY - print to console
 # ---------------------------------------------------------------------------
 Write-Host ''
 Write-Host '==================== MATCH SUMMARY ====================' -ForegroundColor Yellow
@@ -515,15 +520,16 @@ if ($unmatched -gt 0) {
 Write-Host '=======================================================' -ForegroundColor Yellow
 
 # ---------------------------------------------------------------------------
-# 6. EXPORT — write the enriched CSV
+# 6. EXPORT - write the enriched CSV
 # ---------------------------------------------------------------------------
 Write-Host "Writing CSV to $OutputPath ..." -ForegroundColor Cyan
 try {
     $enriched | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
-    Write-Host "OK — CSV written with $($enriched.Count) rows." -ForegroundColor Green
+    Write-Host "OK - CSV written with $($enriched.Count) rows." -ForegroundColor Green
     Write-Host "  File: $OutputPath" -ForegroundColor Green
-    Write-Host ''
-} catch {
+    Write-Host ""
+}
+catch {
     Write-Error "Failed to write CSV: $_"
     exit 3
 }
@@ -534,7 +540,7 @@ if ($unmatched -gt 0) {
     Write-Host "  Their curated columns are placeholder values." -ForegroundColor Yellow
     Write-Host "  You may manually edit the CSV to fill in proper alternatives," -ForegroundColor Yellow
     Write-Host "  or add entries to B_applications.json and re-run this script." -ForegroundColor Yellow
-    Write-Host ''
+    Write-Host ""
 }
 
 Write-Host "Done." -ForegroundColor Green

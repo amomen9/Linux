@@ -5,7 +5,7 @@
 
 .DESCRIPTION
     Extracts six categories of settings:
-      1. Power settings  —  what closing the lid does (on battery / on AC)
+      1. Power settings  -  what closing the lid does (on battery / on AC)
       2. Display resolution & scaling
       3. Keyboard layout (language) and common shortcuts
       4. Telemetry level and location-service state
@@ -40,7 +40,7 @@ if (-not $OutputPath) {
 function Safe-Property { param($Obj, [string] $Name, $Default = $null); try { $Obj.$Name } catch { $Default } }
 
 # -----------------------------------------------------------------------
-# 1. POWER SETTINGS — lid-close action (battery / AC)
+# 1. POWER SETTINGS - lid-close action (battery / AC)
 # -----------------------------------------------------------------------
 $configRows = [System.Collections.Generic.List[pscustomobject]]::new()
 
@@ -193,7 +193,7 @@ $telemetryLevel = ''
 $locationEnabled = ''
 
 try {
-    # Telemetry — HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection
+    # Telemetry - HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection
     # AllowTelemetry: 0=Security, 1=Basic, 2=Enhanced, 3=Full (Enterprise)
     $telReg = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection' -Name 'AllowTelemetry' -ErrorAction SilentlyContinue
     if ($telReg -and $null -ne $telReg.AllowTelemetry) {
@@ -214,7 +214,7 @@ try {
 } catch { $telemetryLevel = 'unknown' }
 
 try {
-    # Location — check if location service is globally enabled
+    # Location - check if location service is globally enabled
     $locReg = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location' -Name 'Value' -ErrorAction SilentlyContinue
     if ($locReg) {
         $locationEnabled = if ([string]$locReg.Value -eq 'Allow') { 'enabled' } else { 'disabled' }
@@ -242,10 +242,10 @@ Write-Host "Auto-update: will install system_update.service + system_update.time
 Add-Row 'AutoUpdate' 'install_service_files' 'system_update' '' 'Install system_update.service + system_update.timer from the repo (see Scheduled systemd Automatic Update/Debian/service files/)'
 
 # -----------------------------------------------------------------------
-# 6. LOCK SCREEN TIMEOUT — how long before the screen locks / blanks.
+# 6. LOCK SCREEN TIMEOUT - how long before the screen locks / blanks.
 #    Primary signal: a SECURE screen saver (locks on resume). Fallback: the
 #    power "turn off display after" (VIDEOIDLE) idle timeout on AC. If nothing
-#    locks the screen, the value is "never" — so Linux disables lock/blanking
+#    locks the screen, the value is "never" - so Linux disables lock/blanking
 #    too (mirroring a Windows box that has no lock-screen timeout).
 # -----------------------------------------------------------------------
 $lockTimeoutSec = $null
