@@ -1,0 +1,68 @@
+============================================================================
+  SUPPORTED LINUX DISTRIBUTIONS
+============================================================================
+
+The generated installer in "Execute on Linux!/" is UNIVERSAL: it detects the
+running distribution FAMILY and CPU ARCHITECTURE at runtime and dispatches to
+the correct package manager.  Distributions are grouped by their parent family,
+so adding a derivative (e.g. Pop!_OS, AlmaLinux, Manjaro) needs no new code --
+it is matched automatically via /etc/os-release ID_LIKE.
+
+Application delivery is FLATPAK-FIRST (Flathub app ids are identical on every
+distro and every architecture).  The native package manager is used only for
+the base layer: installing Flatpak itself, CLI/developer tools, drivers and
+system components.
+
+----------------------------------------------------------------------------
+  FAMILY            PACKAGE MANAGER   DISTRIBUTIONS (this project)
+----------------------------------------------------------------------------
+
+[ Debian / Ubuntu ]   apt (apt-get)
+      - Linux Mint (Ubuntu)
+      - Ubuntu
+      - Debian
+      - Zorin OS
+      - Kubuntu
+      - Winux 11
+    Also auto-detected: Pop!_OS, elementary OS, and other Ubuntu/Debian derivatives.
+
+[ RHEL / Fedora ]     dnf
+      - Fedora
+      - Rocky Linux
+      - Red Hat Enterprise Linux (RHEL)
+      - Oracle Linux
+    Also auto-detected: AlmaLinux, CentOS Stream.
+    Note: RHEL rebuilds may need EPEL enabled for a few packages.
+
+[ openSUSE / SUSE ]   zypper
+      - openSUSE (Leap / Tumbleweed)
+    Also auto-detected: SLE (SLES / SLED).
+
+[ Arch ]              pacman
+      - Arch Linux
+    Also auto-detected: Manjaro, EndeavourOS.
+
+----------------------------------------------------------------------------
+  CPU ARCHITECTURES
+----------------------------------------------------------------------------
+
+  x86_64  (amd64)   - fully supported
+  aarch64 (arm64)   - supported; Flatpak/Flathub and native repos serve the
+                      matching build automatically
+
+  Notes:
+    - Flatpak and native package installs are architecture-transparent.
+    - Only direct downloads (.deb/.rpm/AppImage/GitHub-release assets) need an
+      architecture-specific URL; the installer picks it from `uname -m`.
+    - Windows-app compatibility (Wine via Bottles) is x86_64-only and is skipped
+      on ARM with a message.
+
+----------------------------------------------------------------------------
+  HONESTY NOTE
+----------------------------------------------------------------------------
+
+  The apt (Debian/Ubuntu) path is the most heavily tested.  Native package
+  names and third-party repositories for the dnf/zypper/pacman families are
+  best-effort and may need a verification pass on a real system of that family.
+  Entries that still need review are flagged in documents/B_applications.json.
+============================================================================

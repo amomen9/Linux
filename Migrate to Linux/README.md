@@ -1,6 +1,6 @@
 **[برای نسخه فارسی اینجا کلیک کنید!](README_fa.md)**
 
-# Migrate to Linux — Software, Settings, and Driver Migration
+# Migrate to Linux - Software, Settings, and Driver Migration
 
 ## Introduction
 
@@ -9,20 +9,20 @@ Moving from Windows to Linux usually means hours of hunting down "what was I eve
 It is a complete, **automated Windows → Linux migration kit** that:
 
 - **Inventories every app installed on your Windows PC** and rates each one for Linux: is it native, is there a great alternative, how good is that alternative, is it free, and is it worth installing.
-- **Installs all the keepers on Linux unattended** — native packages, Flatpaks, Docker images, vendor `.deb`s, and even the original Windows apps under Wine where that is the best option.
+- **Installs all the keepers on Linux unattended** - native packages, Flatpaks, Docker images, vendor `.deb`s, and even the original Windows apps under Wine where that is the best option.
 - **Extracts your common Windows settings** (power/lid behaviour, display resolution & scaling, keyboard layout, telemetry, auto-update) and **re-applies them on Linux for every user**.
 - **Inventories every device driver** and **installs the Linux equivalents**, pulling firmware straight from the manufacturer via `fwupd`/LVFS.
 
-Everything in this folder is already generated for **this machine**, so in most cases you just **copy it to your new Linux box and run one command** — no AI, no manual research required.
+Everything in this folder is already generated for **this machine**, so in most cases you just **copy it to your new Linux box and run one command** - no AI, no manual research required.
 
 ```bash
-cd "Migrate to Linux/Linux Mint (Ubuntu)"
+cd "Migrate to Linux/Execute on Linux!"
 sudo ./execute_all.sh        # settings → apps → drivers, continue-on-error
 ```
 
 ---
 
-## How to use it — Workflows
+## How to use it - Workflows
 
 > **You do NOT need an AI agent for normal use.** The scripts and the pre-generated
 > CSVs in this folder are ready to run as-is. Just follow the workflows below.
@@ -30,43 +30,53 @@ sudo ./execute_all.sh        # settings → apps → drivers, continue-on-error
 > An AI agent (which reads [`instructions.txt`](instructions.txt)) is only needed for a
 > few **optional, one-off** tasks that are specific to *your* case:
 > - **Regenerating the reports/installer from scratch** with freshly-researched data for a **different Windows PC** than the one captured here.
-> - **Adding a new target OS/distro** (e.g. Fedora, Arch) — generating a fresh set of installer scripts for it.
+> - **Adding a new target OS/distro** (e.g. Fedora, Arch) - generating a fresh set of installer scripts for it.
 > - **Refreshing the Linux app ratings and driver mappings** with the latest web research.
 >
-> Generating the reports on Windows (Workflows 1–3, step 1) and running the installers
+> Generating the reports on Windows (Workflows 1-3, step 1) and running the installers
 > on Linux never require an AI agent.
 
 There are two phases:
 
-1. **On Windows** — run the three PowerShell inventory scripts to (re)generate the CSV reports. *Skip this if you are migrating the machine these files were generated on — the CSVs are already here.*
-2. **On Linux** — copy this `Migrate to Linux/` folder over and run the installers as root.
+1. **On Windows** - run the three PowerShell inventory scripts to (re)generate the CSV reports. *Skip this if you are migrating the machine these files were generated on - the CSVs are already here.*
+2. **On Linux** - copy this `Migrate to Linux/` folder over and run the installers as root.
 
-### Workflow 0 — Run everything at once (recommended)
+### Workflow 0 - Run everything at once (recommended)
 
-On the target Linux machine, after copying the generated CSVs into
-`Migrate to Linux/`, run the single orchestrator as root:
+**Windows side:** open a PowerShell terminal in the `Migrate to Linux/` folder and run:
+
+```powershell
+.\run_project.ps1
+```
+
+This runs all three detection scripts in order - **config → software → drivers** -
+writing all three CSV files in one go. See [run_project.ps1](#run_projectps1---windows-orchestrator)
+for the full parameter list.
+
+**Linux side:** after copying the generated CSVs into `Migrate to Linux/`, run the
+single orchestrator as root:
 
 ```bash
-cd "Migrate to Linux/Linux Mint (Ubuntu)"
+cd "Migrate to Linux/Execute on Linux!"
 sudo ./execute_all.sh
 ```
 
-It makes the three stage scripts executable and runs them **in order — settings →
-apps → drivers — with a continue-on-error policy** (a failure in one stage is
+It makes the three stage scripts executable and runs them **in order - settings →
+apps → drivers - with a continue-on-error policy** (a failure in one stage is
 recorded but never stops the others). Each stage keeps its own clean UI and logs;
 `execute_all.sh` prints a per-stage OK/FAILED summary at the end and exits non-zero
 if any stage failed. Prefer the individual workflows below when you want to run
 just one stage.
 
-### Workflow 1 — Migrate installed software
+### Workflow 1 - Migrate installed software
 
-1. **Generate the report** *(Windows; skip if already present)* — run `B_detect_B_installed_windows_software.ps1` on the Windows PC.
-2. **Review** `B_installed_windows_software.csv` — especially the `Must be included on Linux` and `Can be synched to Linux alternative` columns.
-3. **Install on Linux** — run `install_must_have_software.sh` as root.
+1. **Generate the report** *(Windows; skip if already present)* - run `B_detect_B_installed_windows_software.ps1` on the Windows PC.
+2. **Review** `B_installed_windows_software.csv` - especially the `Must be included on Linux` and `Can be synched to Linux alternative` columns.
+3. **Install on Linux** - run `install_must_have_software.sh` as root.
 
-### Workflow 2 — Migrate Windows settings
+### Workflow 2 - Migrate Windows settings
 
-1. **Extract settings** *(Windows; skip if already present)* — run `C_detect_windows_settings.ps1` on the Windows PC:
+1. **Extract settings** *(Windows; skip if already present)* - run `C_detect_windows_settings.ps1` on the Windows PC:
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File C_detect_windows_settings.ps1
@@ -74,14 +84,14 @@ just one stage.
 
    This produces `C_windows_configs.csv`.
 2. **Copy** `C_windows_configs.csv` to the `Migrate to Linux/` directory on the Linux machine.
-3. **Apply** — from the distro directory, run as root:
+3. **Apply** - from the distro directory, run as root:
 
    ```bash
-   cd "Migrate to Linux/Linux Mint (Ubuntu)"
+   cd "Migrate to Linux/Execute on Linux!"
    sudo ./apply_settings.sh
    ```
 
-   This reads `../C_windows_configs.csv` and applies (**to all users** — see note below):
+   This reads `../C_windows_configs.csv` and applies (**to all users** - see note below):
 
    - **Power:** lid-close action (battery & AC) → `logind.conf`
    - **Display:** resolution → `xrandr`, scaling → system-wide dconf default
@@ -93,35 +103,35 @@ just one stage.
 
    > **Applied to all users.** GNOME/desktop keys (scaling, location, lock-screen
    > timeout) are written as **system-wide dconf defaults** in `/etc/dconf/db/local.d`
-   > — not `gsettings set` as root (which only touches root's own profile). Together
+   > - not `gsettings set` as root (which only touches root's own profile). Together
    > with the system-wide `logind`/`systemd`/`localectl`/APT changes, every setting
    > applies to **every user** on the machine (current and future) on next login.
    >
 
-### Workflow 3 — Migrate device drivers
+### Workflow 3 - Migrate device drivers
 
-1. **Generate the report** *(Windows; skip if already present)* — run `A_detect_installed_drivers.ps1` on the Windows PC:
+1. **Generate the report** *(Windows; skip if already present)* - run `A_detect_installed_drivers.ps1` on the Windows PC:
    ```powershell
    powershell -ExecutionPolicy Bypass -File A_detect_installed_drivers.ps1
    ```
 
    This enumerates every signed PnP driver (`Win32_PnPSignedDriver`) and writes
    `A_installed_windows_drivers.csv`, classifying each device for Linux.
-2. **Copy** `A_installed_windows_drivers.csv` to the `Migrate to Linux/` directory on the Linux machine (optional — the installer also detects hardware live).
-3. **Install on Linux** — from the distro directory, run as root:
+2. **Copy** `A_installed_windows_drivers.csv` to the `Migrate to Linux/` directory on the Linux machine (optional - the installer also detects hardware live).
+3. **Install on Linux** - from the distro directory, run as root:
    ```bash
-   cd "Migrate to Linux/Linux Mint (Ubuntu)"
+   cd "Migrate to Linux/Execute on Linux!"
    sudo ./install_device_drivers.sh
    ```
 
-   The installer **detects the hardware live** (lspci/lsusb/lscpu/DMI — the
+   The installer **detects the hardware live** (lspci/lsusb/lscpu/DMI - the
    authoritative source, since Windows device names don't map cleanly to Linux
    modules), cross-references the CSV, then installs only what's needed:- **GPU:** NVIDIA proprietary driver (via `ubuntu-drivers`); AMD/Intel in-kernel + Mesa/VA-API.
    - **Network:** Realtek `r8168`/`r8125-dkms`, Broadcom `broadcom-sta-dkms`, Realtek USB-Wi-Fi DKMS; everything else is in-kernel + `linux-firmware`.
    - **CPU:** `intel-microcode` / `amd64-microcode`.
    - **Printers/scanners:** CUPS driverless + HPLIP (HP) + SANE.
    - **Fingerprint:** `fprintd` + `libfprint`.
-   - **Manufacturer firmware:** `fwupd` + LVFS — downloads & flashes UEFI/SSD/dock/peripheral firmware straight from Lenovo/Dell/HP/Intel/etc.
+   - **Manufacturer firmware:** `fwupd` + LVFS - downloads & flashes UEFI/SSD/dock/peripheral firmware straight from Lenovo/Dell/HP/Intel/etc.
    - **Optional vendor installers:** NVIDIA `.run` (nvidia.com) / AMDGPU-PRO (amd.com) via a skippable prompt at the end.
 
 ---
@@ -132,61 +142,116 @@ just one stage.
 
 | File                                                                                    | What it is                                                                                                                                                                                                                                                                                                |
 | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`B_detect_B_installed_windows_software.ps1`](B_detect_B_installed_windows_software.ps1)         | PowerShell script: scans installed software, rates Linux compatibility, writes CSV.                                                                                                                                                                                                                       |
-| [`B_installed_windows_software.csv`](B_installed_windows_software.csv)                       | Generated report (10 columns, one row per app).                                                                                                                                                                                                                                                            |
-| [`D_additional_Linux_software_requirments.csv`](D_additional_Linux_software_requirments.csv) | **Hand-curated** list of hardcoded applications that the installer includes regardless of the Windows CSV — both apps absent from the Windows PC and apps whose installer logic goes beyond what the CSV can express (e.g. Wine installs, multi-package splits like PowerToys, web-app shortcuts). |
-| [`A_detect_installed_drivers.ps1`](A_detect_installed_drivers.ps1)                           | PowerShell script: inventories**every device driver** (`Win32_PnPSignedDriver`), maps each to its Linux driver/module, writes CSV.                                                                                                                                                                |
-| [`A_installed_windows_drivers.csv`](A_installed_windows_drivers.csv)                         | Generated driver report (12 columns, one row per device).                                                                                                                                                                                                                                                 |
-| [`C_detect_windows_settings.ps1`](C_detect_windows_settings.ps1)                           | PowerShell script: extracts power/lid, display, keyboard, telemetry, and auto-update settings, writes `C_windows_configs.csv`.                                                                                                                                                                            |
-| [`C_windows_configs.csv`]()                                                                | Generated settings CSV (produced by `C_detect_windows_settings.ps1`).                                                                                                                                                                                                                                    |
-| [`instructions.txt`](instructions.txt)                                                   | Self-contained spec to**reproduce** all artifacts from scratch with fresh data (the file an AI agent reads).                                                                                                                                                                                                     |
+| [`run_project.ps1`](run_project.ps1)                                                    | **Windows orchestrator** - runs the three detection scripts (steps 1-3) then the generator (step 4). Forwards parameters to the sub-scripts. |
+| [`submodules/`](submodules/)                                                            | Detection scripts (A/B/C), the generator `D_compile_and_generate_shell_script.ps1`, the universal `templates/` (`_common.sh` + `*.sh.tmpl`), and `docker_discovery.sh`. |
+| [`Supported Distributions.txt`](Supported%20Distributions.txt)                          | Distro-family groupings (apt/dnf/zypper/pacman) and supported CPU architectures (x86_64/aarch64). |
+| [`Additional_Manual_Linux_Software_Requirments.csv`](Additional_Manual_Linux_Software_Requirments.csv) | **Hand-curated** list of hardcoded applications included regardless of the Windows CSV - apps absent from the Windows PC and apps whose install logic goes beyond the CSV (Wine installs, multi-package splits like PowerToys, web-app shortcuts). |
+| [`documents/B_applications.json`](documents/B_applications.json)                         | The manifest: every app's Linux alternatives plus the per-distro `install{}` descriptor (method, flatpakId, native names per family, arch) the generator reads. |
+| [`documents/B_installed_windows_software.csv`](documents/B_installed_windows_software.csv) | Generated software report (one row per app). |
+| [`documents/A_installed_windows_drivers.csv`](documents/A_installed_windows_drivers.csv) | Generated driver report (12 columns, one row per device). |
+| [`documents/C_windows_configs.csv`](documents/C_windows_configs.csv)                     | Generated settings CSV (produced by `C_detect_windows_settings.ps1`). |
+| [`documents/instructions.txt`](documents/instructions.txt)                              | Self-contained spec to **reproduce** all artifacts from scratch with fresh data. |
 
-### Linux-side (run on the target machine, in `<Target OS>/`)
+### Linux-side (run on the target machine, in `Execute on Linux!/`)
 
-| File                                                  | What it is                                                                                                                                                                          |
-| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Linux Mint (Ubuntu)/execute_all.sh`                | **One-shot orchestrator** — `chmod +x`'s the three scripts and runs them in order (settings → apps → drivers), continue-on-error.                                        |
-| `Linux Mint (Ubuntu)/install_must_have_software.sh` | Unattended**root installer** — installs every app flagged `Must be included on Linux = yes`.                                                                               |
-| `Linux Mint (Ubuntu)/install_device_drivers.sh`     | Unattended**root driver installer** — detects hardware live (lspci/lsusb/DMI), installs the matching Linux drivers, and pulls firmware from the manufacturer via fwupd/LVFS. |
-| `Linux Mint (Ubuntu)/apply_settings.sh`             | **Self-contained** settings runner — reads `../C_windows_configs.csv` and applies each setting via its built-in apply functions + dispatch table (no separate config file).  |
+These four scripts are **generated** and **universal** - one set runs on every
+supported distribution. They detect the distro family (apt/dnf/zypper/pacman) and
+CPU architecture (x86_64/aarch64) at runtime and install everything **Flatpak-first**
+with native fallbacks. See [`Supported Distributions.txt`](Supported%20Distributions.txt).
+
+| File                                              | What it is                                                                                                                                   |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Execute on Linux!/execute_all.sh`                | **One-shot orchestrator** - runs the three scripts in order (drivers → apps → settings), continue-on-error.                                  |
+| `Execute on Linux!/install_must_have_software.sh` | Unattended **root installer** - installs every app flagged `Must be included on Linux = yes`, Flatpak-first with per-family native fallback. |
+| `Execute on Linux!/install_device_drivers.sh`     | **Root driver installer** - firmware, GPU drivers, printing/scanning, plus a reference list of the Windows devices detected.                 |
+| `Execute on Linux!/apply_settings.sh`             | **Settings runner** - applies the captured Windows settings (scaling, lock, layout, privacy, lid) to GNOME/Cinnamon; KDE/others noted.      |
+
+### run_project.ps1 - Windows orchestrator
+
+A wrapper that runs the three detection scripts and then the generator in one shot.
+It lives in `Migrate to Linux/`; the sub-scripts live in `submodules/`.
+
+```powershell
+.\run_project.ps1
+```
+
+This runs in order:
+1. `submodules/C_detect_windows_settings.ps1` → `documents/C_windows_configs.csv`
+2. `submodules/B_detect_installed_windows_software.ps1` → `documents/B_installed_windows_software.csv`
+3. `submodules/A_detect_installed_drivers.ps1` → `documents/A_installed_windows_drivers.csv`
+4. `submodules/D_compile_and_generate_shell_script.ps1` → the universal installer set in `Execute on Linux!/`
+
+Steps 1-3 need no administrator rights. If a step fails the pipeline stops unless
+`-ContinueOnError` is passed. Use `-SkipDetection` to regenerate the scripts from
+existing CSVs, or `-SkipGenerator` to only run detection.
+
+#### Options
+
+| Parameter                       | Default | Purpose                                                                      |
+| ------------------------------- | ------- | ---------------------------------------------------------------------------- |
+| `-OutputDir <path>`             | documents/ | Directory where the three CSV files are written.                         |
+| `-ContinueOnError`              | off     | Skip failed steps instead of stopping the pipeline.                          |
+| `-SkipDetection`                | off     | Skip steps 1-3; regenerate the installer scripts from existing CSVs.         |
+| `-SkipGenerator`                | off     | Skip step 4; only run detection.                                            |
+| `-MustIncludeThreshold <int>`   | 70      | Forwarded to B script - minimum competency for "Must be included on Linux".  |
+| `-IncludeSystemComponents`      | off     | Forwarded to B script - keep redistributables / runtimes / drivers.          |
+| `-IncludeStoreApps <bool>`      | $true   | Forwarded to B script - include filtered Store/UWP apps.                     |
+| `-Online`                       | off     | Forwarded to B script - query repology.org live for unknown apps.            |
+| `-IncludeVirtualDevices`        | off     | Forwarded to A script - keep ROOT\ and SW\ virtual devices.                  |
+| `-IncludeMicrosoftInbox`        | off     | Forwarded to A script - keep generic Microsoft in-box drivers.               |
 
 ### Directory layout
 
 ```text
 Migrate to Linux/
-├─ B_detect_B_installed_windows_software.ps1   # Windows: software inventory + Linux rating
-├─ B_installed_windows_software.csv          # generated software report
-├─ D_additional_Linux_software_requirments.csv # hand-curated: hardcoded apps beyond the CSV
-├─ A_detect_installed_drivers.ps1            # Windows: device-driver inventory + Linux mapping
-├─ A_installed_windows_drivers.csv           # generated driver report
-├─ C_detect_windows_settings.ps1            # Windows: settings scraper
-├─ C_windows_configs.csv                     # generated settings CSV
-├─ settings_config.txt                     # human-readable mapping reference
-├─ instructions.txt                        # reproducibility spec
+├─ run_project.ps1                         # Windows: orchestrator (detection 1-3 + generator 4)
+├─ Additional_Manual_Linux_Software_Requirments.csv  # hand-curated hardcoded apps beyond the CSV
+├─ Supported Distributions.txt             # distro-family groupings + supported CPU architectures
 ├─ README.md
 ├─ README_fa.md                            # Persian translation of this file
-└─ Linux Mint (Ubuntu)/                    # one folder per target OS
-   ├─ execute_all.sh                       # one-shot: settings → apps → drivers (continue-on-error)
-   ├─ install_must_have_software.sh        # unattended software installer
-   ├─ install_device_drivers.sh            # unattended driver installer (live detection + fwupd/LVFS)
-   └─ apply_settings.sh                    # self-contained settings runner (functions + dispatch + runner)
+│
+├─ submodules/                             # Windows detection scripts + the generator
+│  ├─ A_detect_installed_drivers.ps1
+│  ├─ B_detect_installed_windows_software.ps1
+│  ├─ C_detect_windows_settings.ps1
+│  ├─ D_compile_and_generate_shell_script.ps1   # builds the universal installer set
+│  ├─ docker_discovery.sh                  # snapshot Docker -> cross-platform rebuild script
+│  └─ templates/                           # _common.sh engine + the four *.sh.tmpl templates
+│
+├─ documents/                              # generated data + the manifest
+│  ├─ A_installed_windows_drivers.csv
+│  ├─ B_installed_windows_software.csv
+│  ├─ B_applications.json                  # manifest with per-distro install{} descriptors
+│  ├─ C_windows_configs.csv
+│  ├─ settings_config.txt
+│  └─ instructions.txt                     # reproducibility spec
+│
+├─ Execute on Linux!/                      # GENERATED: one universal set for ALL distros
+│  ├─ execute_all.sh                       # orchestrator: drivers -> apps -> settings
+│  ├─ install_must_have_software.sh        # Flatpak-first installer, per-family native fallback
+│  ├─ install_device_drivers.sh            # firmware / GPU / printing + device report
+│  └─ apply_settings.sh                    # Windows settings -> Linux desktop
+│
+└─ History/                                # archived previous versions + retired_distro_folders/
 ```
 
-Each subdirectory is named after a **target OS**; add a new target by creating a
-folder and generating the scripts in it (see [`instructions.txt`](instructions.txt)).
+The generated scripts in `Execute on Linux!/` are **universal**: they detect the
+distribution family and CPU architecture at runtime, so the same set runs on every
+distro listed in [`Supported Distributions.txt`](Supported%20Distributions.txt) - no
+per-distro folders needed.
 
 ---
 
-## Quick start — Software inventory
+## Quick start - Run all Windows scripts
 
 ```powershell
 # From the Migrate to Linux/ folder, in PowerShell 5.1 or PowerShell 7+:
-.\B_detect_B_installed_windows_software.ps1
+.\run_project.ps1
 ```
 
-No administrator rights required.
+This runs config → software → drivers in sequence. No administrator rights required.
 
-### Options
+### Options - Software inventory (standalone script)
 
 | Parameter                       | Default                                                | Purpose                                                                              |
 | ------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------ |
@@ -208,10 +273,10 @@ No administrator rights required.
 | **Best Linux Alternative**          | curated | The best Linux option. Free alt appended if paid.                                                     |
 | **Alternative Competency**          | curated | Rough % vs Windows (≥100 = Linux is better).                                                          |
 | **Pricing model**                   | curated | Free (FOSS), Free, Freemium, Shareware, or Paid.                                                       |
-| **Must be included on Linux**       | derived | `yes` / `no` — computed from competency threshold.                                                |
+| **Must be included on Linux**       | derived | `yes` / `no` - computed from competency threshold.                                                |
 | **Can be synched to Linux alternative** | curated | Whether the app's data auto-syncs into the Linux alternative by signing in (cloud): `Yes` or `No, manual transfer`. |
 
-### The CSV columns (settings migration — `C_windows_configs.csv`)
+### The CSV columns (settings migration - `C_windows_configs.csv`)
 
 | Column                 | Source  | Meaning                                                                                  |
 | ---------------------- | ------- | ---------------------------------------------------------------------------------------- |
@@ -221,7 +286,7 @@ No administrator rights required.
 | **LinuxCommand** | from PC | Input language tags for keyboard mapping (optional).                                     |
 | **Notes**        | from PC | Human-readable note about the Linux mapping.                                             |
 
-### The CSV columns (driver inventory — `A_installed_windows_drivers.csv`)
+### The CSV columns (driver inventory - `A_installed_windows_drivers.csv`)
 
 Generate with `.\A_detect_installed_drivers.ps1` (no admin rights). Switches:
 `-IncludeVirtualDevices` keeps `ROOT\`/`SW\`/`SWD\` software devices;
@@ -235,7 +300,7 @@ Generate with `.\A_detect_installed_drivers.ps1` (no admin rights). Switches:
 | **Driver Version**        | from PC | Installed driver version.                                                                                                                                           |
 | **Driver Date**           | from PC | Driver date (`yyyy-MM-dd`).                                                                                                                                       |
 | **Driver Provider**       | from PC | Who signs/provides the driver (NVIDIA, Microsoft, …).                                                                                                              |
-| **Hardware ID**           | from PC | Bus ID (`PCI\VEN_10DE&DEV_…` / `USB\VID_…&PID_…`) — the reliable key to the silicon.                                                                        |
+| **Hardware ID**           | from PC | Bus ID (`PCI\VEN_10DE&DEV_…` / `USB\VID_…&PID_…`) - the reliable key to the silicon.                                                                        |
 | **Linux Driver Status**   | curated | Flags: In-Kernel, Generic Driver, Firmware Required, Kernel Module (DKMS), Proprietary Driver, Vendor Driver, Not Applicable, Needs Review.                         |
 | **Linux Driver / Module** | curated | The kernel module or package (`amdgpu`, `iwlwifi`, `nvidia-driver-NNN`, `r8168-dkms`, `hplip`, …).                                                       |
 | **Vendor Download**       | curated | Manufacturer's Linux driver page, filled only when a vendor download is needed.                                                                                     |
@@ -244,9 +309,9 @@ Generate with `.\A_detect_installed_drivers.ps1` (no admin rights). Switches:
 
 ---
 
-### The D_additional_Linux_software_requirments.csv columns
+### The Additional_Manual_Linux_Software_Requirments.csv columns
 
-This is a **hand-curated** file — it is NOT machine-generated by any PowerShell script.
+This is a **hand-curated** file - it is NOT machine-generated by any PowerShell script.
 It documents every application that the Linux installer installs through **hardcoded
 logic** rather than through a simple "install the alternative listed in the CSV" path.
 These fall into three groups:
@@ -263,7 +328,7 @@ These fall into three groups:
 | **Category**                           | curated | Functional category (PDF, Network, Editor, Utilities, etc.).                        |
 | **Windows App?**                       | curated | Whether this app exists/doesn't on Windows, and whether it's a hardcoded inclusion. |
 | **In B_installed_windows_software.csv?** | curated | Whether a corresponding row appears in the machine-generated CSV.                   |
-| **Linux Package(s)**                   | curated | The exact Linux package(s) installed — may be APT, Flatpak, Docker, .deb, or Wine. |
+| **Linux Package(s)**                   | curated | The exact Linux package(s) installed - may be APT, Flatpak, Docker, .deb, or Wine. |
 | **Source / URL**                       | curated | The official source or download URL for the Linux package.                          |
 | **Notes**                              | curated | Why this is hardcoded, what special logic the installer applies.                    |
 | **Can be synched to Linux alternative** | curated | Whether the app's data auto-syncs into the Linux alternative by signing in (cloud): `Yes` or `No, manual transfer`. |
@@ -283,7 +348,7 @@ re-rate a device or add a new chip, edit that table and re-run.
 
 ---
 
-## Settings migration — structured output
+## Settings migration - structured output
 
 When `apply_settings.sh` runs, every `_apply_*` function produces structured lines:
 
@@ -307,11 +372,11 @@ A summary prints at the end showing OK / Failed / Info-only counts.
 
 ---
 
-## Installing on Linux — Software
+## Installing on Linux - Software
 
 ```bash
 # For Linux Mint / Ubuntu:
-sudo ./"Linux Mint (Ubuntu)/install_must_have_software.sh"
+sudo ./"Execute on Linux!/install_must_have_software.sh"
 ```
 
 The installer is **unattended and idempotent**, with a clean progress display,
@@ -327,10 +392,10 @@ install command** so the user can retry. All downloads go to
 `/opt/migrate-downloads/`, which is set **mode 0777 and owned by the invoking
 non-root user** so files can be inspected or manually installed.
 
-**PaperCut (hard-coded — the native client, never a substitute).** PaperCut's Linux
+**PaperCut (hard-coded - the native client, never a substitute).** PaperCut's Linux
 client (Print Deploy / User Client) is served by **your own PaperCut server**, which is
 the trusted first-party source for it. Set `PAPERCUT_SERVER` (host) and optionally
-`PAPERCUT_PORT` (default `9174`) at the top of the script — or as env vars — to install
+`PAPERCUT_PORT` (default `9174`) at the top of the script - or as env vars - to install
 it **unattended**:
 
 ```bash
@@ -340,7 +405,7 @@ sudo PAPERCUT_SERVER=printdeploy.example.com ./install_must_have_software.sh
 If `PAPERCUT_SERVER` is not set (or the auto-download fails), the installer **defers to
 the manual prompt at the end** and asks for the Linux client `.tar.gz` downloaded from
 your server's client page (`https://<server>:9174`). Either way the **native PaperCut
-client is installed — CUPS is never substituted**.
+client is installed - CUPS is never substituted**.
 
 At the end of the automated installation, the script **prompts** the user to import
 fonts from a directory. The font import mechanism:
@@ -348,7 +413,7 @@ fonts from a directory. The font import mechanism:
 1. Asks for a directory path containing font files (read from `/dev/tty`).
 2. Recursively finds all font files in that directory (supports **all common font formats**:
    `.ttf`, `.otf`, `.ttc`, `.woff`, `.woff2`, `.pfa`, `.pfb`, `.afm`, `.pfm`, `.dfont`,
-   `.otb`, `.bdf`, `.pcf`, `.gsf`, `.otc`, `.abf`, `.chr`, `.fnt`, `.mxf` —
+   `.otb`, `.bdf`, `.pcf`, `.gsf`, `.otc`, `.abf`, `.chr`, `.fnt`, `.mxf` -
    covering Windows, macOS, and Linux font types).
 3. Copies them to `/usr/local/share/fonts/user-import/`.
 4. Runs `fc-cache` to rebuild the font cache so applications (including Wine) see them.
@@ -363,11 +428,11 @@ Error handling:
 
 ---
 
-## Installing on Linux — Settings
+## Installing on Linux - Settings
 
 ```bash
 # For Linux Mint / Ubuntu:
-cd "Linux Mint (Ubuntu)"
+cd "01_Linux Mint (Ubuntu)"
 sudo ./apply_settings.sh
 ```
 
@@ -378,17 +443,17 @@ timeout, logind changes).
 
 ---
 
-## Installing on Linux — Drivers
+## Installing on Linux - Drivers
 
 ```bash
 # For Linux Mint / Ubuntu:
-cd "Linux Mint (Ubuntu)"
+cd "01_Linux Mint (Ubuntu)"
 sudo ./install_device_drivers.sh
 ```
 
 Runs as root with the same clean UI, spinner, and two log files as the software
 installer. It **detects hardware live** and only installs what's actually present,
-so it is safe to run on any machine — absent hardware is recorded as *skipped*, not
+so it is safe to run on any machine - absent hardware is recorded as *skipped*, not
 failed. Highlights:
 
 - **In-kernel by default:** most devices (Intel/Atheros/MediaTek Wi-Fi, Bluetooth,
@@ -409,9 +474,9 @@ microcode, firmware flash).
 
 [`instructions.txt`](instructions.txt) is a self-contained specification: an AI engine
 can read it alone and regenerate all PowerShell scripts, the CSVs, and each target-OS
-installer with freshly-researched data. It includes **PART D — Settings Migration Spec**
-and **PART E — Device Driver Migration Spec** (plus the `execute_all.sh` orchestrator).
-This is the **only** part of the project that benefits from an AI agent — everyday use
+installer with freshly-researched data. It includes **PART D - Settings Migration Spec**
+and **PART E - Device Driver Migration Spec** (plus the `execute_all.sh` orchestrator).
+This is the **only** part of the project that benefits from an AI agent - everyday use
 (running the scripts and installers) does not.
 
 ## Caveats
@@ -419,10 +484,10 @@ This is the **only** part of the project that benefits from an AI agent — ever
 - **Competency is a deliberate rough estimate** for planning, not a benchmark.
 - Ratings reflect the Linux landscape as of **June 2026** and will drift.
 - Display resolution may not be replicable on different hardware.
-- The per-distro scripts (`execute_all.sh`, `install_*`, `apply_settings.sh`) live
-  **per distro directory** (e.g. `Linux Mint (Ubuntu)/`) — each target OS gets its
-  own copy. `apply_settings.sh` is now a single self-contained file (the former
-  `settings_config.sh` has been merged into it).
+- The installer scripts (`execute_all.sh`, `install_*`, `apply_settings.sh`) are
+  **generated once** into `Execute on Linux!/` and are **universal** - the same set
+  runs on every supported distro (each detects the family + CPU architecture at
+  runtime). There are no longer per-distro folders.
 - **Drivers are detected live on Linux**, not transcribed from Windows: the
   `A_installed_windows_drivers.csv` is a cross-reference, while `lspci`/`lsusb`/DMI on
   the actual machine are authoritative (Windows device names don't map cleanly to
@@ -438,8 +503,111 @@ This is the **only** part of the project that benefits from an AI agent — ever
 
 **Linux (installers + settings apply):**
 
-- Linux Mint or Ubuntu (APT base), run as **root**
-- Internet access for repo/vendor/firmware downloads
-- For settings: `xrandr`, `gsettings`, `localectl`, `systemctl` (all standard)
-- For drivers: `pciutils`, `usbutils`, `ubuntu-drivers-common`, `dkms`, `fwupd`
-  (the installer pulls these itself); kernel headers for the running kernel
+- Any supported distribution - Debian/Ubuntu (`apt`), Fedora/RHEL (`dnf`),
+  openSUSE (`zypper`) or Arch (`pacman`); run as **root**
+- Internet access for Flatpak/repo/vendor/firmware downloads
+- For settings: `gsettings`, `localectl`, `systemctl` (all standard)
+- The installer bootstraps Flatpak + Flathub itself and pulls any extra tools it
+  needs from your distro's base repos
+
+---
+
+## Why migrate? Linux vs Windows
+
+A balanced look at what you gain - and what you give up - so you can decide with
+eyes open.
+
+### Advantages of Linux over Windows
+
+- **Free and open source** - no licence fees, no activation, source is auditable.
+- **No forced telemetry or ads** - no Recall, no Start-menu ads, no account
+  requirement; privacy is the default.
+- **Lighter and faster** - runs well on old/low-RAM hardware; less background bloat.
+- **Updates on your terms** - no surprise reboots; you choose when to update, and
+  updates rarely break the machine.
+- **One package manager for everything** - install/update all software with a single
+  command instead of hunting installers across the web.
+- **Stability and uptime** - servers run for years without reboots; far less
+  "reinstall to fix it."
+- **Powerful, scriptable shell** - bash/zsh + coreutils make automation trivial.
+- **Free of vendor lock-in** - open formats, no forced cloud, easy to dual-boot or
+  move between distros.
+- **Security** - granular permissions, fast patching, much smaller malware target.
+- **Total customisation** - swap desktops (GNOME/KDE/Xfce/…), tweak anything.
+- **Longevity** - a 10-year-old PC stays useful; no artificial "your CPU isn't
+  supported" cut-offs.
+
+### Advantages of Windows over Linux (the honest list)
+
+- **Commercial software** - Adobe Creative Cloud, Microsoft Office (full), many CAD,
+  finance and engineering suites are Windows-only.
+- **Gaming** - the largest native catalogue; anti-cheat in some online games blocks
+  Proton/Wine; some titles never work.
+- **Hardware/peripheral support** - vendor drivers, fingerprint readers, some
+  printers/scanners and exotic gadgets often ship Windows-only.
+- **Pro device ecosystems** - many music/recording, broadcast and lab tools assume
+  Windows (or macOS).
+- **Familiarity & support** - most workplaces, classrooms and help desks assume
+  Windows; more "click here" tutorials exist.
+- **Plug-and-play GPU/Optimus** - laptop GPU switching and vendor control panels are
+  smoother out of the box.
+- **Enterprise management** - Active Directory / Group Policy / Intune integration.
+
+### For computer scientists & developers
+
+- **The platform you deploy to** - servers, containers and the cloud are Linux; dev
+  on the same OS removes "works on my machine" gaps.
+- **First-class toolchains** - gcc/clang, gdb/valgrind/perf/strace, make/cmake, and
+  package-manager-installed headers without hunting for SDKs.
+- **Native containers** - Docker/Podman run on the kernel directly (no VM tax),
+  faster builds and lower memory than Docker Desktop on Windows.
+- **WSL not needed** - you already have the real thing; no translation layer, no path
+  or line-ending friction.
+- **Reproducible environments** - apt/dnf + venv/conda + Nix/containers make setups
+  scriptable and shareable.
+- **Everything is a file / great IPC** - pipes, sockets, `/proc`, `/sys`,
+  systemd - ideal for understanding and instrumenting systems.
+- **SSH/remote-first** - effortless headless servers, tmux, remote dev over SSH.
+- **Research & HPC** - the default for clusters, CUDA/ROCm, scientific stacks
+  (NumPy/PyTorch/TensorFlow) and schedulers (Slurm).
+
+### For getting the most out of your hardware
+
+- **Lower idle overhead** - less RAM/CPU spent on the OS, more left for your work.
+- **Fine-grained control** - CPU governors (`cpupower`/TLP), I/O schedulers, kernel
+  parameters, `nice`/`ionice`, cgroups to cap or prioritise processes.
+- **Real observability** - `htop`, `btop`, `perf`, `iotop`, `nvtop`, `powertop`,
+  `sensors` expose exactly what the hardware is doing.
+- **Tunable graphics & thermals** - MangoHud/GOverlay, CoolerControl, custom fan
+  curves, undervolting.
+- **No bloatware/background services** - install only what you need; nothing phones
+  home.
+- **Lightweight desktops** - Xfce/LXQt/i3/Sway sip resources on modest machines.
+- **Filesystems for power users** - Btrfs/ZFS snapshots, compression, RAID.
+- **Old hardware stays useful** - no hard CPU/TPM cut-offs; revive machines Windows
+  has abandoned.
+
+---
+
+## When there's no good Linux alternative
+
+Some Windows apps and games have no strong native replacement. Pick a fallback by
+how much native performance and integration you need. Roughly: **PWA < Wine/Bottles
+< container < VM < GPU-passthrough VM < dual-boot**, trading convenience for fidelity.
+
+| Strategy | Best for | Performance | Ease of use | Pros | Cons |
+| --- | --- | --- | --- | --- | --- |
+| **Web app / PWA** (browser app-mode, the installer's `--webapp`) | Apps with a good web version (Teams, WhatsApp, Office.com, Excalidraw) | Good (it's the website) | ★★★★★ | No install, auto-updates, cross-platform, zero maintenance | Needs internet; limited OS integration & offline/local-file access |
+| **Wine** (raw) | Small, well-behaved Windows apps | Near-native CPU; GPU varies | ★★ | No VM overhead; runs many `.exe` directly | Fiddly per-app tweaks; many apps break; no official support |
+| **Bottles / Lutris** (Wine wrapper) | Windows apps & older games, managed prefixes | Near-native CPU | ★★★★ | Flatpak install, per-app "bottles", presets, dependency installer | Still Wine underneath - not everything works; x86-only |
+| **Proton / Steam Play** | Games (esp. on Steam) | Near-native (often 90-100%) | ★★★★ | One toggle in Steam; huge compatibility (see ProtonDB) | Some anti-cheat titles blocked; non-Steam games need effort |
+| **Cloud gaming / remote** (GeForce NOW, Xbox Cloud, Parsec, Moonlight) | AAA games, occasional Windows access | Depends on network/latency | ★★★★ | No local GPU needed; runs anything server-side | Subscription/another PC; latency; needs strong connection |
+| **Type-2 VM** (GNOME Boxes, VirtualBox, VMware Workstation) | Office/CAD/dev tools needing real Windows | Good for desktop apps; weak 3D | ★★★ | Full real Windows, snapshots, isolated, no reboot | Heavy RAM/disk; poor GPU performance; licence needed |
+| **GPU-passthrough VM** ("VMVisor": KVM/QEMU + VFIO) | GPU/3D apps & gaming at near-native speed | Excellent (≈95-99%) | ★ | Near-bare-metal Windows with a dedicated GPU | Needs 2 GPUs (or iGPU+dGPU), IOMMU, significant setup |
+| **Dual-boot** | Anything that must be 100% native (anti-cheat, pro hardware) | Native (100%) | ★★ | Full performance & compatibility | Reboot to switch; partitioning; bootloader upkeep |
+| **Container** (Docker/Podman) | Server/CLI/dev software (DBs, Stirling-PDF, LanguageTool) | Native (Linux apps) | ★★★ | Lightweight, reproducible, no GUI baggage | Linux-native only (not for Windows GUI apps); not for GUI desktop apps |
+| **Second machine / RDP** | Rare, must-have Windows-only workloads | Native on the other box | ★★★ | Keep one Windows box; access remotely (RDP/Parsec) | Cost of a second machine; remote-only |
+
+Rule of thumb: try **native alternative → Flatpak → PWA → Bottles/Proton →
+container → VM → GPU-passthrough/dual-boot**, stopping at the first that meets your
+performance and integration needs.
