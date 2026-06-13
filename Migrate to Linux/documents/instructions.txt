@@ -22,7 +22,7 @@ Layout:
     Additional_Manual_Linux_Software_Requirments.csv   (hand-curated hardcoded apps)
     Supported Distributions.txt                        (distro families + CPU arches)
     README.md / README_fa.md
-    submodules/      A_/B_/C_ detection, D_ generator, docker_discovery.sh,
+    submodules/      A_/B_/C_ detection, D_ generator, docker_discovery.sh/.ps1,
                      templates/ (_common.sh engine + 4 *.sh.tmpl)
     documents/       A_/B_/C_ CSVs, B_applications.json manifest, this file
     Execute on Linux!/   GENERATED universal scripts (execute_all / install_* / apply_settings)
@@ -51,7 +51,8 @@ Manifest schema (documents/B_applications.json):
              still need verification on a real system of that family.
 
 Extra tool:
-  submodules/docker_discovery.sh  - snapshots local Docker (images/volumes/networks/
+  submodules/docker_discovery.sh (or .ps1, identical PowerShell port) - snapshots
+  local Docker (images/volumes/networks/
   containers) and emits a cross-platform docker_rebuild.sh (auto-starts Docker if
   stopped; volume DATA is not preserved).
 
@@ -68,7 +69,7 @@ able to read ONLY this file - and regenerate, with the latest up-to-date data:
 
   0. run_project.ps1                              (Windows one-shot orchestrator:
                                                 config → software → drivers)
-  1. B_detect_B_installed_windows_software.ps1   (Windows inventory + Linux rating)
+  1. B_detect_installed_windows_software.ps1   (Windows inventory + Linux rating)
   2. B_installed_windows_software.csv          (the report the script produces)
   2b. Additional_Manual_Linux_Software_Requirments.csv  (hand-curated: hardcoded apps that
                                                   the installer includes regardless
@@ -104,7 +105,7 @@ DIRECTORY LAYOUT
     run_project.ps1                           <- Windows one-shot orchestrator (config→software→drivers)
     C_detect_windows_settings.ps1          <- settings scraper (Windows)
     C_windows_configs.csv                   <- settings CSV (produced by PS1)
-    B_detect_B_installed_windows_software.ps1 <- the inventory script (Windows)
+    B_detect_installed_windows_software.ps1 <- the inventory script (Windows)
     B_installed_windows_software.csv        <- generated software report
     Additional_Manual_Linux_Software_Requirments.csv <- hand-curated: hardcoded apps beyond
                                              the machine-generated CSV
@@ -129,9 +130,9 @@ Step W0  For a full one-shot inventory, the HUMAN can run run_project.ps1 on Win
          This runs config → software → drivers in sequence, producing all three
          CSV files at once. See the script's -Help for parameters.
 
-Step 1  The AI generates / updates B_detect_B_installed_windows_software.ps1.
+Step 1  The AI generates / updates B_detect_installed_windows_software.ps1.
 Step 2  The HUMAN runs that .ps1 on the Windows machine being migrated:
-            powershell -ExecutionPolicy Bypass -File B_detect_B_installed_windows_software.ps1
+            powershell -ExecutionPolicy Bypass -File B_detect_installed_windows_software.ps1
         (optionally with -Online). This produces B_installed_windows_software.csv.
         The AI must NOT fabricate the machine-derived rows; they come from this run.
 Step 3  The HUMAN tells the AI to proceed with the CSV.
@@ -143,7 +144,7 @@ Step 5  The HUMAN runs the installer as root on the target OS.
 
 ===============================================================================
  PART A - POWERSHELL INVENTORY SCRIPT SPEC
- (file: B_detect_B_installed_windows_software.ps1)
+ (file: B_detect_installed_windows_software.ps1)
 ===============================================================================
 
 GOAL
@@ -207,7 +208,7 @@ NAME CLEANING + DE-DUPLICATION
     punctuation, so cosmetic Win32-vs-Store duplicates collapse. Prefer the Win32
     record when a collision occurs.
 
-THE 10 CSV COLUMNS (exact header text, in this order)
+THE 12 CSV COLUMNS (exact header text, in this order)
   Name                        (machine)
   Version                     (machine)
   Publisher                   (machine)
@@ -221,7 +222,12 @@ THE 10 CSV COLUMNS (exact header text, in this order)
                               (curated; whether the app's data can be AUTOMATICALLY
                                synced into the Linux alternative by signing in (cloud):
                                "Yes" | "No, manual transfer". Blank only for Needs-Review
-                               rows. Sourced from the $LinuxKB 'Sy' field below.)
+                               rows. Sourced from the manifest's Syncability field.)
+  Linux Alternative Type      (curated; how the alternative is delivered - e.g. WebApp,
+                               Native (Flatpak/APT/Docker), Wine. From the manifest's
+                               AppType field; drives the generated installer's method.)
+  Download URL                (curated; official download or web-app URL of the chosen
+                               Linux alternative. From the manifest's DownloadUrl field.)
 
 LINUX AVAILABILITY FLAGS - a cell may hold several, ALWAYS normalised to this order:
   Available on Linux ; Not Available ; Native Alternative ;
@@ -1070,7 +1076,7 @@ PART E2 - LINUX DRIVER INSTALLER  (<Target OS>/install_device_drivers.sh)
   [ ] Ensure every property access in the PS1 script's Where-Object / Select-Object
       blocks on Get-ItemProperty and Get-AppxPackage results is guarded with
       try/catch to prevent PropertyNotFoundStrict crashes.
-  [ ] (Re)generate B_detect_B_installed_windows_software.ps1 per PART A.
+  [ ] (Re)generate B_detect_installed_windows_software.ps1 per PART A.
   [ ] Ask the human to run it (PART, WORKFLOW step 2) and hand back the CSV.
   [ ] From the CSV's "yes" rows, (re)generate <Target OS>/install_must_have_software.sh
       per PART C for each target-OS subdirectory. Ensure:

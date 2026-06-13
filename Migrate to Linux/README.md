@@ -17,7 +17,7 @@ Everything in this folder is already generated for **this machine**, so in most 
 
 ```bash
 cd "Migrate to Linux/Execute on Linux!"
-sudo ./execute_all.sh        # settings → apps → drivers, continue-on-error
+sudo ./execute_all.sh        # drivers → apps → settings, continue-on-error
 ```
 
 ---
@@ -27,7 +27,7 @@ sudo ./execute_all.sh        # settings → apps → drivers, continue-on-error
 > **You do NOT need an AI agent for normal use.** The scripts and the pre-generated
 > CSVs in this folder are ready to run as-is. Just follow the workflows below.
 >
-> An AI agent (which reads [`instructions.txt`](instructions.txt)) is only needed for a
+> An AI agent (which reads [`instructions.txt`](documents/instructions.txt)) is only needed for a
 > few **optional, one-off** tasks that are specific to *your* case:
 > - **Regenerating the reports/installer from scratch** with freshly-researched data for a **different Windows PC** than the one captured here.
 > - **Adding a new target OS/distro** (e.g. Fedora, Arch) - generating a fresh set of installer scripts for it.
@@ -38,8 +38,8 @@ sudo ./execute_all.sh        # settings → apps → drivers, continue-on-error
 
 There are two phases:
 
-1. **On Windows** - run the three PowerShell inventory scripts to (re)generate the CSV reports. *Skip this if you are migrating the machine these files were generated on - the CSVs are already here.*
-2. **On Linux** - copy this `Migrate to Linux/` folder over and run the installers as root.
+1. **On Windows** - run `.\run_project.ps1`: it inventories the PC (writing the CSV reports) **and generates the self-contained Linux installer scripts** into `Execute on Linux!/`. *Skip this if you are migrating the machine these files were generated on - everything is already here.*
+2. **On Linux** - copy this `Migrate to Linux/` folder over and run the installers as root. The generated scripts are self-contained (the app list, settings and device reference are baked in at generation time), so no CSVs are read at runtime.
 
 ### Workflow 0 - Run everything at once (recommended)
 
@@ -49,20 +49,21 @@ There are two phases:
 .\run_project.ps1
 ```
 
-This runs all three detection scripts in order - **config → software → drivers** -
-writing all three CSV files in one go. See [run_project.ps1](#run_projectps1---windows-orchestrator)
+This runs the three detection scripts in order - **config → software → drivers** -
+writing the three CSV files, then runs the generator that builds the self-contained
+installer set in `Execute on Linux!/`. See [run_project.ps1](#run_projectps1---windows-orchestrator)
 for the full parameter list.
 
-**Linux side:** after copying the generated CSVs into `Migrate to Linux/`, run the
-single orchestrator as root:
+**Linux side:** copy the `Migrate to Linux/` folder (or just the generated
+`Execute on Linux!/`) to the target machine, then run the single orchestrator as root:
 
 ```bash
 cd "Migrate to Linux/Execute on Linux!"
 sudo ./execute_all.sh
 ```
 
-It makes the three stage scripts executable and runs them **in order - settings →
-apps → drivers - with a continue-on-error policy** (a failure in one stage is
+It makes the three stage scripts executable and runs them **in order - drivers →
+apps → settings - with a continue-on-error policy** (a failure in one stage is
 recorded but never stops the others). Each stage keeps its own clean UI and logs;
 `execute_all.sh` prints a per-stage OK/FAILED summary at the end and exits non-zero
 if any stage failed. Prefer the individual workflows below when you want to run
@@ -70,28 +71,28 @@ just one stage.
 
 ### Workflow 1 - Migrate installed software
 
-1. **Generate the report** *(Windows; skip if already present)* - run `B_detect_B_installed_windows_software.ps1` on the Windows PC.
-2. **Review** `B_installed_windows_software.csv` - especially the `Must be included on Linux` and `Can be synched to Linux alternative` columns.
-3. **Install on Linux** - run `install_must_have_software.sh` as root.
+1. **Generate the report** *(Windows; skip if already present)* - run `submodules/B_detect_installed_windows_software.ps1` (or just `.\run_project.ps1`) on the Windows PC.
+2. **Review** `documents/B_installed_windows_software.csv` - especially the `Must be included on Linux` and `Can be synched to Linux alternative` columns.
+3. **Install on Linux** - run `Execute on Linux!/install_must_have_software.sh` as root (the app list is baked into the generated script).
 
 ### Workflow 2 - Migrate Windows settings
 
-1. **Extract settings** *(Windows; skip if already present)* - run `C_detect_windows_settings.ps1` on the Windows PC:
+1. **Extract settings** *(Windows; skip if already present)* - run `submodules/C_detect_windows_settings.ps1` (or `.\run_project.ps1`) on the Windows PC:
 
    ```powershell
-   powershell -ExecutionPolicy Bypass -File C_detect_windows_settings.ps1
+   powershell -ExecutionPolicy Bypass -File submodules/C_detect_windows_settings.ps1
    ```
 
-   This produces `C_windows_configs.csv`.
-2. **Copy** `C_windows_configs.csv` to the `Migrate to Linux/` directory on the Linux machine.
-3. **Apply** - from the distro directory, run as root:
+   This produces `documents/C_windows_configs.csv`, which the generator bakes into `apply_settings.sh`.
+2. **Copy** the `Execute on Linux!/` folder to the Linux machine (the settings are already baked into `apply_settings.sh` - no CSV needs to travel with it).
+3. **Apply** - from that folder, run as root:
 
    ```bash
    cd "Migrate to Linux/Execute on Linux!"
    sudo ./apply_settings.sh
    ```
 
-   This reads `../C_windows_configs.csv` and applies (**to all users** - see note below):
+   It applies the captured settings (**to all users** - see note below):
 
    - **Power:** lid-close action (battery & AC) → `logind.conf`
    - **Display:** resolution → `xrandr`, scaling → system-wide dconf default
@@ -110,15 +111,15 @@ just one stage.
 
 ### Workflow 3 - Migrate device drivers
 
-1. **Generate the report** *(Windows; skip if already present)* - run `A_detect_installed_drivers.ps1` on the Windows PC:
+1. **Generate the report** *(Windows; skip if already present)* - run `submodules/A_detect_installed_drivers.ps1` (or `.\run_project.ps1`) on the Windows PC:
    ```powershell
-   powershell -ExecutionPolicy Bypass -File A_detect_installed_drivers.ps1
+   powershell -ExecutionPolicy Bypass -File submodules/A_detect_installed_drivers.ps1
    ```
 
    This enumerates every signed PnP driver (`Win32_PnPSignedDriver`) and writes
-   `A_installed_windows_drivers.csv`, classifying each device for Linux.
-2. **Copy** `A_installed_windows_drivers.csv` to the `Migrate to Linux/` directory on the Linux machine (optional - the installer also detects hardware live).
-3. **Install on Linux** - from the distro directory, run as root:
+   `documents/A_installed_windows_drivers.csv`, classifying each device for Linux.
+2. **No copy needed** - the driver installer detects hardware live on Linux and carries the detected Windows-device list baked in as a reference. Just copy the `Execute on Linux!/` folder over.
+3. **Install on Linux** - from that folder, run as root:
    ```bash
    cd "Migrate to Linux/Execute on Linux!"
    sudo ./install_device_drivers.sh
@@ -143,7 +144,7 @@ just one stage.
 | File                                                                                    | What it is                                                                                                                                                                                                                                                                                                |
 | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`run_project.ps1`](run_project.ps1)                                                    | **Windows orchestrator** - runs the three detection scripts (steps 1-3) then the generator (step 4). Forwards parameters to the sub-scripts. |
-| [`submodules/`](submodules/)                                                            | Detection scripts (A/B/C), the generator `D_compile_and_generate_shell_script.ps1`, the universal `templates/` (`_common.sh` + `*.sh.tmpl`), and `docker_discovery.sh`. |
+| [`submodules/`](submodules/)                                                            | Detection scripts (A/B/C), the generator `D_compile_and_generate_shell_script.ps1`, the universal `templates/` (`_common.sh` + `*.sh.tmpl`), and `docker_discovery.sh` / `docker_discovery.ps1`. |
 | [`Supported Distributions.txt`](Supported%20Distributions.txt)                          | Distro-family groupings (apt/dnf/zypper/pacman) and supported CPU architectures (x86_64/aarch64). |
 | [`Additional_Manual_Linux_Software_Requirments.csv`](Additional_Manual_Linux_Software_Requirments.csv) | **Hand-curated** list of hardcoded applications included regardless of the Windows CSV - apps absent from the Windows PC and apps whose install logic goes beyond the CSV (Wine installs, multi-package splits like PowerToys, web-app shortcuts). |
 | [`documents/B_applications.json`](documents/B_applications.json)                         | The manifest: every app's Linux alternatives plus the per-distro `install{}` descriptor (method, flatpakId, native names per family, arch) the generator reads. |
@@ -215,7 +216,7 @@ Migrate to Linux/
 │  ├─ B_detect_installed_windows_software.ps1
 │  ├─ C_detect_windows_settings.ps1
 │  ├─ D_compile_and_generate_shell_script.ps1   # builds the universal installer set
-│  ├─ docker_discovery.sh                  # snapshot Docker -> cross-platform rebuild script
+│  ├─ docker_discovery.sh / .ps1           # snapshot Docker -> cross-platform rebuild script
 │  └─ templates/                           # _common.sh engine + the four *.sh.tmpl templates
 │
 ├─ documents/                              # generated data + the manifest
@@ -275,6 +276,8 @@ This runs config → software → drivers in sequence. No administrator rights r
 | **Pricing model**                   | curated | Free (FOSS), Free, Freemium, Shareware, or Paid.                                                       |
 | **Must be included on Linux**       | derived | `yes` / `no` - computed from competency threshold.                                                |
 | **Can be synched to Linux alternative** | curated | Whether the app's data auto-syncs into the Linux alternative by signing in (cloud): `Yes` or `No, manual transfer`. |
+| **Linux Alternative Type**          | curated | How the alternative is delivered - WebApp, Native (Flatpak/APT/Docker), Wine, etc.; this drives the generated installer's method. |
+| **Download URL**                    | curated | The official download or web-app URL for the chosen Linux alternative. |
 
 ### The CSV columns (settings migration - `C_windows_configs.csv`)
 
@@ -332,17 +335,22 @@ These fall into three groups:
 | **Source / URL**                       | curated | The official source or download URL for the Linux package.                          |
 | **Notes**                              | curated | Why this is hardcoded, what special logic the installer applies.                    |
 | **Can be synched to Linux alternative** | curated | Whether the app's data auto-syncs into the Linux alternative by signing in (cloud): `Yes` or `No, manual transfer`. |
+| **Linux Alternative Type**             | curated | How the alternative is delivered (WebApp, Native (Flatpak/APT/Docker), Wine, etc.). |
+| **Download URL**                       | curated | The official download or web-app URL for the Linux package. |
 
 ---
 
 ## How the Linux ratings are sourced
 
-Recommendations are **researched from the web** and baked into the `$LinuxKB` array in
-`B_detect_B_installed_windows_software.ps1`. To adjust a rating or add a new app, edit that
-table and re-run. The optional `-Online` mode fills *unknown* apps via the Repology API.
+Recommendations are **researched from the web** and stored in the
+`documents/B_applications.json` manifest, which `submodules/B_detect_installed_windows_software.ps1`
+looks up offline for every installed app (each entry also carries the per-distro
+`install{}` descriptor the generator uses). To adjust a rating or add a new app, edit
+that JSON manifest and re-run; apps missing from it are flagged `Needs Review`. The
+optional `-Online` mode fills *unknown* apps via the Repology API.
 
 For drivers, the mapping lives in the `$DriverKB` rule table in
-`A_detect_installed_drivers.ps1`. Each device is classified from its **PnP class** and
+`submodules/A_detect_installed_drivers.ps1`. Each device is classified from its **PnP class** and
 the **PCI/USB vendor ID** embedded in its Hardware ID (first matching rule wins). To
 re-rate a device or add a new chip, edit that table and re-run.
 
@@ -375,7 +383,7 @@ A summary prints at the end showing OK / Failed / Info-only counts.
 ## Installing on Linux - Software
 
 ```bash
-# For Linux Mint / Ubuntu:
+# On any supported distro (Debian/Ubuntu, Fedora, openSUSE, Arch):
 sudo ./"Execute on Linux!/install_must_have_software.sh"
 ```
 
@@ -431,8 +439,8 @@ Error handling:
 ## Installing on Linux - Settings
 
 ```bash
-# For Linux Mint / Ubuntu:
-cd "01_Linux Mint (Ubuntu)"
+# On any supported distro:
+cd "Execute on Linux!"
 sudo ./apply_settings.sh
 ```
 
@@ -446,8 +454,8 @@ timeout, logind changes).
 ## Installing on Linux - Drivers
 
 ```bash
-# For Linux Mint / Ubuntu:
-cd "01_Linux Mint (Ubuntu)"
+# On any supported distro:
+cd "Execute on Linux!"
 sudo ./install_device_drivers.sh
 ```
 
@@ -472,7 +480,7 @@ microcode, firmware flash).
 
 ## Reproducing everything from scratch (AI agent)
 
-[`instructions.txt`](instructions.txt) is a self-contained specification: an AI engine
+[`instructions.txt`](documents/instructions.txt) is a self-contained specification: an AI engine
 can read it alone and regenerate all PowerShell scripts, the CSVs, and each target-OS
 installer with freshly-researched data. It includes **PART D - Settings Migration Spec**
 and **PART E - Device Driver Migration Spec** (plus the `execute_all.sh` orchestrator).
