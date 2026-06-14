@@ -17,7 +17,11 @@
 # =============================================================================
 set -o pipefail
 
-OUT="${1:-docker_rebuild.sh}"
+# Write docker_rebuild.sh to BOTH the submodules dir and the "Execute on Linux!" dir.
+SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJ_ROOT="$(dirname "$SELF_DIR")"
+INSTALLER_DIR="$PROJ_ROOT/Execute on Linux!"
+OUT="${1:-$SELF_DIR/docker_rebuild.sh}"
 
 log()  { printf '\033[1;34m==>\033[0m %s\n' "$*" >&2; }
 info() { printf '       %s\n' "$*" >&2; }
@@ -231,7 +235,12 @@ done < <(docker ps -aq)
 emit ''
 emit 'log "Rebuild complete."'
 
+# Also place a copy in the "Execute on Linux!" folder so it ships to the target.
+mkdir -p "$INSTALLER_DIR" 2>/dev/null || true
+cp -f "$OUT" "$INSTALLER_DIR/docker_rebuild.sh" 2>/dev/null || true
+
 log "Wrote $OUT"
-info "Review it, then run:  bash $OUT"
+log "Wrote $INSTALLER_DIR/docker_rebuild.sh"
+info "Review it, then run:  bash docker_rebuild.sh"
 warn "Caveats: volume DATA, healthchecks, devices, capabilities, ulimits, sysctls,"
 warn "         and compose context are not captured (best-effort topology rebuild)."

@@ -162,7 +162,7 @@ with native fallbacks. See [`Supported Distributions.txt`](Supported%20Distribut
 
 | File                                              | What it is                                                                                                                                   |
 | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Execute on Linux!/execute_all.sh`                | **One-shot orchestrator** - runs the three scripts in order (drivers → apps → settings), continue-on-error.                                  |
+| `Execute on Linux!/execute_all.sh`                | **One-shot orchestrator** - runs the three scripts in order (drivers → apps → settings), continue-on-error. If a `docker_rebuild.sh` is present it then asks *"Rebuild docker components? (y/n)"*. |
 | `Execute on Linux!/install_must_have_software.sh` | Unattended **root installer** - installs every app flagged `Must be included on Linux = yes`, Flatpak-first with per-family native fallback. |
 | `Execute on Linux!/install_device_drivers.sh`     | **Root driver installer** - firmware, GPU drivers, printing/scanning, plus a reference list of the Windows devices detected.                 |
 | `Execute on Linux!/apply_settings.sh`             | **Settings runner** - applies the captured Windows settings (scaling, lock, layout, privacy, lid) to GNOME/Cinnamon; KDE/others noted.      |
@@ -231,7 +231,8 @@ Migrate to Linux/
 │  ├─ execute_all.sh                       # orchestrator: drivers -> apps -> settings
 │  ├─ install_must_have_software.sh        # Flatpak-first installer, per-family native fallback
 │  ├─ install_device_drivers.sh            # firmware / GPU / printing + device report
-│  └─ apply_settings.sh                    # Windows settings -> Linux desktop
+│  ├─ apply_settings.sh                    # Windows settings -> Linux desktop
+│  └─ docker_rebuild.sh                    # only if Docker was installed on the Windows source
 │
 └─ History/                                # archived previous versions + retired_distro_folders/
 ```

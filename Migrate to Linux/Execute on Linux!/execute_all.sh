@@ -401,6 +401,20 @@ main() {
     fi
   done
 
+  # Optional Docker rebuild. docker_rebuild.sh is only present when Docker was
+  # installed on the Windows source (docker_discovery created it), so the prompt
+  # is only shown in that case.
+  if [ -f "$here/docker_rebuild.sh" ]; then
+    printf '\n'
+    local ans=""
+    read -r -p "Rebuild docker components? (y/n): " ans </dev/tty 2>/dev/null || ans="n"
+    case "$ans" in
+      [Yy]*) log "=== Running docker_rebuild.sh ==="
+             bash "$here/docker_rebuild.sh" || warn "docker_rebuild.sh reported errors" ;;
+      *)     info "Skipping docker rebuild." ;;
+    esac
+  fi
+
   log "All steps finished."
   info "Per-step logs are under /tmp/migrate_to_linux_results.tsv (last step wins)."
 }
