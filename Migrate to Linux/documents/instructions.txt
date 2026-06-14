@@ -50,11 +50,17 @@ Manifest schema (documents/B_applications.json):
              deb-url | github-deb | manual.  "review:true" flags non-apt names that
              still need verification on a real system of that family.
 
-Extra tool:
-  submodules/docker_discovery.sh (or .ps1, identical PowerShell port) - snapshots
-  local Docker (images/volumes/networks/
-  containers) and emits a cross-platform docker_rebuild.sh (auto-starts Docker if
-  stopped; volume DATA is not preserved).
+Docker capture/rebuild flow:
+  submodules/docker_discovery.sh (or .ps1, identical PowerShell port) snapshots local
+  Docker (images/volumes/networks/containers) and EMITS a cross-platform bash
+  docker_rebuild.sh into BOTH submodules/ and "Execute on Linux!/" (auto-starts Docker
+  if stopped; volume DATA is not preserved).
+  - B_detect_installed_windows_software.ps1 automatically runs docker_discovery.ps1
+    when Docker is installed on the Windows source (so docker_rebuild.sh only exists
+    when the source had Docker).
+  - The generated execute_all.sh, after drivers/apps/settings, checks for a sibling
+    docker_rebuild.sh and (only if present) asks "Rebuild docker components? (y/n)";
+    on yes it runs docker_rebuild.sh.
 
 To regenerate the installer after editing the manifest or CSVs:
   .\run_project.ps1 -SkipDetection      (regenerate scripts only)

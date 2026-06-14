@@ -543,4 +543,31 @@ if ($unmatched -gt 0) {
     Write-Host ""
 }
 
+# ---------------------------------------------------------------------------
+# 7. DOCKER - if Docker is installed on this Windows source, snapshot it so the
+#    Linux side can rebuild the same images/volumes/networks/containers. This
+#    writes docker_rebuild.sh into submodules/ and "Execute on Linux!/". Its
+#    presence later tells execute_all.sh to offer the rebuild prompt.
+# ---------------------------------------------------------------------------
+if (Get-Command docker -ErrorAction SilentlyContinue) {
+    Write-Host ""
+    Write-Host "Docker detected on this machine - snapshotting Docker components ..." -ForegroundColor Cyan
+    $here = $PSScriptRoot
+    if (-not $here) { $here = Split-Path -Parent $MyInvocation.MyCommand.Path }
+    $dockerDisc = Join-Path $here 'docker_discovery.ps1'
+    if (Test-Path $dockerDisc) {
+        # Run in a child process so any 'exit' inside it can't abort this script.
+        $psExe = (Get-Process -Id $PID).Path
+        if (-not $psExe) { $psExe = 'powershell.exe' }
+        & $psExe -NoProfile -ExecutionPolicy Bypass -File $dockerDisc
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "OK - docker_rebuild.sh generated (submodules + 'Execute on Linux!')." -ForegroundColor Green
+        } else {
+            Write-Warning "docker_discovery.ps1 exited with code $LASTEXITCODE; Docker snapshot skipped."
+        }
+    } else {
+        Write-Warning "docker_discovery.ps1 not found next to this script; skipping Docker snapshot."
+    }
+}
+
 Write-Host "Done." -ForegroundColor Green
