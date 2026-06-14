@@ -437,9 +437,9 @@ list_source_drivers() {
   info "Bluetooth Peripheral Device [] -> Not Applicable"
   info "Bluetooth Peripheral Device [] -> Not Applicable"
   info "Bluetooth Peripheral Device [] -> Not Applicable"
-  info "Lenovo DisplayHDR [MONITOR] -> Not Applicable"
-  info "NVIDIA GeForce RTX 5070 Ti Laptop GPU [DISPLAY] -> Kernel Module (DKMS); Proprietary Driver"
   info "Spp1 [] -> Not Applicable"
+  info "NVIDIA GeForce RTX 5070 Ti Laptop GPU [DISPLAY] -> Kernel Module (DKMS); Proprietary Driver"
+  info "Lenovo DisplayHDR [MONITOR] -> Not Applicable"
   info "(68 additional devices are covered by in-kernel/generic drivers.)"
 }
 

@@ -1,4 +1,4 @@
-"Category","ConfigKey","WindowsValue","LinuxCommand","Notes"
+﻿"Category","ConfigKey","WindowsValue","LinuxCommand","Notes"
 "Power","lid_close_on_ac","unknown","","logind.conf: HandleLidSwitchExternalPower=suspend"
 "Power","lid_close_on_battery","unknown","","logind.conf: HandleLidSwitch=suspend"
 "Display","resolution","2560x1600","","xrandr / GNOME Settings > Displays"
