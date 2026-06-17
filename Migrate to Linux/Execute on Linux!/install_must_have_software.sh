@@ -41,12 +41,37 @@ slugify() { printf '%s' "$1" | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9-_';
 
 # ----------------------------- bookkeeping -----------------------------------
 RESULTS="${RESULTS:-/tmp/migrate_to_linux_results.tsv}"
-: > "$RESULTS" 2>/dev/null || RESULTS="$(mktemp)"
-declare -a OK_LIST=() SKIP_LIST=() FAIL_LIST=() MANUAL_LIST=()
+# execute_all sets MIGRATE_KEEP_RESULTS so the per-stage child scripts APPEND to one
+# shared log instead of truncating it, which lets execute_all print a combined
+# summary of every operation at the very end. Run standalone, a script truncates.
+if [ -z "${MIGRATE_KEEP_RESULTS:-}" ]; then
+  : > "$RESULTS" 2>/dev/null || RESULTS="$(mktemp)"
+fi
+declare -a OK_LIST=() SKIP_LIST=() FAIL_LIST=() FAIL_REASON=() MANUAL_LIST=()
+
+# LAST_ERR holds the 1-line reason from the most recent captured command failure.
+LAST_ERR=""
+
+# Run a command, show its output, and on failure capture the last output line into
+# LAST_ERR (a 1-line error reason). stdin stays attached, so interactive installers
+# still work. Returns the command's real exit code.
+capture() {
+  local rc tmp; tmp="$(mktemp 2>/dev/null || echo /tmp/mtl_cap.$$)"
+  "$@" 2>&1 | tee "$tmp" >&3
+  rc=${PIPESTATUS[0]}
+  LAST_ERR=""
+  if [ "$rc" -ne 0 ]; then
+    LAST_ERR="$(grep -v '^[[:space:]]*$' "$tmp" 2>/dev/null | tail -n 1)"
+    [ -z "$LAST_ERR" ] && LAST_ERR="exit code $rc"
+  fi
+  rm -f "$tmp" 2>/dev/null || true
+  return "$rc"
+}
+
 record_line() { printf '%s\t%-6s\t%s\t%s\n' "$(date '+%F %T')" "$1" "$2" "${3:-}" >> "$RESULTS"; }
 mark_ok()     { OK_LIST+=("$1");     record_line OK     "$1" "${2:-}"; ok "installed: $1"; }
 mark_skip()   { SKIP_LIST+=("$1");   record_line SKIP   "$1" "${2:-}"; info "skipped: $1 (${2:-already present})"; }
-mark_fail()   { FAIL_LIST+=("$1");   record_line FAIL   "$1" "${2:-}"; err "failed: $1 ${2:+- $2}"; }
+mark_fail()   { FAIL_LIST+=("$1"); FAIL_REASON+=("${2:-unknown error}"); record_line FAIL "$1" "${2:-}"; err "failed: $1 ${2:+- $2}"; }
 mark_manual() { MANUAL_LIST+=("$1"); record_line MANUAL "$1" "${2:-}"; warn "manual step required: $1 ${2:+- $2}"; }
 
 print_summary() {
@@ -56,7 +81,8 @@ print_summary() {
   info "Manual: ${#MANUAL_LIST[@]}"
   info "Failed: ${#FAIL_LIST[@]}"
   if [ "${#FAIL_LIST[@]}" -gt 0 ]; then
-    warn "Failed items:"; for i in "${FAIL_LIST[@]}"; do info "  - $i"; done
+    warn "Failures (1-line reason each):"
+    for i in "${!FAIL_LIST[@]}"; do err "  - ${FAIL_LIST[$i]}: ${FAIL_REASON[$i]}"; done
   fi
   if [ "${#MANUAL_LIST[@]}" -gt 0 ]; then
     warn "Need a manual step:"; for i in "${MANUAL_LIST[@]}"; do info "  - $i"; done
@@ -178,7 +204,11 @@ flatpak_installed() { flatpak info "$1" >/dev/null 2>&1; }
 
 install_flatpak() {  # install_flatpak APPID
   local id="$1"
-  flatpak_installed "$id" && return 0
+  if flatpak_installed "$id"; then
+    # Already present: update it if the user asked to update existing apps.
+    [ "${MIGRATE_UPDATE_EXISTING:-no}" = "yes" ] && flatpak update -y --noninteractive "$id"
+    return 0
+  fi
   flatpak install -y --noninteractive flathub "$id"
 }
 
@@ -253,6 +283,22 @@ install_local_package() {  # install_local_package FILE
   esac
 }
 
+# Best-effort install of a package matching a specific (Windows) version. Tries the
+# major-version package name and an exact version pin. Returns 0 on success, 1 if no
+# matching version could be installed (caller then falls back to latest). pacman is
+# rolling-release, so version pinning is not supported there.
+install_native_version() {  # install_native_version PKG WINVER
+  local pkg="$1" ver="$2" major
+  major="$(printf '%s' "$ver" | grep -oE '[0-9]+' | head -n1)"
+  [ -z "$major" ] && return 1
+  case "$PM" in
+    apt)    capture pm_install "${pkg}-${major}" || capture pm_install "${pkg}=${ver}" ;;
+    dnf)    capture pm_install "${pkg}${major}" || capture pm_install "${pkg}-${major}" || capture pm_install "${pkg}-${ver}" ;;
+    zypper) capture pm_install "${pkg}${major}" || capture pm_install "${pkg}-${ver}" ;;
+    pacman) return 1 ;;
+  esac
+}
+
 # =============================================================================
 #  install_app  --  the multi-strategy, Flatpak-first dispatcher
 # -----------------------------------------------------------------------------
@@ -264,7 +310,7 @@ install_local_package() {  # install_local_package FILE
 #           deb-url | github-deb | manual
 # =============================================================================
 install_app() {
-  local name="" alt="" method="" flatpak="" snap_pkg="" arch_list=""
+  local name="" alt="" method="" flatpak="" snap_pkg="" arch_list="" winver=""
   local apt="" dnf="" zypper="" pacman=""
   local url_x86="" url_arm="" webapp_url="" docker_image="" github_repo="" note=""
   while [ "$#" -gt 0 ]; do
@@ -279,6 +325,7 @@ install_app() {
       --zypper)  zypper="$2"; shift 2 ;;
       --pacman)  pacman="$2"; shift 2 ;;
       --arch)    arch_list="$2"; shift 2 ;;
+      --winver)  winver="$2"; shift 2 ;;
       --url-x86) url_x86="$2"; shift 2 ;;
       --url-arm) url_arm="$2"; shift 2 ;;
       --webapp)  webapp_url="$2"; shift 2 ;;
@@ -296,9 +343,9 @@ install_app() {
   fi
 
   if [ -n "$alt" ]; then
-    printf '\n\033[1;34m==> Installing: %s   --->   %s\033[0m\n' "$name" "$alt" >&3
+    printf '\n\n\033[1;34m==> Installing: %s   --->   %s\033[0m\n' "$name" "$alt" >&3
   else
-    printf '\n\033[1;34m==> Installing: %s\033[0m\n' "$name" >&3
+    printf '\n\n\033[1;34m==> Installing: %s\033[0m\n' "$name" >&3
   fi
   [ -n "$note" ] && info "$note"
 
@@ -308,85 +355,124 @@ install_app() {
     apt) native_pkg="$apt" ;; dnf) native_pkg="$dnf" ;;
     zypper) native_pkg="$zypper" ;; pacman) native_pkg="$pacman" ;;
   esac
+  local slug; slug="$(slugify "$name")"
 
+  # ---- single-path methods ----
   case "$method" in
-    flatpak)
-      if [ -n "$flatpak" ] && ensure_flatpak && install_flatpak "$flatpak"; then
-        mark_ok "$name" "flatpak $flatpak"; return 0
-      fi
-      if [ -n "$native_pkg" ]; then
-        pm_refresh
-        if pm_install $native_pkg; then mark_ok "$name" "native $native_pkg (flatpak fell back)"; return 0; fi
-      fi
-      mark_fail "$name" "flatpak ${flatpak:-?} unavailable and no native fallback"
-      ;;
-    native)
-      if [ -z "$native_pkg" ]; then
-        if [ -n "$flatpak" ] && ensure_flatpak && install_flatpak "$flatpak"; then
-          mark_ok "$name" "flatpak $flatpak (no native pkg for $PM)"; return 0
-        fi
-        mark_manual "$name" "no $PM package name known (needs review)"; return 0
-      fi
-      if pm_installed "${native_pkg%% *}"; then mark_skip "$name" "already installed"; return 0; fi
-      pm_refresh
-      if pm_install $native_pkg; then mark_ok "$name" "native $native_pkg"; return 0; fi
-      if [ -n "$flatpak" ] && ensure_flatpak && install_flatpak "$flatpak"; then
-        mark_ok "$name" "flatpak $flatpak (native failed)"; return 0
-      fi
-      mark_fail "$name" "native $native_pkg failed"
-      ;;
-    snap)
-      if [ -n "$snap_pkg" ] && ensure_snap && snap install $snap_pkg; then
-        mark_ok "$name" "snap $snap_pkg"; return 0
-      fi
-      if [ -n "$flatpak" ] && ensure_flatpak && install_flatpak "$flatpak"; then
-        mark_ok "$name" "flatpak $flatpak (snap fell back)"; return 0
-      fi
-      mark_manual "$name" "snap unavailable on this distro"
-      ;;
     webapp)
-      webapp_desktop "$name" "$webapp_url"
-      ;;
+      webapp_desktop "$name" "$webapp_url"; return 0 ;;
     docker)
-      if ensure_docker; then
-        if docker pull "$docker_image" >/dev/null 2>&1; then
-          mark_ok "$name" "docker image pulled: $docker_image (run it yourself)"
-        else mark_fail "$name" "docker pull $docker_image failed"; fi
-      else mark_manual "$name" "install Docker, then: docker run $docker_image"; fi
-      ;;
+      if ensure_docker && capture docker pull "$docker_image"; then
+        mark_ok "$name" "docker image pulled: $docker_image (run it yourself)"
+      else mark_fail "$name" "${LAST_ERR:-could not pull docker image $docker_image}"; fi
+      return 0 ;;
     wine-bottles)
-      if ensure_flatpak && install_flatpak com.usebottles.bottles; then
+      if ensure_flatpak && capture install_flatpak com.usebottles.bottles; then
         mark_ok "$name" "via Bottles (flatpak) - configure the Windows app inside Bottles"
-      else mark_manual "$name" "install Bottles (flatpak) to run this Windows app"; fi
-      ;;
-    deb-url|github-deb)
-      local url=""; [ "$ARCH" = "aarch64" ] && url="$url_arm" || url="$url_x86"
-      if [ -z "$url" ]; then mark_manual "$name" "no download URL for $ARCH"; return 0; fi
-      local f="$DOWNLOAD_DIR/${name// /_}.pkg"
-      if download_file "$url" "$f" && install_local_package "$f"; then
-        mark_ok "$name" "downloaded package"
-      else mark_fail "$name" "download/install from $url failed"; fi
-      ;;
-    manual|*)
-      # If execute_all.sh staged a user-supplied file for this app, install it.
-      local mslug mdir mf minstalled
-      mslug="$(slugify "$name")"
-      mdir="${MIGRATE_MANUAL_DIR:-$DOWNLOAD_DIR/manual}/$mslug"
+      else mark_fail "$name" "${LAST_ERR:-could not install Bottles (flatpak)}"; fi
+      return 0 ;;
+    manual)
+      local mdir="${MIGRATE_MANUAL_DIR:-$DOWNLOAD_DIR/manual}/$slug" mf got=0
       if [ -d "$mdir" ] && [ -n "$(ls -A "$mdir" 2>/dev/null)" ]; then
-        minstalled=0
-        for mf in "$mdir"/*; do
-          case "$mf" in
-            *.deb|*.rpm|*.pkg.tar.*|*.pkg.tar) install_local_package "$mf" && minstalled=1 ;;
-            *) info "staged file (not a distro package): $mf" ;;
-          esac
-        done
-        if [ "$minstalled" -eq 1 ]; then mark_ok "$name" "installed from staged file"
-        else mark_manual "$name" "file staged in $mdir - install/run it manually${note:+ ($note)}"; fi
+        for mf in "$mdir"/*; do [ -f "$mf" ] && install_by_ext "$mf" && got=1; done
+        if [ "$got" -eq 1 ]; then mark_ok "$name" "installed from staged file"
+        else mark_fail "$name" "${LAST_ERR:-staged file could not be installed}"; fi
       else
-        local hint="$webapp_url$url_x86$github_repo"
-        mark_manual "$name" "${note:-manual install}${hint:+ ($hint)}"
+        mark_manual "$name" "${note:-manual install}"
       fi
-      ;;
+      return 0 ;;
+  esac
+
+  # ---- multi-backend methods (req: try every available pm until one works) ----
+  # The declared method goes first; then EVERY other available backend is tried as a
+  # fallback (native / flatpak / snap / direct-download) before the app is failed.
+  local order
+  case "$method" in
+    flatpak)            order="flatpak native snap deburl" ;;
+    native)             order="native flatpak snap deburl" ;;
+    snap)               order="snap flatpak native deburl" ;;
+    deb-url|github-deb) order="deburl native flatpak snap" ;;
+    *)                  order="flatpak native snap deburl" ;;
+  esac
+
+  local b url f rfn
+  for b in $order; do
+    case "$b" in
+      flatpak)
+        [ -n "$flatpak" ] || continue
+        ensure_flatpak || continue
+        if capture install_flatpak "$flatpak"; then mark_ok "$name" "flatpak $flatpak"; return 0; fi ;;
+      native)
+        [ -n "$native_pkg" ] || continue
+        # vendor's own repo first, for the latest upstream build (if defined).
+        rfn="repo_setup_$(printf '%s' "$slug" | tr '-' '_')"
+        if declare -F "$rfn" >/dev/null 2>&1; then
+          info "configuring vendor repository for $name ..."
+          "$rfn" || warn "vendor repo setup failed; falling back to the distro repo"
+        fi
+        pm_refresh
+        # Skip if present, UNLESS the user asked to update existing apps (then
+        # pm_install upgrades it to the latest available).
+        if pm_installed "${native_pkg%% *}" && [ "${MIGRATE_UPDATE_EXISTING:-no}" != "yes" ]; then
+          mark_skip "$name" "already installed"; return 0
+        fi
+        # match the Windows version when the user chose "same version".
+        if [ "${MIGRATE_VERSION_MODE:-latest}" = "same" ] && [ -n "$winver" ]; then
+          if install_native_version "$native_pkg" "$winver"; then mark_ok "$name" "native $native_pkg (matched Windows $winver)"; return 0; fi
+          warn "could not match Windows version $winver; installing latest"
+        fi
+        if capture pm_install $native_pkg; then mark_ok "$name" "native $native_pkg"; return 0; fi ;;
+      snap)
+        [ -n "$snap_pkg" ] || continue
+        ensure_snap || continue
+        if capture snap install $snap_pkg; then mark_ok "$name" "snap $snap_pkg"; return 0; fi ;;
+      deburl)
+        [ -n "$url_x86$url_arm" ] || continue
+        url="$url_x86"; [ "$ARCH" = "aarch64" ] && [ -n "$url_arm" ] && url="$url_arm"
+        [ -n "$url" ] || continue
+        f="$DOWNLOAD_DIR/${name// /_}.pkg"
+        if capture download_file "$url" "$f" && capture install_local_package "$f"; then mark_ok "$name" "downloaded package"; return 0; fi ;;
+    esac
+  done
+
+  mark_fail "$name" "${LAST_ERR:-no available package manager could install it}"
+}
+
+# Install the Nth-best alternative of an app only if the user asked for at least
+# N alternatives (MIGRATE_ALT_LIMIT, default 1). Usage:  app_alt RANK install_app ...
+app_alt() {
+  local rank="$1"; shift
+  local limit="${MIGRATE_ALT_LIMIT:-1}"
+  case "$limit" in ''|*[!0-9]*) limit=1 ;; esac
+  if [ "$rank" -le "$limit" ]; then "$@"; fi
+  return 0
+}
+
+# Handle a user-downloaded installer FILE according to its extension. Returns 0 on
+# success, 1 on failure (LAST_ERR holds a 1-line reason). Used by the manual phase.
+install_by_ext() {  # install_by_ext FILE
+  local f="$1"
+  case "$f" in
+    *.deb|*.rpm|*.pkg.tar.zst|*.pkg.tar.xz|*.pkg.tar)
+      capture install_local_package "$f" ;;
+    *.sh)
+      chmod +x "$f" 2>/dev/null; capture bash "$f" ;;
+    *.run|*.bin|*.bundle)
+      chmod +x "$f" 2>/dev/null; capture "$f" ;;
+    *.appimage|*.AppImage)
+      chmod +x "$f" 2>/dev/null
+      mkdir -p /opt/migrate_appimages
+      if cp -f "$f" /opt/migrate_appimages/ 2>/dev/null; then return 0
+      else LAST_ERR="could not place AppImage in /opt/migrate_appimages"; return 1; fi ;;
+    *.tar.gz|*.tgz|*.tar.bz2|*.tbz2|*.tar.xz|*.txz|*.tar)
+      mkdir -p "${f%/*}/extracted"
+      capture tar -xf "$f" -C "${f%/*}/extracted" ;;
+    *.zip)
+      if ! have_cmd unzip; then LAST_ERR="unzip is not installed"; return 1; fi
+      mkdir -p "${f%/*}/extracted"
+      capture unzip -o "$f" -d "${f%/*}/extracted" ;;
+    *)
+      LAST_ERR="unsupported file type: .${f##*.}"; return 1 ;;
   esac
 }
 
@@ -419,138 +505,229 @@ main() {
   # Application install list (generated from B_applications.json + the
   # Additional_Manual_Linux_Software_Requirments.csv).
   # ---------------------------------------------------------------------------
-    install_app --name "ABBYY FineReader PDF" --alt "Tesseract OCR + gImageReader" --method flatpak --flatpak "io.github.manisandro.gImageReader" --apt "gimagereader" --dnf "gimagereader"
-  install_app --name "Acronis Cyber Protect / True Image" --alt "Clonezilla" --method native --apt "clonezilla" --note "Clonezilla; also a bootable ISO from clonezilla.org"
-  install_app --name "Adobe Acrobat Pro" --alt "Stirling PDF" --method docker --docker "frooodle/s-pdf:latest" --note "Stirling-PDF web UI on http://localhost:8080"
-  install_app --name "Adobe Audition" --alt "Audacity" --method flatpak --flatpak "org.audacityteam.Audacity" --apt "audacity" --dnf "audacity" --zypper "audacity" --pacman "audacity"
-  install_app --name "Adobe Digital Editions 4.5" --alt "calibre" --method flatpak --flatpak "com.calibre_ebook.calibre" --apt "calibre" --dnf "calibre" --zypper "calibre" --pacman "calibre"
-  install_app --name "Adobe Dreamweaver" --alt "Visual Studio Code" --method flatpak --flatpak "com.visualstudio.code"
-  install_app --name "Adobe InDesign" --alt "Scribus" --method flatpak --flatpak "net.scribus.Scribus" --apt "scribus" --dnf "scribus" --zypper "scribus" --pacman "scribus"
-  install_app --name "Adobe Lightroom / Lightroom Classic" --alt "darktable" --method flatpak --flatpak "org.darktable.Darktable" --apt "darktable" --dnf "darktable" --zypper "darktable" --pacman "darktable"
-  install_app --name "Advanced IP Scanner" --alt "Angry IP Scanner" --method manual --url-x86 "https://github.com/angryip/ipscan/releases" --note "Angry IP Scanner .deb/.rpm (needs Java)"
-  install_app --name "Advanced Port Scanner" --alt "RustScan + nmap" --method native --apt "nmap" --dnf "nmap" --zypper "nmap" --pacman "nmap" --note "GUI: also install zenmap"
-  install_app --name "AIDA64 / CPU-Z / GPU-Z / HWiNFO" --alt "CPU-X" --method flatpak --flatpak "io.github.thetumultuousunicornofdarkness.CPU-X" --dnf "cpu-x" --pacman "cpu-x"
-  install_app --name "Alarms & Clock" --alt "GNOME Clocks" --method flatpak --flatpak "org.gnome.clocks" --apt "gnome-clocks" --dnf "gnome-clocks" --pacman "gnome-clocks"
-  install_app --name "Anki Launcher" --alt "Anki (Linux)" --method flatpak --flatpak "net.ankiweb.Anki"
-  install_app --name "Any Video Converter (AVC)" --alt "HandBrake" --method flatpak --flatpak "fr.handbrake.ghb" --apt "handbrake" --dnf "HandBrake" --pacman "handbrake"
-  install_app --name "AnyDesk" --alt "AnyDesk (Linux)" --method flatpak --flatpak "com.anydesk.Anydesk"
-  install_app --name "Autodesk 3ds Max" --alt "Blender" --method flatpak --flatpak "org.blender.Blender" --apt "blender" --dnf "blender" --zypper "blender" --pacman "blender"
-  install_app --name "Autodesk Fusion 360" --alt "FreeCAD" --method flatpak --flatpak "org.freecad.FreeCAD" --apt "freecad" --dnf "freecad" --zypper "freecad" --pacman "freecad"
-  install_app --name "Babylon" --alt "GoldenDict" --method native --apt "goldendict" --dnf "goldendict" --zypper "goldendict" --pacman "goldendict"
-  install_app --name "Bandicam" --alt "OBS Studio" --method flatpak --flatpak "com.obsproject.Studio" --apt "obs-studio" --dnf "obs-studio" --pacman "obs-studio"
-  install_app --name "Bitvise SSH Client" --alt "OpenSSH" --method native --apt "openssh-client" --dnf "openssh-clients" --zypper "openssh" --pacman "openssh"
-  install_app --name "calibre" --alt "calibre (Linux)" --method flatpak --flatpak "com.calibre_ebook.calibre" --apt "calibre" --dnf "calibre" --zypper "calibre" --pacman "calibre"
-  install_app --name "Camtasia" --alt "OBS Studio + Kdenlive" --method flatpak --flatpak "com.obsproject.Studio" --apt "obs-studio" --note "also install Kdenlive (org.kde.kdenlive) for editing"
-  install_app --name "CCleaner" --alt "BleachBit" --method flatpak --flatpak "org.bleachbit.BleachBit" --apt "bleachbit" --dnf "bleachbit" --zypper "bleachbit" --pacman "bleachbit"
-  install_app --name "CMake" --alt "CMake (Linux)" --method native --apt "cmake" --dnf "cmake" --zypper "cmake" --pacman "cmake"
-  install_app --name "CorelDRAW Graphics Suite" --alt "Inkscape" --method flatpak --flatpak "org.inkscape.Inkscape" --apt "inkscape" --dnf "inkscape" --zypper "inkscape" --pacman "inkscape"
-  install_app --name "DBeaver Ultimate" --alt "DBeaver (Linux)" --method flatpak --flatpak "io.dbeaver.DBeaverCommunity"
-  install_app --name "Discord" --alt "Discord (Linux)" --method flatpak --flatpak "com.discordapp.Discord"
-  install_app --name "Docker Desktop" --alt "Docker Engine (native)" --method native --apt "docker.io" --dnf "moby-engine" --zypper "docker" --pacman "docker" --note "systemctl enable --now docker; add your user to the docker group"
-  install_app --name "Docker Engine" --alt "Docker Engine (native, no VM)" --method native --apt "docker.io" --dnf "moby-engine" --zypper "docker" --pacman "docker" --note "systemctl enable --now docker; add your user to the docker group"
-  install_app --name "Dropbox" --alt "Dropbox (Linux)" --method flatpak --flatpak "com.dropbox.Client"
-  install_app --name "DVDFab" --alt "MakeMKV" --method flatpak --flatpak "com.makemkv.MakeMKV"
-  install_app --name "EaseUS Data Recovery Wizard" --alt "TestDisk + PhotoRec" --method native --apt "testdisk" --dnf "testdisk" --zypper "testdisk" --pacman "testdisk" --note "includes PhotoRec"
-  install_app --name "EaseUS Partition Master" --alt "GParted" --method native --apt "gparted" --dnf "gparted" --zypper "gparted" --pacman "gparted"
-  install_app --name "EaseUS Todo Backup" --alt "Timeshift" --method native --apt "timeshift" --dnf "timeshift" --pacman "timeshift"
-  install_app --name "EndNote" --alt "Zotero" --method flatpak --flatpak "org.zotero.Zotero"
-  install_app --name "FlashBack Pro" --alt "OBS Studio + Kdenlive" --method flatpak --flatpak "com.obsproject.Studio" --apt "obs-studio"
-  install_app --name "Git" --alt "Git (Linux)" --method native --apt "git" --dnf "git" --zypper "git" --pacman "git"
-  install_app --name "GitHub Desktop" --alt "GitKraken" --method flatpak --flatpak "com.axosoft.GitKraken"
-  install_app --name "Glary Utilities" --alt "Stacer" --method flatpak --flatpak "com.github.oguzhaninan.Stacer" --apt "stacer"
-  install_app --name "GnuWin32: Grep" --alt "GNU grep (native)" --method native --apt "grep" --dnf "grep" --zypper "grep" --pacman "grep"
-  install_app --name "Google Chrome" --alt "Google Chrome (Linux)" --method flatpak --flatpak "com.google.Chrome"
-  install_app --name "Google Drive" --alt "Insync" --method manual --url-x86 "https://www.insynchq.com/downloads" --note "Insync (.deb/.rpm) from insynchq.com; FOSS alt: rclone / google-drive-ocamlfuse"
-  install_app --name "Grammarly for Windows" --alt "LanguageTool" --method manual --note "LanguageTool: run via Docker (erikvl87/languagetool) or use the browser extension"
-  install_app --name "Hotspot Shield" --alt "Hotspot Shield (Linux)" --method manual --note "No official Linux client; use Proton VPN or OpenVPN instead"
-  install_app --name "IBM SPSS Statistics" --alt "PSPP" --method native --apt "pspp" --dnf "pspp"
-  install_app --name "Internet Download Manager (IDM)" --alt "uGet" --method native --apt "uget" --dnf "uget" --pacman "uget" --note "also install aria2 for multi-connection downloads"
-  install_app --name "IObit Advanced SystemCare" --alt "BleachBit" --method flatpak --flatpak "org.bleachbit.BleachBit" --apt "bleachbit"
-  install_app --name "IObit Malware Fighter" --alt "ClamAV / ClamTk" --method native --apt "clamtk" --dnf "clamtk" --pacman "clamtk"
-  install_app --name "IObit Uninstaller" --alt "Synaptic Package Manager" --method native --apt "synaptic" --note "Synaptic is APT-only; use your distro's software center elsewhere"
-  install_app --name "Java 8" --alt "OpenJDK (Eclipse Temurin)" --method native --apt "default-jdk" --dnf "java-latest-openjdk" --zypper "java-openjdk" --pacman "jdk-openjdk"
-  install_app --name "KMPlayer" --alt "VLC Media Player" --method flatpak --flatpak "org.videolan.VLC" --apt "vlc" --dnf "vlc" --zypper "vlc" --pacman "vlc"
-  install_app --name "LanguageTool (Grammarly Alternative)" --alt "LanguageTool Desktop" --method manual --note "LanguageTool Desktop: run via Docker (erikvl87/languagetool) or browser extension"
-  install_app --name "Lenovo Professional Wireless Rechargeable Combo" --alt "Solaar" --method flatpak --flatpak "io.github.pwr_solaar.solaar" --apt "solaar" --dnf "solaar" --pacman "solaar"
-  install_app --name "Lightshot" --alt "Flameshot" --method flatpak --flatpak "org.flameshot.Flameshot" --apt "flameshot" --dnf "flameshot" --zypper "flameshot" --pacman "flameshot"
-  install_app --name "Longman Dictionary of Contemporary English 5th Edition" --alt "GoldenDict / GoldenDict-ng" --method native --apt "goldendict" --dnf "goldendict" --zypper "goldendict" --pacman "goldendict"
-  install_app --name "Malwarebytes" --alt "ClamAV + ClamTk" --method native --apt "clamtk" --dnf "clamtk" --pacman "clamtk"
-  install_app --name "Microsoft .NET SDK" --alt ".NET SDK (Linux)" --method snap --snap "dotnet-sdk --classic" --note "or use your distro's dotnet-sdk / Microsoft repo"
-  install_app --name "Microsoft 365 / Office" --alt "LibreOffice" --method flatpak --flatpak "org.libreoffice.LibreOffice" --apt "libreoffice" --dnf "libreoffice" --zypper "libreoffice" --pacman "libreoffice"
-  install_app --name "Microsoft Access" --alt "LibreOffice Base" --method flatpak --flatpak "org.libreoffice.LibreOffice" --apt "libreoffice-base" --dnf "libreoffice-base"
-  install_app --name "Microsoft Edge" --alt "Microsoft Edge (Linux)" --method flatpak --flatpak "com.microsoft.Edge"
-  install_app --name "Microsoft OneDrive" --alt "onedrive (abraunegg)" --method native --apt "onedrive" --dnf "onedrive" --pacman "onedrive"
-  install_app --name "Microsoft Publisher" --alt "Scribus" --method flatpak --flatpak "net.scribus.Scribus" --apt "scribus"
-  install_app --name "Microsoft Visio" --alt "draw.io / Diagrams.net" --method flatpak --flatpak "com.jgraph.drawio.desktop"
-  install_app --name "Microsoft Whiteboard" --alt "Excalidraw" --method webapp --webapp "https://excalidraw.com"
-  install_app --name "MiKTeX" --alt "TeX Live" --method native --apt "texlive" --dnf "texlive-scheme-basic" --zypper "texlive" --pacman "texlive-core" --note "install the -full variants for everything"
-  install_app --name "MobaXterm" --alt "Built-in terminal + OpenSSH" --method native --apt "openssh-client" --dnf "openssh-clients" --zypper "openssh" --pacman "openssh"
-  install_app --name "Movavi Screen Recorder" --alt "OBS Studio" --method flatpak --flatpak "com.obsproject.Studio" --apt "obs-studio"
-  install_app --name "Movavi Video Converter" --alt "HandBrake" --method flatpak --flatpak "fr.handbrake.ghb" --apt "handbrake"
-  install_app --name "Movavi Video Editor" --alt "Kdenlive" --method flatpak --flatpak "org.kde.kdenlive" --apt "kdenlive" --dnf "kdenlive" --pacman "kdenlive"
-  install_app --name "Mozilla Firefox" --alt "Firefox (Linux)" --method flatpak --flatpak "org.mozilla.firefox" --apt "firefox" --dnf "firefox" --zypper "MozillaFirefox" --pacman "firefox"
-  install_app --name "MS Teams" --alt "Teams PWA (Edge/Chrome)" --method webapp --webapp "https://teams.microsoft.com"
-  install_app --name "MSI Afterburner" --alt "GOverlay + MangoHud" --method flatpak --flatpak "io.github.benjamimgois.goverlay" --apt "goverlay" --note "MangoHud overlay/limiter"
-  install_app --name "Nearby Share / Quick Share" --alt "LocalSend" --method flatpak --flatpak "org.localsend.localsend_app"
-  install_app --name "Nero Burning ROM / Nero Platinum" --alt "K3b" --method flatpak --flatpak "org.kde.k3b" --apt "k3b" --dnf "k3b" --pacman "k3b"
-  install_app --name "ninja" --alt "ninja-build (Linux)" --method native --apt "ninja-build" --dnf "ninja-build" --zypper "ninja" --pacman "ninja"
-  install_app --name "Nitro PDF Pro" --alt "Stirling PDF" --method docker --docker "frooodle/s-pdf:latest" --note "Stirling-PDF web UI on http://localhost:8080"
-  install_app --name "Node.js" --alt "Node.js (Linux)" --method native --apt "nodejs npm" --dnf "nodejs npm" --zypper "nodejs npm" --pacman "nodejs npm"
-  install_app --name "Notepad++" --alt "Notepadqq" --method native --apt "notepadqq" --note "alt: install 'code' or a GNOME/KDE editor"
-  install_app --name "oCam Screen Recorder" --alt "OBS Studio" --method flatpak --flatpak "com.obsproject.Studio" --apt "obs-studio"
-  install_app --name "oCam version 550.0" --alt "OBS Studio" --method flatpak --flatpak "com.obsproject.Studio" --apt "obs-studio"
-  install_app --name "OpenSSH" --alt "OpenSSH (native)" --method native --apt "openssh-client" --dnf "openssh-clients" --zypper "openssh" --pacman "openssh"
-  install_app --name "OpenSSL" --alt "OpenSSL (native)" --method native --apt "openssl" --dnf "openssl" --zypper "openssl" --pacman "openssl"
-  install_app --name "OpenVPN Connect" --alt "OpenVPN Connect (Linux)" --method native --apt "openvpn" --dnf "openvpn" --zypper "openvpn" --pacman "openvpn" --note "GUI: network-manager-openvpn"
-  install_app --name "Origin / OriginPro" --alt "LabPlot" --method flatpak --flatpak "org.kde.labplot2"
-  install_app --name "Outlook For Windows" --alt "Thunderbird" --method flatpak --flatpak "org.mozilla.Thunderbird" --apt "thunderbird" --dnf "thunderbird" --zypper "MozillaThunderbird" --pacman "thunderbird"
-  install_app --name "Paint" --alt "Pinta" --method flatpak --flatpak "com.github.PintaProject.Pinta" --apt "pinta" --dnf "pinta"
-  install_app --name "Pandoc" --alt "Pandoc (Linux)" --method native --apt "pandoc" --dnf "pandoc" --zypper "pandoc" --pacman "pandoc"
-  install_app --name "Parsec" --alt "Parsec (Linux)" --method flatpak --flatpak "com.parsecgaming.parsec" --arch "x86_64"
-  install_app --name "pgAdmin 4" --alt "pgAdmin 4 (Linux)" --method manual --url-x86 "https://www.pgadmin.org/download/" --note "pgAdmin 4 from the official apt/dnf repo"
-  install_app --name "pgNow" --alt "pgAdmin 4" --method manual --url-x86 "https://www.pgadmin.org/download/" --note "pgAdmin 4 from the official apt/dnf repo"
-  install_app --name "Photos" --alt "Shotwell" --method flatpak --flatpak "org.gnome.Shotwell" --apt "shotwell" --dnf "shotwell" --pacman "shotwell"
-  install_app --name "PostgreSQL" --alt "PostgreSQL (PGDG repo)" --method native --apt "postgresql" --dnf "postgresql-server" --zypper "postgresql-server" --pacman "postgresql"
-  install_app --name "PowerShell" --alt "PowerShell (Linux)" --method snap --snap "powershell --classic" --note "or use the Microsoft package repo"
-  install_app --name "PowerToys" --alt "Frog (Text Extractor replacement)" --method flatpak --flatpak "com.github.tenderowl.frog"
-  install_app --name "Proton VPN (Hotspot Shield / Psiphon Alternative)" --alt "Proton VPN (Linux)" --method manual --note "No official Linux client; use Proton VPN or OpenVPN instead"
-  install_app --name "Proxifier" --alt "proxychains-ng" --method native --apt "proxychains4" --dnf "proxychains-ng" --zypper "proxychains-ng" --pacman "proxychains-ng"
-  install_app --name "Psiphon Conduit" --alt "Proton VPN" --method manual --url-x86 "https://protonvpn.com/support/official-linux-client/" --note "Proton VPN app via the official apt/dnf repo"
-  install_app --name "PuTTY" --alt "OpenSSH (native)" --method native --apt "openssh-client" --dnf "openssh-clients" --zypper "openssh" --pacman "openssh" --note "GUI alt: install 'putty'"
-  install_app --name "Python" --alt "python3 (system)" --method native --apt "python3 python3-pip" --dnf "python3 python3-pip" --zypper "python3 python3-pip" --pacman "python python-pip"
-  install_app --name "R for Windows" --alt "R (Linux)" --method native --apt "r-base" --dnf "R" --zypper "R-base" --pacman "r"
-  install_app --name "Recuva" --alt "TestDisk + PhotoRec" --method native --apt "testdisk" --dnf "testdisk" --zypper "testdisk" --pacman "testdisk" --note "includes PhotoRec"
-  install_app --name "Snagit" --alt "Flameshot + Ksnip" --method flatpak --flatpak "org.flameshot.Flameshot" --apt "flameshot" --note "also 'ksnip' for annotation"
-  install_app --name "Snoopy" --alt "OpenSSH + terminal" --method native --apt "openssh-client" --dnf "openssh-clients" --zypper "openssh" --pacman "openssh"
-  install_app --name "Sound Recorder" --alt "GNOME Sound Recorder" --method flatpak --flatpak "org.gnome.SoundRecorder" --apt "gnome-sound-recorder"
-  install_app --name "SpeedFan" --alt "CoolerControl / Coolero" --method manual --url-x86 "https://gitlab.com/coolercontrol/coolercontrol/-/releases" --note "CoolerControl from gitlab releases; or lm-sensors + fancontrol"
-  install_app --name "SQL Server Management Studio (SSMS)" --alt "DBeaver" --method flatpak --flatpak "io.dbeaver.DBeaverCommunity"
-  install_app --name "Sticky Notes" --alt "GNOME Sticky Notes (sticky)" --method flatpak --flatpak "com.vixalien.sticky" --apt "gnote"
-  install_app --name "Strawberry Perl" --alt "Perl (native)" --method native --apt "perl" --dnf "perl" --zypper "perl" --pacman "perl"
-  install_app --name "Telegram Desktop" --alt "Telegram Desktop (Linux)" --method flatpak --flatpak "org.telegram.desktop" --apt "telegram-desktop" --dnf "telegram-desktop" --pacman "telegram-desktop"
-  install_app --name "Terminator" --alt "Terminator (Linux)" --method native --apt "terminator" --dnf "terminator" --zypper "terminator" --pacman "terminator"
-  install_app --name "Typora" --alt "MarkText" --method flatpak --flatpak "com.github.marktext.marktext"
-  install_app --name "Ubuntu (WSL)" --alt "Native Linux" --method manual --note "Not applicable - you are already running Linux"
-  install_app --name "VirtualBox" --alt "VirtualBox (Linux)" --method native --apt "virtualbox" --dnf "VirtualBox" --zypper "virtualbox" --pacman "virtualbox" --note "needs matching kernel modules (dkms)"
-  install_app --name "Visual Studio Build Tools / Community" --alt ".NET SDK + VS Code" --method flatpak --flatpak "com.visualstudio.code" --note "also install the build toolchain (build-essential / @development-tools) and dotnet-sdk"
-  install_app --name "Visual Studio Code" --alt "Visual Studio Code (Linux)" --method flatpak --flatpak "com.visualstudio.code"
-  install_app --name "Weather" --alt "GNOME Weather" --method flatpak --flatpak "org.gnome.Weather" --apt "gnome-weather" --dnf "gnome-weather" --pacman "gnome-weather"
-  install_app --name "WhatsApp Desktop" --alt "WhatsApp Web (PWA)" --method webapp --webapp "https://web.whatsapp.com"
-  install_app --name "WinDirStat" --alt "QDirStat" --method native --apt "qdirstat" --dnf "qdirstat" --pacman "qdirstat"
-  install_app --name "Windows Calculator" --alt "GNOME Calculator" --method flatpak --flatpak "org.gnome.Calculator" --apt "gnome-calculator" --dnf "gnome-calculator" --pacman "gnome-calculator"
-  install_app --name "Windows Camera" --alt "Cheese" --method flatpak --flatpak "org.gnome.Cheese" --apt "cheese" --dnf "cheese" --pacman "cheese"
-  install_app --name "Windows Fax and Scan" --alt "Simple Scan (Document Scanner)" --method flatpak --flatpak "org.gnome.SimpleScan" --apt "simple-scan" --dnf "simple-scan" --pacman "simple-scan"
-  install_app --name "Windows Movie Maker" --alt "OpenShot" --method flatpak --flatpak "org.openshot.OpenShot" --apt "openshot-qt" --dnf "openshot" --pacman "openshot"
-  install_app --name "Windows Notepad" --alt "GNOME Text Editor / gedit" --method flatpak --flatpak "org.gnome.TextEditor" --apt "gnome-text-editor" --dnf "gnome-text-editor"
-  install_app --name "Windows Store" --alt "GNOME Software / KDE Discover" --method native --apt "gnome-software" --dnf "gnome-software" --pacman "gnome-software" --note "KDE: plasma-discover"
-  install_app --name "Windows Terminal" --alt "GNOME Console / GNOME Terminal" --method native --apt "gnome-terminal" --dnf "gnome-terminal" --pacman "gnome-terminal" --note "or 'kgx' (GNOME Console)"
-  install_app --name "Wine (Windows Compatibility Layer)" --alt "Wine (winehq-stable)" --method native --apt "wine" --dnf "wine" --zypper "wine" --pacman "wine" --arch "x86_64" --note "enable i386/multilib for 32-bit support"
-  install_app --name "WinRAR" --alt "p7zip / 7-Zip" --method native --apt "p7zip-full" --dnf "p7zip p7zip-plugins" --zypper "p7zip" --pacman "p7zip" --note "also install 'unrar' for RAR archives"
-  install_app --name "wkhtmltox" --alt "wkhtmltopdf (Linux)" --method native --apt "wkhtmltopdf" --dnf "wkhtmltopdf" --pacman "wkhtmltopdf"
-  install_app --name "ZBrush" --alt "Blender (Sculpt Mode)" --method flatpak --flatpak "org.blender.Blender" --apt "blender" --note "Blender Sculpt Mode"
-  install_app --name "Zoom Workplace" --alt "Zoom Workplace (Linux)" --method flatpak --flatpak "us.zoom.Zoom"
-  install_app --name "Zune Music / Windows Media Player" --alt "Rhythmbox" --method flatpak --flatpak "org.gnome.Rhythmbox" --apt "rhythmbox" --dnf "rhythmbox" --pacman "rhythmbox"
-  install_app --name "ÂµTorrent" --alt "qBittorrent" --method flatpak --flatpak "org.qbittorrent.qBittorrent" --apt "qbittorrent" --dnf "qbittorrent" --zypper "qbittorrent" --pacman "qbittorrent"
+  repo_setup_docker_desktop() {
+  case "$PM" in
+    apt)
+      install -d -m 0755 /etc/apt/keyrings
+      . /etc/os-release
+      curl -fsSL https://download.docker.com/linux/${ID}/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${ID} ${VERSION_CODENAME} stable" > /etc/apt/sources.list.d/docker.list
+      ;;
+    dnf)
+      dnf -y install dnf-plugins-core
+      dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
+      ;;
+  esac
+}
+repo_setup_docker_engine() {
+  case "$PM" in
+    apt)
+      install -d -m 0755 /etc/apt/keyrings
+      . /etc/os-release
+      curl -fsSL https://download.docker.com/linux/${ID}/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${ID} ${VERSION_CODENAME} stable" > /etc/apt/sources.list.d/docker.list
+      ;;
+    dnf)
+      dnf -y install dnf-plugins-core
+      dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
+      ;;
+  esac
+}
+repo_setup_google_chrome() {
+  case "$PM" in
+    apt)
+      install -d -m 0755 /etc/apt/keyrings
+      curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /etc/apt/keyrings/google-chrome.gpg
+      echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list
+      ;;
+    dnf)
+      printf '%s\n' '[google-chrome]' 'name=google-chrome' 'baseurl=https://dl.google.com/linux/chrome/rpm/stable/x86_64' 'enabled=1' 'gpgcheck=1' 'gpgkey=https://dl.google.com/linux/linux_signing_key.pub' > /etc/yum.repos.d/google-chrome.repo
+      ;;
+  esac
+}
+repo_setup_microsoft_edge() {
+  case "$PM" in
+    apt)
+      install -d -m 0755 /etc/apt/keyrings
+      curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg
+      echo "deb [arch=amd64,arm64 signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/edge stable main" > /etc/apt/sources.list.d/microsoft-edge.list
+      ;;
+    dnf)
+      rpm --import https://packages.microsoft.com/keys/microsoft.asc
+      printf '%s\n' '[microsoft-edge]' 'name=microsoft-edge' 'baseurl=https://packages.microsoft.com/yumrepos/edge' 'enabled=1' 'gpgcheck=1' 'gpgkey=https://packages.microsoft.com/keys/microsoft.asc' > /etc/yum.repos.d/microsoft-edge.repo
+      ;;
+  esac
+}
+repo_setup_nodejs() {
+  case "$PM" in
+    apt)
+      curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
+      ;;
+    dnf)
+      curl -fsSL https://rpm.nodesource.com/setup_lts.x | bash -
+      ;;
+  esac
+}
+repo_setup_postgresql() {
+  case "$PM" in
+    apt)
+      install -d /usr/share/postgresql-common/pgdg
+      curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+      . /etc/os-release
+      echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" > /etc/apt/sources.list.d/pgdg.list
+      ;;
+    dnf)
+      dnf -y install https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+      ;;
+  esac
+}
+repo_setup_visual_studio_code() {
+  case "$PM" in
+    apt)
+      install -d -m 0755 /etc/apt/keyrings
+      curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg
+      echo "deb [arch=amd64,arm64 signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/code stable main" > /etc/apt/sources.list.d/vscode.list
+      ;;
+    dnf)
+      rpm --import https://packages.microsoft.com/keys/microsoft.asc
+      printf '%s\n' '[code]' 'name=Visual Studio Code' 'baseurl=https://packages.microsoft.com/yumrepos/vscode' 'enabled=1' 'gpgcheck=1' 'gpgkey=https://packages.microsoft.com/keys/microsoft.asc' > /etc/yum.repos.d/vscode.repo
+      ;;
+  esac
+}
+  app_alt 1 install_app --name "ABBYY FineReader PDF" --alt "Tesseract OCR + gImageReader" --method flatpak --flatpak "io.github.manisandro.gImageReader" --apt "gimagereader" --dnf "gimagereader"
+  app_alt 1 install_app --name "Acronis Cyber Protect / True Image" --alt "Clonezilla" --method native --apt "clonezilla" --note "Clonezilla; also a bootable ISO from clonezilla.org"
+  app_alt 1 install_app --name "Adobe Acrobat Pro" --alt "Stirling PDF" --method docker --docker "frooodle/s-pdf:latest" --note "Stirling-PDF web UI on http://localhost:8080"
+  app_alt 1 install_app --name "Adobe Audition" --alt "Audacity" --method flatpak --flatpak "org.audacityteam.Audacity" --apt "audacity" --dnf "audacity" --zypper "audacity" --pacman "audacity"
+  app_alt 1 install_app --name "Adobe Digital Editions 4.5" --alt "calibre" --method flatpak --flatpak "com.calibre_ebook.calibre" --apt "calibre" --dnf "calibre" --zypper "calibre" --pacman "calibre"
+  app_alt 2 install_app --name "Adobe Digital Editions 4.5" --alt "Thorium Reader" --method flatpak --note "needs manifest enrichment - see https://www.edrlab.org/software/thorium-reader/"
+  app_alt 1 install_app --name "Adobe Dreamweaver" --alt "Visual Studio Code" --method flatpak --flatpak "com.visualstudio.code"
+  app_alt 1 install_app --name "Adobe InDesign" --alt "Scribus" --method flatpak --flatpak "net.scribus.Scribus" --apt "scribus" --dnf "scribus" --zypper "scribus" --pacman "scribus"
+  app_alt 1 install_app --name "Adobe Lightroom / Lightroom Classic" --alt "darktable" --method flatpak --flatpak "org.darktable.Darktable" --apt "darktable" --dnf "darktable" --zypper "darktable" --pacman "darktable"
+  app_alt 1 install_app --name "Advanced IP Scanner" --alt "Angry IP Scanner" --method manual --url-x86 "https://github.com/angryip/ipscan/releases" --note "Angry IP Scanner .deb/.rpm (needs Java)"
+  app_alt 1 install_app --name "Advanced Port Scanner" --alt "RustScan + nmap" --method native --apt "nmap" --dnf "nmap" --zypper "nmap" --pacman "nmap" --note "GUI: also install zenmap"
+  app_alt 1 install_app --name "AIDA64 / CPU-Z / GPU-Z / HWiNFO" --alt "CPU-X" --method flatpak --flatpak "io.github.thetumultuousunicornofdarkness.CPU-X" --dnf "cpu-x" --pacman "cpu-x"
+  app_alt 1 install_app --name "Alarms & Clock" --alt "GNOME Clocks" --method flatpak --flatpak "org.gnome.clocks" --apt "gnome-clocks" --dnf "gnome-clocks" --pacman "gnome-clocks"
+  app_alt 1 install_app --name "Anki Launcher" --alt "Anki (Linux)" --winver "25.09" --method flatpak --flatpak "net.ankiweb.Anki"
+  app_alt 1 install_app --name "Any Video Converter (AVC)" --alt "HandBrake" --method flatpak --flatpak "fr.handbrake.ghb" --apt "handbrake" --dnf "HandBrake" --pacman "handbrake"
+  app_alt 1 install_app --name "AnyDesk" --alt "AnyDesk (Linux)" --method flatpak --flatpak "com.anydesk.Anydesk"
+  app_alt 1 install_app --name "Autodesk 3ds Max" --alt "Blender" --method flatpak --flatpak "org.blender.Blender" --apt "blender" --dnf "blender" --zypper "blender" --pacman "blender"
+  app_alt 1 install_app --name "Autodesk Fusion 360" --alt "FreeCAD" --method flatpak --flatpak "org.freecad.FreeCAD" --apt "freecad" --dnf "freecad" --zypper "freecad" --pacman "freecad"
+  app_alt 1 install_app --name "Babylon" --alt "GoldenDict" --method native --apt "goldendict" --dnf "goldendict" --zypper "goldendict" --pacman "goldendict"
+  app_alt 1 install_app --name "Bandicam" --alt "OBS Studio" --method flatpak --flatpak "com.obsproject.Studio" --apt "obs-studio" --dnf "obs-studio" --pacman "obs-studio"
+  app_alt 1 install_app --name "Bitvise SSH Client" --alt "OpenSSH" --method native --apt "openssh-client" --dnf "openssh-clients" --zypper "openssh" --pacman "openssh"
+  app_alt 1 install_app --name "calibre" --alt "calibre (Linux)" --winver "9.5.0" --method flatpak --flatpak "com.calibre_ebook.calibre" --apt "calibre" --dnf "calibre" --zypper "calibre" --pacman "calibre"
+  app_alt 1 install_app --name "Camtasia" --alt "OBS Studio + Kdenlive" --method flatpak --flatpak "com.obsproject.Studio" --apt "obs-studio" --note "also install Kdenlive (org.kde.kdenlive) for editing"
+  app_alt 1 install_app --name "CCleaner" --alt "BleachBit" --method flatpak --flatpak "org.bleachbit.BleachBit" --apt "bleachbit" --dnf "bleachbit" --zypper "bleachbit" --pacman "bleachbit"
+  app_alt 1 install_app --name "CMake" --alt "CMake (Linux)" --winver "4.3.0" --method native --apt "cmake" --dnf "cmake" --zypper "cmake" --pacman "cmake"
+  app_alt 1 install_app --name "CorelDRAW Graphics Suite" --alt "Inkscape" --method flatpak --flatpak "org.inkscape.Inkscape" --apt "inkscape" --dnf "inkscape" --zypper "inkscape" --pacman "inkscape"
+  app_alt 1 install_app --name "DBeaver Ultimate" --alt "DBeaver (Linux)" --method flatpak --flatpak "io.dbeaver.DBeaverCommunity"
+  app_alt 1 install_app --name "Discord" --alt "Discord (Linux)" --method flatpak --flatpak "com.discordapp.Discord"
+  app_alt 1 install_app --name "Docker Desktop" --alt "Docker Engine (native)" --winver "4.70.0" --method native --apt "docker-ce docker-ce-cli containerd.io docker-compose-plugin" --dnf "docker-ce docker-ce-cli containerd.io docker-compose-plugin" --zypper "docker" --pacman "docker" --note "systemctl enable --now docker; add your user to the docker group"
+  app_alt 1 install_app --name "Docker Engine" --alt "Docker Engine (native, no VM)" --method native --apt "docker-ce docker-ce-cli containerd.io docker-compose-plugin" --dnf "docker-ce docker-ce-cli containerd.io docker-compose-plugin" --zypper "docker" --pacman "docker" --note "systemctl enable --now docker; add your user to the docker group"
+  app_alt 1 install_app --name "Dropbox" --alt "Dropbox (Linux)" --method flatpak --flatpak "com.dropbox.Client"
+  app_alt 1 install_app --name "DVDFab" --alt "MakeMKV" --method flatpak --flatpak "com.makemkv.MakeMKV"
+  app_alt 1 install_app --name "EaseUS Data Recovery Wizard" --alt "TestDisk + PhotoRec" --method native --apt "testdisk" --dnf "testdisk" --zypper "testdisk" --pacman "testdisk" --note "includes PhotoRec"
+  app_alt 1 install_app --name "EaseUS Partition Master" --alt "GParted" --method native --apt "gparted" --dnf "gparted" --zypper "gparted" --pacman "gparted"
+  app_alt 1 install_app --name "EaseUS Todo Backup" --alt "Timeshift" --method native --apt "timeshift" --dnf "timeshift" --pacman "timeshift"
+  app_alt 2 install_app --name "EaseUS Todo Backup" --alt "DÃ©jÃ  Dup (GNOME Backups)" --method native --note "needs manifest enrichment - see https://wiki.gnome.org/Apps/DejaDup"
+  app_alt 1 install_app --name "EndNote" --alt "Zotero" --method flatpak --flatpak "org.zotero.Zotero"
+  app_alt 1 install_app --name "FlashBack Pro" --alt "OBS Studio + Kdenlive" --method flatpak --flatpak "com.obsproject.Studio" --apt "obs-studio"
+  app_alt 1 install_app --name "Git" --alt "Git (Linux)" --winver "2.53.0" --method native --apt "git" --dnf "git" --zypper "git" --pacman "git"
+  app_alt 1 install_app --name "GitHub Desktop" --alt "GitKraken" --method flatpak --flatpak "com.axosoft.GitKraken"
+  app_alt 1 install_app --name "Glary Utilities" --alt "Stacer" --method flatpak --flatpak "com.github.oguzhaninan.Stacer" --apt "stacer"
+  app_alt 1 install_app --name "GnuWin32: Grep" --alt "GNU grep (native)" --method native --apt "grep" --dnf "grep" --zypper "grep" --pacman "grep"
+  app_alt 1 install_app --name "Google Chrome" --alt "Google Chrome (Linux)" --method native --flatpak "com.google.Chrome" --apt "google-chrome-stable" --dnf "google-chrome-stable"
+  app_alt 1 install_app --name "Google Drive" --alt "Insync" --method manual --url-x86 "https://www.insynchq.com/downloads" --note "Insync (.deb/.rpm) from insynchq.com; FOSS alt: rclone / google-drive-ocamlfuse"
+  app_alt 1 install_app --name "Grammarly for Windows" --alt "LanguageTool" --method manual --note "LanguageTool: run via Docker (erikvl87/languagetool) or use the browser extension"
+  app_alt 1 install_app --name "Hotspot Shield" --alt "Hotspot Shield (Linux)" --method manual --note "No official Linux client; use Proton VPN or OpenVPN instead"
+  app_alt 1 install_app --name "IBM SPSS Statistics" --alt "PSPP" --method native --apt "pspp" --dnf "pspp"
+  app_alt 1 install_app --name "Internet Download Manager (IDM)" --alt "uGet" --method native --apt "uget" --dnf "uget" --pacman "uget" --note "also install aria2 for multi-connection downloads"
+  app_alt 1 install_app --name "IObit Advanced SystemCare" --alt "BleachBit" --method flatpak --flatpak "org.bleachbit.BleachBit" --apt "bleachbit"
+  app_alt 1 install_app --name "IObit Malware Fighter" --alt "ClamAV / ClamTk" --method native --apt "clamtk" --dnf "clamtk" --pacman "clamtk"
+  app_alt 1 install_app --name "IObit Uninstaller" --alt "Synaptic Package Manager" --method native --apt "synaptic" --note "Synaptic is APT-only; use your distro's software center elsewhere"
+  app_alt 1 install_app --name "Java 8" --alt "OpenJDK (Eclipse Temurin)" --winver "8.0.4810.10" --method native --apt "default-jdk" --dnf "java-latest-openjdk" --zypper "java-openjdk" --pacman "jdk-openjdk"
+  app_alt 1 install_app --name "KMPlayer" --alt "VLC Media Player" --method flatpak --flatpak "org.videolan.VLC" --apt "vlc" --dnf "vlc" --zypper "vlc" --pacman "vlc"
+  app_alt 1 install_app --name "LanguageTool (Grammarly Alternative)" --alt "LanguageTool Desktop" --method manual --note "LanguageTool Desktop: run via Docker (erikvl87/languagetool) or browser extension"
+  app_alt 1 install_app --name "Lenovo Professional Wireless Rechargeable Combo" --alt "Solaar" --method flatpak --flatpak "io.github.pwr_solaar.solaar" --apt "solaar" --dnf "solaar" --pacman "solaar"
+  app_alt 1 install_app --name "Lightshot" --alt "Flameshot" --method flatpak --flatpak "org.flameshot.Flameshot" --apt "flameshot" --dnf "flameshot" --zypper "flameshot" --pacman "flameshot"
+  app_alt 1 install_app --name "Longman Dictionary of Contemporary English 5th Edition" --alt "GoldenDict / GoldenDict-ng" --method native --apt "goldendict" --dnf "goldendict" --zypper "goldendict" --pacman "goldendict"
+  app_alt 1 install_app --name "Malwarebytes" --alt "ClamAV + ClamTk" --method native --apt "clamtk" --dnf "clamtk" --pacman "clamtk"
+  app_alt 1 install_app --name "Microsoft .NET SDK" --alt ".NET SDK (Linux)" --winver "10.0.203" --method snap --snap "dotnet-sdk --classic" --note "or use your distro's dotnet-sdk / Microsoft repo"
+  app_alt 1 install_app --name "Microsoft 365 / Office" --alt "LibreOffice" --method flatpak --flatpak "org.libreoffice.LibreOffice" --apt "libreoffice" --dnf "libreoffice" --zypper "libreoffice" --pacman "libreoffice"
+  app_alt 1 install_app --name "Microsoft Access" --alt "LibreOffice Base" --method flatpak --flatpak "org.libreoffice.LibreOffice" --apt "libreoffice-base" --dnf "libreoffice-base"
+  app_alt 1 install_app --name "Microsoft Edge" --alt "Microsoft Edge (Linux)" --method native --flatpak "com.microsoft.Edge" --apt "microsoft-edge-stable" --dnf "microsoft-edge-stable"
+  app_alt 1 install_app --name "Microsoft OneDrive" --alt "onedrive (abraunegg)" --method native --apt "onedrive" --dnf "onedrive" --pacman "onedrive"
+  app_alt 1 install_app --name "Microsoft Publisher" --alt "Scribus" --method flatpak --flatpak "net.scribus.Scribus" --apt "scribus"
+  app_alt 1 install_app --name "Microsoft Visio" --alt "draw.io / Diagrams.net" --method flatpak --flatpak "com.jgraph.drawio.desktop"
+  app_alt 1 install_app --name "Microsoft Whiteboard" --alt "Excalidraw" --method webapp --webapp "https://excalidraw.com"
+  app_alt 1 install_app --name "MiKTeX" --alt "TeX Live" --method native --apt "texlive" --dnf "texlive-scheme-basic" --zypper "texlive" --pacman "texlive-core" --note "install the -full variants for everything"
+  app_alt 1 install_app --name "MobaXterm" --alt "Built-in terminal + OpenSSH" --method native --apt "openssh-client" --dnf "openssh-clients" --zypper "openssh" --pacman "openssh"
+  app_alt 1 install_app --name "Movavi Screen Recorder" --alt "OBS Studio" --method flatpak --flatpak "com.obsproject.Studio" --apt "obs-studio"
+  app_alt 1 install_app --name "Movavi Video Converter" --alt "HandBrake" --method flatpak --flatpak "fr.handbrake.ghb" --apt "handbrake"
+  app_alt 1 install_app --name "Movavi Video Editor" --alt "Kdenlive" --method flatpak --flatpak "org.kde.kdenlive" --apt "kdenlive" --dnf "kdenlive" --pacman "kdenlive"
+  app_alt 1 install_app --name "Mozilla Firefox" --alt "Firefox (Linux)" --winver "151.0.3" --method flatpak --flatpak "org.mozilla.firefox" --apt "firefox" --dnf "firefox" --zypper "MozillaFirefox" --pacman "firefox"
+  app_alt 1 install_app --name "MS Teams" --alt "Teams PWA (Edge/Chrome)" --method webapp --webapp "https://teams.microsoft.com"
+  app_alt 1 install_app --name "MSI Afterburner" --alt "GOverlay + MangoHud" --method flatpak --flatpak "io.github.benjamimgois.goverlay" --apt "goverlay" --note "MangoHud overlay/limiter"
+  app_alt 1 install_app --name "Nearby Share / Quick Share" --alt "LocalSend" --method flatpak --flatpak "org.localsend.localsend_app"
+  app_alt 1 install_app --name "Nero Burning ROM / Nero Platinum" --alt "K3b" --method flatpak --flatpak "org.kde.k3b" --apt "k3b" --dnf "k3b" --pacman "k3b"
+  app_alt 1 install_app --name "ninja" --alt "ninja-build (Linux)" --winver "1.13.2" --method native --apt "ninja-build" --dnf "ninja-build" --zypper "ninja" --pacman "ninja"
+  app_alt 1 install_app --name "Nitro PDF Pro" --alt "Stirling PDF" --method docker --docker "frooodle/s-pdf:latest" --note "Stirling-PDF web UI on http://localhost:8080"
+  app_alt 1 install_app --name "Node.js" --alt "Node.js (Linux)" --winver "24.15.0" --method native --apt "nodejs" --dnf "nodejs" --zypper "nodejs npm" --pacman "nodejs npm"
+  app_alt 1 install_app --name "Notepad++" --alt "Notepadqq" --method native --apt "notepadqq" --note "alt: install 'code' or a GNOME/KDE editor"
+  app_alt 1 install_app --name "oCam Screen Recorder" --alt "OBS Studio" --method flatpak --flatpak "com.obsproject.Studio" --apt "obs-studio"
+  app_alt 1 install_app --name "oCam version 550.0" --alt "OBS Studio" --method flatpak --flatpak "com.obsproject.Studio" --apt "obs-studio"
+  app_alt 1 install_app --name "OpenSSH" --alt "OpenSSH (native)" --winver "8.9.1.0" --method native --apt "openssh-client" --dnf "openssh-clients" --zypper "openssh" --pacman "openssh"
+  app_alt 1 install_app --name "OpenSSL" --alt "OpenSSL (native)" --winver "3.3.0" --method native --apt "openssl" --dnf "openssl" --zypper "openssl" --pacman "openssl"
+  app_alt 1 install_app --name "OpenVPN Connect" --alt "OpenVPN Connect (Linux)" --method native --apt "openvpn" --dnf "openvpn" --zypper "openvpn" --pacman "openvpn" --note "GUI: network-manager-openvpn"
+  app_alt 1 install_app --name "Origin / OriginPro" --alt "LabPlot" --method flatpak --flatpak "org.kde.labplot2"
+  app_alt 1 install_app --name "Outlook For Windows" --alt "Thunderbird" --method flatpak --flatpak "org.mozilla.Thunderbird" --apt "thunderbird" --dnf "thunderbird" --zypper "MozillaThunderbird" --pacman "thunderbird"
+  app_alt 1 install_app --name "Paint" --alt "Pinta" --method flatpak --flatpak "com.github.PintaProject.Pinta" --apt "pinta" --dnf "pinta"
+  app_alt 1 install_app --name "Pandoc" --alt "Pandoc (Linux)" --winver "3.9" --method native --apt "pandoc" --dnf "pandoc" --zypper "pandoc" --pacman "pandoc"
+  app_alt 1 install_app --name "Parsec" --alt "Parsec (Linux)" --method flatpak --flatpak "com.parsecgaming.parsec" --arch "x86_64"
+  app_alt 1 install_app --name "pgAdmin 4" --alt "pgAdmin 4 (Linux)" --method manual --url-x86 "https://www.pgadmin.org/download/" --note "pgAdmin 4 from the official apt/dnf repo"
+  app_alt 1 install_app --name "pgNow" --alt "pgAdmin 4" --method manual --url-x86 "https://www.pgadmin.org/download/" --note "pgAdmin 4 from the official apt/dnf repo"
+  app_alt 1 install_app --name "Photos" --alt "Shotwell" --method flatpak --flatpak "org.gnome.Shotwell" --apt "shotwell" --dnf "shotwell" --pacman "shotwell"
+  app_alt 1 install_app --name "PostgreSQL" --alt "PostgreSQL (PGDG repo)" --method native --apt "postgresql" --dnf "postgresql-server" --zypper "postgresql-server" --pacman "postgresql"
+  app_alt 1 install_app --name "PowerShell" --alt "PowerShell (Linux)" --winver "7.6.2.0" --method snap --snap "powershell --classic" --note "or use the Microsoft package repo"
+  app_alt 1 install_app --name "PowerToys" --alt "Frog (Text Extractor replacement)" --method flatpak --flatpak "com.github.tenderowl.frog"
+  app_alt 1 install_app --name "Proton VPN (Hotspot Shield / Psiphon Alternative)" --alt "Proton VPN (Linux)" --method manual --note "No official Linux client; use Proton VPN or OpenVPN instead"
+  app_alt 1 install_app --name "Proxifier" --alt "proxychains-ng" --method native --apt "proxychains4" --dnf "proxychains-ng" --zypper "proxychains-ng" --pacman "proxychains-ng"
+  app_alt 1 install_app --name "Psiphon Conduit" --alt "Proton VPN" --method manual --url-x86 "https://protonvpn.com/support/official-linux-client/" --note "Proton VPN app via the official apt/dnf repo"
+  app_alt 1 install_app --name "PuTTY" --alt "OpenSSH (native)" --method native --apt "openssh-client" --dnf "openssh-clients" --zypper "openssh" --pacman "openssh" --note "GUI alt: install 'putty'"
+  app_alt 1 install_app --name "Python" --alt "python3 (system)" --winver "3.12.10" --method native --apt "python3 python3-pip" --dnf "python3 python3-pip" --zypper "python3 python3-pip" --pacman "python python-pip"
+  app_alt 1 install_app --name "R for Windows" --alt "R (Linux)" --winver "4.5.2" --method native --apt "r-base" --dnf "R" --zypper "R-base" --pacman "r"
+  app_alt 1 install_app --name "Recuva" --alt "TestDisk + PhotoRec" --method native --apt "testdisk" --dnf "testdisk" --zypper "testdisk" --pacman "testdisk" --note "includes PhotoRec"
+  app_alt 1 install_app --name "Snagit" --alt "Flameshot + Ksnip" --method flatpak --flatpak "org.flameshot.Flameshot" --apt "flameshot" --note "also 'ksnip' for annotation"
+  app_alt 1 install_app --name "Snoopy" --alt "OpenSSH + terminal" --method native --apt "openssh-client" --dnf "openssh-clients" --zypper "openssh" --pacman "openssh"
+  app_alt 1 install_app --name "Sound Recorder" --alt "GNOME Sound Recorder" --method flatpak --flatpak "org.gnome.SoundRecorder" --apt "gnome-sound-recorder"
+  app_alt 1 install_app --name "SpeedFan" --alt "CoolerControl / Coolero" --method manual --url-x86 "https://gitlab.com/coolercontrol/coolercontrol/-/releases" --note "CoolerControl from gitlab releases; or lm-sensors + fancontrol"
+  app_alt 1 install_app --name "SQL Server Management Studio (SSMS)" --alt "DBeaver" --method flatpak --flatpak "io.dbeaver.DBeaverCommunity"
+  app_alt 1 install_app --name "Sticky Notes" --alt "GNOME Sticky Notes (sticky)" --method flatpak --flatpak "com.vixalien.sticky" --apt "gnote"
+  app_alt 1 install_app --name "Strawberry Perl" --alt "Perl (native)" --winver "5.42.1" --method native --apt "perl" --dnf "perl" --zypper "perl" --pacman "perl"
+  app_alt 1 install_app --name "Telegram Desktop" --alt "Telegram Desktop (Linux)" --method flatpak --flatpak "org.telegram.desktop" --apt "telegram-desktop" --dnf "telegram-desktop" --pacman "telegram-desktop"
+  app_alt 1 install_app --name "Terminator" --alt "Terminator (Linux)" --method native --apt "terminator" --dnf "terminator" --zypper "terminator" --pacman "terminator"
+  app_alt 1 install_app --name "Typora" --alt "MarkText" --method flatpak --flatpak "com.github.marktext.marktext"
+  app_alt 1 install_app --name "Ubuntu (WSL)" --alt "Native Linux" --method manual --note "Not applicable - you are already running Linux"
+  app_alt 1 install_app --name "VirtualBox" --alt "VirtualBox (Linux)" --method native --apt "virtualbox" --dnf "VirtualBox" --zypper "virtualbox" --pacman "virtualbox" --note "needs matching kernel modules (dkms)"
+  app_alt 1 install_app --name "Visual Studio Build Tools / Community" --alt ".NET SDK + VS Code" --method flatpak --flatpak "com.visualstudio.code" --note "also install the build toolchain (build-essential / @development-tools) and dotnet-sdk"
+  app_alt 1 install_app --name "Visual Studio Code" --alt "Visual Studio Code (Linux)" --winver "1.123.0" --method native --flatpak "com.visualstudio.code" --apt "code" --dnf "code"
+  app_alt 1 install_app --name "Weather" --alt "GNOME Weather" --method flatpak --flatpak "org.gnome.Weather" --apt "gnome-weather" --dnf "gnome-weather" --pacman "gnome-weather"
+  app_alt 1 install_app --name "WhatsApp Desktop" --alt "WhatsApp Web (PWA)" --method webapp --webapp "https://web.whatsapp.com"
+  app_alt 1 install_app --name "WinDirStat" --alt "QDirStat" --method native --apt "qdirstat" --dnf "qdirstat" --pacman "qdirstat"
+  app_alt 1 install_app --name "Windows Calculator" --alt "GNOME Calculator" --method flatpak --flatpak "org.gnome.Calculator" --apt "gnome-calculator" --dnf "gnome-calculator" --pacman "gnome-calculator"
+  app_alt 1 install_app --name "Windows Camera" --alt "Cheese" --method flatpak --flatpak "org.gnome.Cheese" --apt "cheese" --dnf "cheese" --pacman "cheese"
+  app_alt 1 install_app --name "Windows Fax and Scan" --alt "Simple Scan (Document Scanner)" --method flatpak --flatpak "org.gnome.SimpleScan" --apt "simple-scan" --dnf "simple-scan" --pacman "simple-scan"
+  app_alt 1 install_app --name "Windows Movie Maker" --alt "OpenShot" --method flatpak --flatpak "org.openshot.OpenShot" --apt "openshot-qt" --dnf "openshot" --pacman "openshot"
+  app_alt 1 install_app --name "Windows Notepad" --alt "GNOME Text Editor / gedit" --method flatpak --flatpak "org.gnome.TextEditor" --apt "gnome-text-editor" --dnf "gnome-text-editor"
+  app_alt 1 install_app --name "Windows Store" --alt "GNOME Software / KDE Discover" --method native --apt "gnome-software" --dnf "gnome-software" --pacman "gnome-software" --note "KDE: plasma-discover"
+  app_alt 1 install_app --name "Windows Terminal" --alt "GNOME Console / GNOME Terminal" --method native --apt "gnome-terminal" --dnf "gnome-terminal" --pacman "gnome-terminal" --note "or 'kgx' (GNOME Console)"
+  app_alt 1 install_app --name "Wine (Windows Compatibility Layer)" --alt "Wine (winehq-stable)" --method native --apt "wine" --dnf "wine" --zypper "wine" --pacman "wine" --arch "x86_64" --note "enable i386/multilib for 32-bit support"
+  app_alt 1 install_app --name "WinRAR" --alt "p7zip / 7-Zip" --method native --apt "p7zip-full" --dnf "p7zip p7zip-plugins" --zypper "p7zip" --pacman "p7zip" --note "also install 'unrar' for RAR archives"
+  app_alt 1 install_app --name "wkhtmltox" --alt "wkhtmltopdf (Linux)" --method native --apt "wkhtmltopdf" --dnf "wkhtmltopdf" --pacman "wkhtmltopdf"
+  app_alt 1 install_app --name "ZBrush" --alt "Blender (Sculpt Mode)" --method flatpak --flatpak "org.blender.Blender" --apt "blender" --note "Blender Sculpt Mode"
+  app_alt 1 install_app --name "Zoom Workplace" --alt "Zoom Workplace (Linux)" --method flatpak --flatpak "us.zoom.Zoom"
+  app_alt 1 install_app --name "Zune Music / Windows Media Player" --alt "Rhythmbox" --method flatpak --flatpak "org.gnome.Rhythmbox" --apt "rhythmbox" --dnf "rhythmbox" --pacman "rhythmbox"
+  app_alt 1 install_app --name "ÂµTorrent" --alt "qBittorrent" --method flatpak --flatpak "org.qbittorrent.qBittorrent" --apt "qbittorrent" --dnf "qbittorrent" --zypper "qbittorrent" --pacman "qbittorrent"
   install_app --name "Telegram" --alt "telegram-desktop (APT/Flatpak)" --method manual --url-x86 "https://telegram.org/dl/desktop/linux" --note "telegram-desktop (APT/Flatpak) | telegram.org"
   install_app --name "PaperCut" --alt "PaperCut Print Deploy Native Linux client" --method manual --url-x86 "https://<server>:9174" --note "PaperCut Print Deploy Native Linux client | Your PaperCut server (https://<server>:9174)"
   install_app --name "Visual Studio Community 2026" --alt "VS Code (APT repo) + JetBrains Rider (optional)" --method manual --url-x86 "https://code.visualstudio.com/download" --note "VS Code (APT repo) + JetBrains Rider (optional) | code.visualstudio.com; jetbrains.com/rider"

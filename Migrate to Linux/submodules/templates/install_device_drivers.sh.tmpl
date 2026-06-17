@@ -12,12 +12,10 @@
 
 install_firmware() {
   log "Linux firmware"
-  case "$PM" in
-    apt)    pm_install linux-firmware ;;
-    dnf)    pm_install linux-firmware ;;
-    zypper) pm_install kernel-firmware ;;
-    pacman) pm_install linux-firmware ;;
-  esac && ok "firmware package installed" || warn "firmware package not installed"
+  local pkg=linux-firmware
+  [ "$PM" = "zypper" ] && pkg=kernel-firmware
+  if capture pm_install "$pkg"; then ok "firmware package installed"
+  else mark_fail "firmware ($pkg)" "${LAST_ERR:-could not install firmware package}"; fi
 }
 
 install_gpu() {
@@ -27,11 +25,15 @@ install_gpu() {
   if printf '%s' "$gpu" | grep -qi nvidia; then
     warn "NVIDIA GPU detected."
     case "$PM" in
-      apt)    have_cmd ubuntu-drivers && { ubuntu-drivers autoinstall && mark_ok "NVIDIA driver"; } \
-                 || pm_install nvidia-driver && mark_ok "NVIDIA driver (nvidia-driver)" || mark_manual "NVIDIA driver" "apt: nvidia-driver-XXX" ;;
+      apt)
+        if have_cmd ubuntu-drivers && capture ubuntu-drivers autoinstall; then mark_ok "NVIDIA driver"
+        elif capture pm_install nvidia-driver; then mark_ok "NVIDIA driver (nvidia-driver)"
+        else mark_fail "NVIDIA driver" "${LAST_ERR:-apt: try a specific nvidia-driver-XXX}"; fi ;;
       dnf)    mark_manual "NVIDIA driver" "enable RPM Fusion, then: dnf install akmod-nvidia" ;;
       zypper) mark_manual "NVIDIA driver" "add the openSUSE NVIDIA repo, then install nvidia drivers" ;;
-      pacman) pm_install nvidia nvidia-utils && mark_ok "NVIDIA driver" || mark_manual "NVIDIA driver" "pacman: nvidia / nvidia-lts" ;;
+      pacman)
+        if capture pm_install nvidia nvidia-utils; then mark_ok "NVIDIA driver"
+        else mark_fail "NVIDIA driver" "${LAST_ERR:-pacman: nvidia / nvidia-lts}"; fi ;;
     esac
   elif printf '%s' "$gpu" | grep -qiE 'amd|radeon|ati'; then
     info "AMD GPU -> open-source amdgpu/radeon driver is in the kernel (Mesa)."
@@ -43,13 +45,15 @@ install_gpu() {
 
 install_printing() {
   log "Printer / scanner support"
+  local rc=0
   case "$PM" in
-    apt)    pm_install cups system-config-printer sane-utils ;;
-    dnf)    pm_install cups system-config-printer sane-backends ;;
-    zypper) pm_install cups sane-backends ;;
-    pacman) pm_install cups sane ;;
-  esac && { systemctl enable --now cups 2>/dev/null; mark_ok "printing/scanning (CUPS+SANE)"; } \
-       || mark_manual "printing" "install cups + sane for your distro"
+    apt)    capture pm_install cups system-config-printer sane-utils || rc=1 ;;
+    dnf)    capture pm_install cups system-config-printer sane-backends || rc=1 ;;
+    zypper) capture pm_install cups sane-backends || rc=1 ;;
+    pacman) capture pm_install cups sane || rc=1 ;;
+  esac
+  if [ "$rc" -eq 0 ]; then systemctl enable --now cups 2>/dev/null; mark_ok "printing/scanning (CUPS+SANE)"
+  else mark_fail "printing/scanning" "${LAST_ERR:-could not install cups + sane}"; fi
 }
 
 list_source_drivers() {

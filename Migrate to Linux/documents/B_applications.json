@@ -1152,7 +1152,8 @@
             "downloadUrl": {
               "x86_64": "https://www.anaconda.com/download"
             },
-            "promptFile": true
+            "promptFile": true,
+            "downloadPage": "https://www.anaconda.com/download"
           }
         },
         {
@@ -1199,7 +1200,8 @@
           "downloadUrl": "https://apps.ankiweb.net/",
           "install": {
             "method": "flatpak",
-            "flatpakId": "net.ankiweb.Anki"
+            "flatpakId": "net.ankiweb.Anki",
+            "exactEquivalent": true
           }
         }
       ]
@@ -1838,7 +1840,8 @@
               "dnf": "calibre",
               "zypper": "calibre",
               "pacman": "calibre"
-            }
+            },
+            "exactEquivalent": true
           }
         }
       ]
@@ -1982,7 +1985,8 @@
             "downloadUrl": {
               "x86_64": "https://chemaxon.com/products/marvin"
             },
-            "promptFile": true
+            "promptFile": true,
+            "downloadPage": "https://chemaxon.com/products/marvin/download"
           }
         },
         {
@@ -2120,7 +2124,8 @@
               "dnf": "cmake",
               "zypper": "cmake",
               "pacman": "cmake"
-            }
+            },
+            "exactEquivalent": true
           }
         }
       ]
@@ -2379,13 +2384,18 @@
           "install": {
             "method": "native",
             "native": {
-              "apt": "docker.io",
-              "dnf": "moby-engine",
+              "apt": "docker-ce docker-ce-cli containerd.io docker-compose-plugin",
+              "dnf": "docker-ce docker-ce-cli containerd.io docker-compose-plugin",
               "zypper": "docker",
               "pacman": "docker"
             },
             "note": "systemctl enable --now docker; add your user to the docker group",
-            "review": true
+            "review": true,
+            "repo": {
+              "apt": "install -d -m 0755 /etc/apt/keyrings\n. /etc/os-release\ncurl -fsSL https://download.docker.com/linux/${ID}/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg\necho \"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${ID} ${VERSION_CODENAME} stable\" > /etc/apt/sources.list.d/docker.list",
+              "dnf": "dnf -y install dnf-plugins-core\ndnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo"
+            },
+            "exactEquivalent": true
           }
         },
         {
@@ -2433,13 +2443,18 @@
           "install": {
             "method": "native",
             "native": {
-              "apt": "docker.io",
-              "dnf": "moby-engine",
+              "apt": "docker-ce docker-ce-cli containerd.io docker-compose-plugin",
+              "dnf": "docker-ce docker-ce-cli containerd.io docker-compose-plugin",
               "zypper": "docker",
               "pacman": "docker"
             },
             "note": "systemctl enable --now docker; add your user to the docker group",
-            "review": true
+            "review": true,
+            "repo": {
+              "apt": "install -d -m 0755 /etc/apt/keyrings\n. /etc/os-release\ncurl -fsSL https://download.docker.com/linux/${ID}/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg\necho \"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${ID} ${VERSION_CODENAME} stable\" > /etc/apt/sources.list.d/docker.list",
+              "dnf": "dnf -y install dnf-plugins-core\ndnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo"
+            },
+            "exactEquivalent": true
           }
         }
       ]
@@ -2988,7 +3003,8 @@
             "downloadUrl": {
               "x86_64": "https://www.foxit.com/pdf-reader/"
             },
-            "promptFile": true
+            "promptFile": true,
+            "downloadPage": "https://www.foxit.com/pdf-reader/"
           }
         },
         {
@@ -3083,7 +3099,8 @@
               "dnf": "git",
               "zypper": "git",
               "pacman": "git"
-            }
+            },
+            "exactEquivalent": true
           }
         }
       ]
@@ -3257,8 +3274,16 @@
           "appType": "Native (APT package)",
           "downloadUrl": "https://www.google.com/chrome/",
           "install": {
-            "method": "flatpak",
-            "flatpakId": "com.google.Chrome"
+            "method": "native",
+            "flatpakId": "com.google.Chrome",
+            "native": {
+              "apt": "google-chrome-stable",
+              "dnf": "google-chrome-stable"
+            },
+            "repo": {
+              "apt": "install -d -m 0755 /etc/apt/keyrings\ncurl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /etc/apt/keyrings/google-chrome.gpg\necho \"deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main\" > /etc/apt/sources.list.d/google-chrome.list",
+              "dnf": "printf '%s\\n' '[google-chrome]' 'name=google-chrome' 'baseurl=https://dl.google.com/linux/chrome/rpm/stable/x86_64' 'enabled=1' 'gpgcheck=1' 'gpgkey=https://dl.google.com/linux/linux_signing_key.pub' > /etc/yum.repos.d/google-chrome.repo"
+            }
           }
         },
         {
@@ -3471,7 +3496,8 @@
             "downloadUrl": {
               "x86_64": "https://www.gurobi.com/downloads/"
             },
-            "promptFile": true
+            "promptFile": true,
+            "downloadPage": "https://www.gurobi.com/downloads/gurobi-software/"
           }
         },
         {
@@ -4054,7 +4080,8 @@
               "dnf": "java-latest-openjdk",
               "zypper": "java-openjdk",
               "pacman": "jdk-openjdk"
-            }
+            },
+            "exactEquivalent": true
           }
         },
         {
@@ -4650,7 +4677,8 @@
             "downloadUrl": {
               "x86_64": "https://en.smath.com/view/SMathStudio/summary"
             },
-            "promptFile": true
+            "promptFile": true,
+            "downloadPage": "https://en.smath.com/view/SMathStudio/summary"
           }
         },
         {
@@ -4731,7 +4759,8 @@
             "method": "snap",
             "snap": "dotnet-sdk --classic",
             "note": "or use your distro's dotnet-sdk / Microsoft repo",
-            "review": true
+            "review": true,
+            "exactEquivalent": true
           }
         }
       ]
@@ -4903,8 +4932,16 @@
           "appType": "Native (APT package)",
           "downloadUrl": "https://www.microsoft.com/en-us/edge/download",
           "install": {
-            "method": "flatpak",
-            "flatpakId": "com.microsoft.Edge"
+            "method": "native",
+            "flatpakId": "com.microsoft.Edge",
+            "native": {
+              "apt": "microsoft-edge-stable",
+              "dnf": "microsoft-edge-stable"
+            },
+            "repo": {
+              "apt": "install -d -m 0755 /etc/apt/keyrings\ncurl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg\necho \"deb [arch=amd64,arm64 signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/edge stable main\" > /etc/apt/sources.list.d/microsoft-edge.list",
+              "dnf": "rpm --import https://packages.microsoft.com/keys/microsoft.asc\nprintf '%s\\n' '[microsoft-edge]' 'name=microsoft-edge' 'baseurl=https://packages.microsoft.com/yumrepos/edge' 'enabled=1' 'gpgcheck=1' 'gpgkey=https://packages.microsoft.com/keys/microsoft.asc' > /etc/yum.repos.d/microsoft-edge.repo"
+            }
           }
         }
       ]
@@ -5050,7 +5087,8 @@
             "downloadUrl": {
               "x86_64": "https://www.projectlibre.com/"
             },
-            "promptFile": true
+            "promptFile": true,
+            "downloadPage": "https://www.projectlibre.com/product/projectlibre-open-source/"
           }
         },
         {
@@ -5647,7 +5685,8 @@
               "dnf": "firefox",
               "zypper": "MozillaFirefox",
               "pacman": "firefox"
-            }
+            },
+            "exactEquivalent": true
           }
         },
         {
@@ -5940,7 +5979,8 @@
               "dnf": "ninja-build",
               "zypper": "ninja",
               "pacman": "ninja"
-            }
+            },
+            "exactEquivalent": true
           }
         }
       ]
@@ -6014,11 +6054,16 @@
           "install": {
             "method": "native",
             "native": {
-              "apt": "nodejs npm",
-              "dnf": "nodejs npm",
+              "apt": "nodejs",
+              "dnf": "nodejs",
               "zypper": "nodejs npm",
               "pacman": "nodejs npm"
-            }
+            },
+            "repo": {
+              "apt": "curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -",
+              "dnf": "curl -fsSL https://rpm.nodesource.com/setup_lts.x | bash -"
+            },
+            "exactEquivalent": true
           }
         },
         {
@@ -6287,7 +6332,8 @@
               "dnf": "openssh-clients",
               "zypper": "openssh",
               "pacman": "openssh"
-            }
+            },
+            "exactEquivalent": true
           }
         }
       ]
@@ -6317,7 +6363,8 @@
               "dnf": "openssl",
               "zypper": "openssl",
               "pacman": "openssl"
-            }
+            },
+            "exactEquivalent": true
           }
         }
       ]
@@ -6585,7 +6632,8 @@
               "dnf": "pandoc",
               "zypper": "pandoc",
               "pacman": "pandoc"
-            }
+            },
+            "exactEquivalent": true
           }
         }
       ]
@@ -6611,7 +6659,8 @@
           "install": {
             "method": "manual",
             "note": "PaperCut Print Deploy client from your print server's portal",
-            "promptFile": true
+            "promptFile": true,
+            "downloadPage": "https://www.papercut.com/products/ng/print-deploy/"
           }
         }
       ]
@@ -6845,7 +6894,12 @@
               "zypper": "postgresql-server",
               "pacman": "postgresql"
             },
-            "review": true
+            "review": true,
+            "repo": {
+              "apt": "install -d /usr/share/postgresql-common/pgdg\ncurl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc\n. /etc/os-release\necho \"deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main\" > /etc/apt/sources.list.d/pgdg.list",
+              "dnf": "dnf -y install https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm"
+            },
+            "exactEquivalent": true
           }
         }
       ]
@@ -6969,7 +7023,8 @@
             "method": "snap",
             "snap": "powershell --classic",
             "note": "or use the Microsoft package repo",
-            "review": true
+            "review": true,
+            "exactEquivalent": true
           }
         },
         {
@@ -7337,7 +7392,8 @@
               "dnf": "python3 python3-pip",
               "zypper": "python3 python3-pip",
               "pacman": "python python-pip"
-            }
+            },
+            "exactEquivalent": true
           }
         },
         {
@@ -7422,7 +7478,8 @@
               "zypper": "R-base",
               "pacman": "r"
             },
-            "review": true
+            "review": true,
+            "exactEquivalent": true
           }
         }
       ]
@@ -7451,7 +7508,8 @@
             "downloadUrl": {
               "x86_64": "https://www.realvnc.com/en/connect/download/viewer/"
             },
-            "promptFile": true
+            "promptFile": true,
+            "downloadPage": "https://www.realvnc.com/en/connect/download/viewer/"
           }
         },
         {
@@ -7609,7 +7667,8 @@
             "downloadUrl": {
               "x86_64": "https://posit.co/download/rstudio-desktop/"
             },
-            "promptFile": true
+            "promptFile": true,
+            "downloadPage": "https://posit.co/download/rstudio-desktop/"
           }
         },
         {
@@ -7649,7 +7708,8 @@
             "downloadUrl": {
               "x86_64": "https://github.com/ventoy/Ventoy/releases"
             },
-            "promptFile": true
+            "promptFile": true,
+            "downloadPage": "https://www.ventoy.net/en/download.html"
           }
         },
         {
@@ -8201,7 +8261,8 @@
           "install": {
             "method": "manual",
             "note": "SpotPlayer (Sib) Linux build from sibm[a].ir",
-            "promptFile": true
+            "promptFile": true,
+            "downloadPage": "https://www.sibmaster.ir/"
           }
         }
       ]
@@ -8426,7 +8487,8 @@
               "dnf": "perl",
               "zypper": "perl",
               "pacman": "perl"
-            }
+            },
+            "exactEquivalent": true
           }
         }
       ]
@@ -8488,7 +8550,8 @@
               "apt": "telegram-desktop",
               "dnf": "telegram-desktop",
               "pacman": "telegram-desktop"
-            }
+            },
+            "exactEquivalent": true
           }
         }
       ]
@@ -8518,7 +8581,8 @@
               "dnf": "terminator",
               "zypper": "terminator",
               "pacman": "terminator"
-            }
+            },
+            "exactEquivalent": true
           }
         }
       ]
@@ -8730,7 +8794,8 @@
               "pacman": "virtualbox"
             },
             "note": "needs matching kernel modules (dkms)",
-            "review": true
+            "review": true,
+            "exactEquivalent": true
           }
         },
         {
@@ -8824,8 +8889,17 @@
           "appType": "Native (APT package)",
           "downloadUrl": "https://code.visualstudio.com/download",
           "install": {
-            "method": "flatpak",
-            "flatpakId": "com.visualstudio.code"
+            "method": "native",
+            "flatpakId": "com.visualstudio.code",
+            "native": {
+              "apt": "code",
+              "dnf": "code"
+            },
+            "repo": {
+              "apt": "install -d -m 0755 /etc/apt/keyrings\ncurl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg\necho \"deb [arch=amd64,arm64 signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/code stable main\" > /etc/apt/sources.list.d/vscode.list",
+              "dnf": "rpm --import https://packages.microsoft.com/keys/microsoft.asc\nprintf '%s\\n' '[code]' 'name=Visual Studio Code' 'baseurl=https://packages.microsoft.com/yumrepos/vscode' 'enabled=1' 'gpgcheck=1' 'gpgkey=https://packages.microsoft.com/keys/microsoft.asc' > /etc/yum.repos.d/vscode.repo"
+            },
+            "exactEquivalent": true
           }
         },
         {
@@ -8887,7 +8961,8 @@
             "downloadUrl": {
               "x86_64": "https://www.vmware.com/products/workstation-pro.html"
             },
-            "promptFile": true
+            "promptFile": true,
+            "downloadPage": "https://www.vmware.com/products/workstation-pro.html"
           }
         },
         {
@@ -9596,7 +9671,8 @@
             "downloadUrl": {
               "x86_64": "https://github.com/kingToolbox/WindTerm/releases"
             },
-            "promptFile": true
+            "promptFile": true,
+            "downloadPage": "https://github.com/kingToolbox/WindTerm/releases"
           }
         }
       ]
@@ -9631,7 +9707,8 @@
               "x86_64"
             ],
             "note": "enable i386/multilib for 32-bit support",
-            "review": true
+            "review": true,
+            "exactEquivalent": true
           }
         }
       ]

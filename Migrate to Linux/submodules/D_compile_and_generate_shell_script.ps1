@@ -89,11 +89,12 @@ function Add-Flag {
 
 # Build one `install_app ...` line from an install descriptor object + name.
 function New-InstallCall {
-    param([string] $Name, [string] $Alt, $Install)
+    param([string] $Name, [string] $Alt, $Install, [string] $WinVer)
     $parts = New-Object System.Collections.Generic.List[string]
     $parts.Add('install_app')
     Add-Flag $parts '--name' $Name
     Add-Flag $parts '--alt' $Alt
+    Add-Flag $parts '--winver' $WinVer
 
     $method = Get-Prop $Install 'method'
     if (-not $method) { $method = 'manual' }
@@ -146,6 +147,35 @@ function New-FallbackInstall {
     return [pscustomobject]$obj
 }
 
+# Filesystem/function-safe slug from an app name (matches bash slugify in _common.sh).
+function Get-Slug {
+    param([string] $Name)
+    $s = $Name.ToLowerInvariant() -replace ' ', '-'
+    return ($s -replace '[^a-z0-9\-_]', '')
+}
+
+# Build a bash repo_setup_<slug>() function from a manifest install.repo object.
+# install_app() runs this (if defined) before a native install, so the vendor's own
+# repository is configured first and the latest upstream build is used.
+function New-RepoFunc {
+    param([string] $Name, $Repo)
+    $fn = 'repo_setup_' + ((Get-Slug $Name) -replace '-', '_')
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add($fn + '() {')
+    $lines.Add('  case "$PM" in')
+    foreach ($fam in 'apt','dnf','zypper','pacman') {
+        $sh = [string](Get-Prop $Repo $fam)
+        if ($sh) {
+            $lines.Add('    ' + $fam + ')')
+            foreach ($ln in ($sh -split "`r?`n")) { $lines.Add('      ' + $ln) }
+            $lines.Add('      ;;')
+        }
+    }
+    $lines.Add('  esac')
+    $lines.Add('}')
+    return ($lines -join "`n")
+}
+
 # ---------------------------------------------------------------------------
 # 1. APPLICATION LIST  (from B_applications.json + Additional CSV)
 # ---------------------------------------------------------------------------
@@ -154,41 +184,88 @@ $manifest = Get-Content -Raw -Path $ManifestPath | ConvertFrom-Json
 $apps = $manifest.applications
 
 $appLines = New-Object System.Collections.Generic.List[string]
+$repoLines = New-Object System.Collections.Generic.List[string]
+$repoSlugs = New-Object System.Collections.Generic.HashSet[string]
 $manualLines = New-Object System.Collections.Generic.List[string]
 $emittedNames = New-Object System.Collections.Generic.HashSet[string]
 $enriched = 0; $fallback = 0
 
 foreach ($app in $apps) {
-    $best = $null; $bestScore = -1
+    # Collect all mustInclude alternatives, ranked best-first by competency.
+    $mustAlts = @()
     foreach ($alt in (Get-Prop $app 'alternatives')) {
         if ([string](Get-Prop $alt 'mustInclude') -match '^(?i)yes$') {
             $c = 0.0; [double]::TryParse(((''+(Get-Prop $alt 'competency')) -replace '[^0-9.]',''), [ref]$c) | Out-Null
-            if ($c -gt $bestScore) { $bestScore = $c; $best = $alt }
+            $mustAlts += [pscustomobject]@{ Alt = $alt; Score = $c }
         }
     }
-    if (-not $best) { continue }
+    if ($mustAlts.Count -eq 0) { continue }
+    $mustAlts = @($mustAlts | Sort-Object -Property Score -Descending)
 
     $name = [string](Get-Prop $app 'name')
-    $altName = [string](Get-Prop $best 'name')
-    $install = Get-Prop $best 'install'
-    if ($install) { $enriched++ } else { $install = New-FallbackInstall $best; $fallback++ }
+    $best = $mustAlts[0].Alt
+    $bestInstall = Get-Prop $best 'install'
 
     # Apps that need a user-downloaded file are handled at the END of execute_all.sh
     # (the manual-download phase), NOT in install_must_have_software.sh.
-    if (Get-Prop $install 'promptFile') {
-        $hint = $altName
-        $pnote = [string](Get-Prop $install 'note')
-        if (-not $pnote) {
-            $dl = Get-Prop $install 'downloadUrl'
-            if ($dl) { $pnote = [string](Get-Prop $dl 'x86_64') }
+    if ($bestInstall -and (Get-Prop $bestInstall 'promptFile')) {
+        $altName = [string](Get-Prop $best 'name')
+        $pnote = [string](Get-Prop $bestInstall 'note')
+        # Stable, version-less download page (req8): prefer install.downloadPage,
+        # then install.downloadUrl.x86_64. Shown to the user and opened in the browser.
+        $purl = [string](Get-Prop $bestInstall 'downloadPage')
+        if (-not $purl) {
+            $dl = Get-Prop $bestInstall 'downloadUrl'
+            if ($dl) { $purl = [string](Get-Prop $dl 'x86_64') }
         }
-        if ($pnote) { $hint = "$altName - $pnote" }
-        $manualLines.Add('  "' + (ConvertTo-BashString $name) + '|' + (ConvertTo-BashString ($hint -replace '\|', ' ')) + '"')
+        # MANUAL_APPS entry: "Windows app|Linux alternative|note|download page URL"
+        $manualLines.Add('  "' +
+            (ConvertTo-BashString $name) + '|' +
+            (ConvertTo-BashString ($altName -replace '\|', ' ')) + '|' +
+            (ConvertTo-BashString ($pnote   -replace '\|', ' ')) + '|' +
+            (ConvertTo-BashString ($purl    -replace '\|', ' ')) + '"')
         [void]$emittedNames.Add($name.ToLowerInvariant())
         continue
     }
 
-    $appLines.Add(('  ' + (New-InstallCall -Name $name -Alt $altName -Install $install)))
+    # Vendor repo (req5): emit a repo_setup_<slug>() once per app if the best
+    # alternative declares install.repo. install_app runs it before native installs.
+    if ($bestInstall) {
+        $repo = Get-Prop $bestInstall 'repo'
+        if ($repo) {
+            $rkey = Get-Slug $name
+            if (-not $repoSlugs.Contains($rkey)) {
+                $repoLines.Add((New-RepoFunc -Name $name -Repo $repo))
+                [void]$repoSlugs.Add($rkey)
+            }
+        }
+    }
+
+    # Windows version for exact native equivalents (req4): pass it so the runtime can
+    # honour "same version" when the user picks it. Use the first version-looking token.
+    $winver = ''
+    if ($bestInstall -and (Get-Prop $bestInstall 'exactEquivalent')) {
+        $vv = [string](Get-Prop $app 'version')
+        if ($vv -match '\d') {
+            $tok = ($vv -split '[ /]') | Where-Object { $_ -match '^\d' } | Select-Object -First 1
+            if ($tok) { $winver = [string]$tok }
+        }
+    }
+
+    # Emit every mustInclude alternative, ranked. The user's answer to
+    # "How many best alternatives..." (MIGRATE_ALT_LIMIT) decides how many of these
+    # best-first entries actually install at runtime, via the app_alt gate.
+    $rank = 0
+    foreach ($entry in $mustAlts) {
+        $rank++
+        $alt = $entry.Alt
+        $altName = [string](Get-Prop $alt 'name')
+        $install = Get-Prop $alt 'install'
+        if ($install) { $enriched++ } else { $install = New-FallbackInstall $alt; $fallback++ }
+        # Only the rank-1 (best) alt is the "exact equivalent" carrying the Windows version.
+        $wv = if ($rank -eq 1) { $winver } else { '' }
+        $appLines.Add(('  app_alt ' + $rank + ' ' + (New-InstallCall -Name $name -Alt $altName -Install $install -WinVer $wv)))
+    }
     [void]$emittedNames.Add($name.ToLowerInvariant())
 }
 
@@ -210,8 +287,9 @@ if (Test-Path $AdditionalCsv) {
     }
 }
 
-$appsData = ($appLines -join "`n")
+$appsData = ((@($repoLines) + @($appLines)) -join "`n")
 $manualData = ($manualLines -join "`n")
+Write-Host ("  vendor repo setups: {0}" -f $repoSlugs.Count) -ForegroundColor Green
 Write-Host ("  apps: {0} total ({1} enriched, {2} fallback); {3} manual file-prompt app(s)" -f $appLines.Count, $enriched, $fallback, $manualLines.Count) -ForegroundColor Green
 
 # ---------------------------------------------------------------------------
