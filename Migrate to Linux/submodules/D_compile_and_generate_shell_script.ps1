@@ -173,19 +173,23 @@ foreach ($app in $apps) {
     $install = Get-Prop $best 'install'
     if ($install) { $enriched++ } else { $install = New-FallbackInstall $best; $fallback++ }
 
+    # Apps that need a user-downloaded file are handled at the END of execute_all.sh
+    # (the manual-download phase), NOT in install_must_have_software.sh.
+    if (Get-Prop $install 'promptFile') {
+        $hint = $altName
+        $pnote = [string](Get-Prop $install 'note')
+        if (-not $pnote) {
+            $dl = Get-Prop $install 'downloadUrl'
+            if ($dl) { $pnote = [string](Get-Prop $dl 'x86_64') }
+        }
+        if ($pnote) { $hint = "$altName - $pnote" }
+        $manualLines.Add('  "' + (ConvertTo-BashString $name) + '|' + (ConvertTo-BashString ($hint -replace '\|', ' ')) + '"')
+        [void]$emittedNames.Add($name.ToLowerInvariant())
+        continue
+    }
+
     $appLines.Add(('  ' + (New-InstallCall -Name $name -Alt $altName -Install $install)))
     [void]$emittedNames.Add($name.ToLowerInvariant())
-
-    # Apps whose Linux install needs a user-supplied file go into MANUAL_APPS so
-    # execute_all.sh can prompt for the file path up front.
-    if (Get-Prop $install 'promptFile') {
-        $hint = [string](Get-Prop $install 'note')
-        if (-not $hint) {
-            $dl = Get-Prop $install 'downloadUrl'
-            if ($dl) { $hint = [string](Get-Prop $dl 'x86_64') }
-        }
-        $manualLines.Add('  "' + (ConvertTo-BashString $name) + '|' + (ConvertTo-BashString ($hint -replace '\|', ' ')) + '"')
-    }
 }
 
 # Additional hand-curated CSV (free-text) -> manual entries, de-duped by name.

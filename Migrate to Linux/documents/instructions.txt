@@ -58,13 +58,16 @@ Docker capture/rebuild flow:
   - B_detect_installed_windows_software.ps1 automatically runs docker_discovery.ps1
     when Docker is installed on the Windows source (so docker_rebuild.sh only exists
     when the source had Docker).
-  - The generated execute_all.sh asks ALL questions UP FRONT (which stages to run;
-    "Rebuild docker components? (y/n)" - only if a sibling docker_rebuild.sh exists;
-    and the file paths for manual-download apps), then runs the chosen stages
-    unattended and performs the docker rebuild at the end if the user said yes.
-    Manual file-prompt apps are flagged in the manifest with install.promptFile=true;
-    execute_all stages the supplied file under $MIGRATE_MANUAL_DIR/<slug>/ and
-    install_must_have_software.sh installs it from there.
+  - The generated execute_all.sh asks the STAGE questions up front (each shown with
+    its (y/n) option): drivers / apps / settings, plus "Rebuild docker components?"
+    (only if a sibling docker_rebuild.sh exists). It runs the chosen stages
+    unattended, then the docker rebuild if requested.
+  - MANUAL DOWNLOADS run LAST. Apps flagged install.promptFile=true in the manifest
+    are excluded from install_must_have_software.sh and collected into the
+    MANUAL_APPS array in execute_all.sh. For each, execute_all shows where to place
+    the file and asks (done/skip); on "done" it verifies the file is present under
+    $MIGRATE_MANUAL_DIR/<slug>/ and installs it (red error + re-ask if missing/bad),
+    looping until the file is correctly placed or the user types skip.
 
 To regenerate the installer after editing the manifest or CSVs:
   .\run_project.ps1 -SkipDetection      (regenerate scripts only)
