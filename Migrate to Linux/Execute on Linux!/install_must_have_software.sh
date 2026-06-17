@@ -510,8 +510,11 @@ main() {
     apt)
       install -d -m 0755 /etc/apt/keyrings
       . /etc/os-release
-      curl -fsSL https://download.docker.com/linux/${ID}/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${ID} ${VERSION_CODENAME} stable" > /etc/apt/sources.list.d/docker.list
+      docker_base=debian
+      case " ${ID:-} ${ID_LIKE:-} " in *ubuntu*) docker_base=ubuntu ;; esac
+      docker_suite="${UBUNTU_CODENAME:-${VERSION_CODENAME:-stable}}"
+      curl -fsSL "https://download.docker.com/linux/${docker_base}/gpg" | gpg --batch --yes --dearmor -o /etc/apt/keyrings/docker.gpg
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${docker_base} ${docker_suite} stable" > /etc/apt/sources.list.d/docker.list
       ;;
     dnf)
       dnf -y install dnf-plugins-core
@@ -524,8 +527,11 @@ repo_setup_docker_engine() {
     apt)
       install -d -m 0755 /etc/apt/keyrings
       . /etc/os-release
-      curl -fsSL https://download.docker.com/linux/${ID}/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${ID} ${VERSION_CODENAME} stable" > /etc/apt/sources.list.d/docker.list
+      docker_base=debian
+      case " ${ID:-} ${ID_LIKE:-} " in *ubuntu*) docker_base=ubuntu ;; esac
+      docker_suite="${UBUNTU_CODENAME:-${VERSION_CODENAME:-stable}}"
+      curl -fsSL "https://download.docker.com/linux/${docker_base}/gpg" | gpg --batch --yes --dearmor -o /etc/apt/keyrings/docker.gpg
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${docker_base} ${docker_suite} stable" > /etc/apt/sources.list.d/docker.list
       ;;
     dnf)
       dnf -y install dnf-plugins-core
@@ -537,7 +543,7 @@ repo_setup_google_chrome() {
   case "$PM" in
     apt)
       install -d -m 0755 /etc/apt/keyrings
-      curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /etc/apt/keyrings/google-chrome.gpg
+      curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --batch --yes --dearmor -o /etc/apt/keyrings/google-chrome.gpg
       echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list
       ;;
     dnf)
@@ -549,7 +555,7 @@ repo_setup_microsoft_edge() {
   case "$PM" in
     apt)
       install -d -m 0755 /etc/apt/keyrings
-      curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg
+      curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --batch --yes --dearmor -o /etc/apt/keyrings/microsoft.gpg
       echo "deb [arch=amd64,arm64 signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/edge stable main" > /etc/apt/sources.list.d/microsoft-edge.list
       ;;
     dnf)
@@ -585,7 +591,7 @@ repo_setup_visual_studio_code() {
   case "$PM" in
     apt)
       install -d -m 0755 /etc/apt/keyrings
-      curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg
+      curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --batch --yes --dearmor -o /etc/apt/keyrings/microsoft.gpg
       echo "deb [arch=amd64,arm64 signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/code stable main" > /etc/apt/sources.list.d/vscode.list
       ;;
     dnf)
@@ -629,7 +635,7 @@ repo_setup_visual_studio_code() {
   app_alt 1 install_app --name "EaseUS Data Recovery Wizard" --alt "TestDisk + PhotoRec" --method native --apt "testdisk" --dnf "testdisk" --zypper "testdisk" --pacman "testdisk" --note "includes PhotoRec"
   app_alt 1 install_app --name "EaseUS Partition Master" --alt "GParted" --method native --apt "gparted" --dnf "gparted" --zypper "gparted" --pacman "gparted"
   app_alt 1 install_app --name "EaseUS Todo Backup" --alt "Timeshift" --method native --apt "timeshift" --dnf "timeshift" --pacman "timeshift"
-  app_alt 2 install_app --name "EaseUS Todo Backup" --alt "DÃ©jÃ  Dup (GNOME Backups)" --method native --note "needs manifest enrichment - see https://wiki.gnome.org/Apps/DejaDup"
+  app_alt 2 install_app --name "EaseUS Todo Backup" --alt "Déjà Dup (GNOME Backups)" --method native --note "needs manifest enrichment - see https://wiki.gnome.org/Apps/DejaDup"
   app_alt 1 install_app --name "EndNote" --alt "Zotero" --method flatpak --flatpak "org.zotero.Zotero"
   app_alt 1 install_app --name "FlashBack Pro" --alt "OBS Studio + Kdenlive" --method flatpak --flatpak "com.obsproject.Studio" --apt "obs-studio"
   app_alt 1 install_app --name "Git" --alt "Git (Linux)" --winver "2.53.0" --method native --apt "git" --dnf "git" --zypper "git" --pacman "git"
@@ -727,7 +733,7 @@ repo_setup_visual_studio_code() {
   app_alt 1 install_app --name "ZBrush" --alt "Blender (Sculpt Mode)" --method flatpak --flatpak "org.blender.Blender" --apt "blender" --note "Blender Sculpt Mode"
   app_alt 1 install_app --name "Zoom Workplace" --alt "Zoom Workplace (Linux)" --method flatpak --flatpak "us.zoom.Zoom"
   app_alt 1 install_app --name "Zune Music / Windows Media Player" --alt "Rhythmbox" --method flatpak --flatpak "org.gnome.Rhythmbox" --apt "rhythmbox" --dnf "rhythmbox" --pacman "rhythmbox"
-  app_alt 1 install_app --name "ÂµTorrent" --alt "qBittorrent" --method flatpak --flatpak "org.qbittorrent.qBittorrent" --apt "qbittorrent" --dnf "qbittorrent" --zypper "qbittorrent" --pacman "qbittorrent"
+  app_alt 1 install_app --name "µTorrent" --alt "qBittorrent" --method flatpak --flatpak "org.qbittorrent.qBittorrent" --apt "qbittorrent" --dnf "qbittorrent" --zypper "qbittorrent" --pacman "qbittorrent"
   install_app --name "Telegram" --alt "telegram-desktop (APT/Flatpak)" --method manual --url-x86 "https://telegram.org/dl/desktop/linux" --note "telegram-desktop (APT/Flatpak) | telegram.org"
   install_app --name "PaperCut" --alt "PaperCut Print Deploy Native Linux client" --method manual --url-x86 "https://<server>:9174" --note "PaperCut Print Deploy Native Linux client | Your PaperCut server (https://<server>:9174)"
   install_app --name "Visual Studio Community 2026" --alt "VS Code (APT repo) + JetBrains Rider (optional)" --method manual --url-x86 "https://code.visualstudio.com/download" --note "VS Code (APT repo) + JetBrains Rider (optional) | code.visualstudio.com; jetbrains.com/rider"
