@@ -563,7 +563,7 @@ main() {
   install_app --name "ZBrush" --alt "Blender (Sculpt Mode)" --method flatpak --flatpak "org.blender.Blender" --apt "blender" --note "Blender Sculpt Mode"
   install_app --name "Zoom Workplace" --alt "Zoom Workplace (Linux)" --method flatpak --flatpak "us.zoom.Zoom"
   install_app --name "Zune Music / Windows Media Player" --alt "Rhythmbox" --method flatpak --flatpak "org.gnome.Rhythmbox" --apt "rhythmbox" --dnf "rhythmbox" --pacman "rhythmbox"
-  install_app --name "µTorrent" --alt "qBittorrent" --method flatpak --flatpak "org.qbittorrent.qBittorrent" --apt "qbittorrent" --dnf "qbittorrent" --zypper "qbittorrent" --pacman "qbittorrent"
+  install_app --name "ÂµTorrent" --alt "qBittorrent" --method flatpak --flatpak "org.qbittorrent.qBittorrent" --apt "qbittorrent" --dnf "qbittorrent" --zypper "qbittorrent" --pacman "qbittorrent"
   install_app --name "Telegram" --alt "telegram-desktop (APT/Flatpak)" --method manual --url-x86 "https://telegram.org/dl/desktop/linux" --note "telegram-desktop (APT/Flatpak) | telegram.org"
   install_app --name "PaperCut" --alt "PaperCut Print Deploy Native Linux client" --method manual --url-x86 "https://<server>:9174" --note "PaperCut Print Deploy Native Linux client | Your PaperCut server (https://<server>:9174)"
   install_app --name "Visual Studio Community 2026" --alt "VS Code (APT repo) + JetBrains Rider (optional)" --method manual --url-x86 "https://code.visualstudio.com/download" --note "VS Code (APT repo) + JetBrains Rider (optional) | code.visualstudio.com; jetbrains.com/rider"
