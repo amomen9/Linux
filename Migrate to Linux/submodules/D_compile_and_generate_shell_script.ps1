@@ -89,7 +89,7 @@ function Add-Flag {
 
 # Build one `install_app ...` line from an install descriptor object + name.
 function New-InstallCall {
-    param([string] $Name, [string] $Alt, $Install, [string] $WinVer)
+    param([string] $Name, [string] $Alt, $Install, [string] $WinVer, [switch] $Paid)
     $parts = New-Object System.Collections.Generic.List[string]
     $parts.Add('install_app')
     Add-Flag $parts '--name' $Name
@@ -123,6 +123,8 @@ function New-InstallCall {
     Add-Flag $parts '--docker' (Get-Prop $Install 'dockerImage')
     Add-Flag $parts '--github' (Get-Prop $Install 'githubRepo')
     Add-Flag $parts '--note'   (Get-Prop $Install 'note')
+    if (Get-Prop $Install 'security') { $parts.Add('--security') }
+    if ($Paid) { $parts.Add('--paid') }
 
     return ($parts -join ' ')
 }
@@ -218,12 +220,14 @@ foreach ($app in $apps) {
             $dl = Get-Prop $bestInstall 'downloadUrl'
             if ($dl) { $purl = [string](Get-Prop $dl 'x86_64') }
         }
-        # MANUAL_APPS entry: "Windows app|Linux alternative|note|download page URL"
+        # MANUAL_APPS entry: "Windows app|Linux alternative|note|download page URL|paid(1/0)"
+        $mpaid = if ([string](Get-Prop $best 'pricingModel') -match '(?i)free') { '0' } else { '1' }
         $manualLines.Add('  "' +
             (ConvertTo-BashString $name) + '|' +
             (ConvertTo-BashString ($altName -replace '\|', ' ')) + '|' +
             (ConvertTo-BashString ($pnote   -replace '\|', ' ')) + '|' +
-            (ConvertTo-BashString ($purl    -replace '\|', ' ')) + '"')
+            (ConvertTo-BashString ($purl    -replace '\|', ' ')) + '|' +
+            $mpaid + '"')
         [void]$emittedNames.Add($name.ToLowerInvariant())
         continue
     }
@@ -264,7 +268,8 @@ foreach ($app in $apps) {
         if ($install) { $enriched++ } else { $install = New-FallbackInstall $alt; $fallback++ }
         # Only the rank-1 (best) alt is the "exact equivalent" carrying the Windows version.
         $wv = if ($rank -eq 1) { $winver } else { '' }
-        $appLines.Add(('  app_alt ' + $rank + ' ' + (New-InstallCall -Name $name -Alt $altName -Install $install -WinVer $wv)))
+        $altPaid = -not ([string](Get-Prop $alt 'pricingModel') -match '(?i)free')
+        $appLines.Add(('  app_alt ' + $rank + ' ' + (New-InstallCall -Name $name -Alt $altName -Install $install -WinVer $wv -Paid:$altPaid)))
     }
     [void]$emittedNames.Add($name.ToLowerInvariant())
 }

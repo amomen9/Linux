@@ -70,13 +70,19 @@ capture() {
   return "$rc"
 }
 
-record_line() { printf '%s\t%-6s\t%s\t%s\n' "$(date '+%F %T')" "$1" "$2" "${3:-}" >> "$RESULTS"; }
+# MODULE tags which big module (Drivers / Config settings / Applications) each result
+# belongs to, so execute_all can print a per-module classified summary at the end.
+MODULE="${MODULE:-General}"
+record_line() { printf '%s\t%s\t%-6s\t%s\t%s\n' "$(date '+%F %T')" "${MODULE:-General}" "$1" "$2" "${3:-}" >> "$RESULTS"; }
 mark_ok()     { OK_LIST+=("$1");     record_line OK     "$1" "${2:-}"; ok "installed: $1"; }
 mark_skip()   { SKIP_LIST+=("$1");   record_line SKIP   "$1" "${2:-}"; info "skipped: $1 (${2:-already present})"; }
 mark_fail()   { FAIL_LIST+=("$1"); FAIL_REASON+=("${2:-unknown error}"); record_line FAIL "$1" "${2:-}"; err "failed: $1 ${2:+- $2}"; }
 mark_manual() { MANUAL_LIST+=("$1"); record_line MANUAL "$1" "${2:-}"; warn "manual step required: $1 ${2:+- $2}"; }
 
 print_summary() {
+  # When orchestrated by execute_all, it prints ONE combined, classified summary at
+  # the very end; suppress the per-stage summary here to avoid mid-run clutter.
+  [ -n "${MIGRATE_KEEP_RESULTS:-}" ] && return 0
   log "Summary"
   info "OK:     ${#OK_LIST[@]}"
   info "Skip:   ${#SKIP_LIST[@]}"
@@ -312,7 +318,7 @@ install_native_version() {  # install_native_version PKG WINVER
 #           deb-url | github-deb | manual
 # =============================================================================
 install_app() {
-  local name="" alt="" method="" flatpak="" snap_pkg="" arch_list="" winver=""
+  local name="" alt="" method="" flatpak="" snap_pkg="" arch_list="" winver="" is_security=0 is_paid=0
   local apt="" dnf="" zypper="" pacman=""
   local url_x86="" url_arm="" webapp_url="" docker_image="" github_repo="" note=""
   while [ "$#" -gt 0 ]; do
@@ -333,11 +339,33 @@ install_app() {
       --webapp)  webapp_url="$2"; shift 2 ;;
       --docker)  docker_image="$2"; shift 2 ;;
       --github)  github_repo="$2"; shift 2 ;;
-      --note)    note="$2"; shift 2 ;;
+      --note)     note="$2"; shift 2 ;;
+      --security) is_security=1; shift ;;
+      --paid)     is_paid=1; shift ;;
       *) shift ;;
     esac
   done
   [ -z "$name" ] && return 0
+
+  # Security-suite equivalents (antivirus/firewall, etc.) are only installed when the
+  # user opted in; many skip them because Linux is hardened by default.
+  if [ "$is_security" -eq 1 ] && [ "${MIGRATE_INSTALL_SECURITY:-no}" != "yes" ]; then
+    mark_skip "$name" "security suite - not installed (opted out)"
+    return 0
+  fi
+
+  # Free-only mode: this app's only alternative is paid. Ask whether to proceed.
+  if [ "${MIGRATE_FREE_ONLY:-no}" = "yes" ] && [ "$is_paid" -eq 1 ]; then
+    local _fans=""
+    if [ -r /dev/tty ]; then
+      printf '\n\n\033[1;33m==> %s%s has no free alternative.\033[0m\n' "$name" "${alt:+ ---> $alt}" >&3
+      printf '  No free alternative exists for this application. Do you want to continue with the installation of the paid one? Answering with No means skipping this application (y/n): ' > /dev/tty
+      read -r _fans < /dev/tty || _fans="n"
+      case "$_fans" in [Yy]*) ;; *) mark_skip "$name" "paid - skipped (free-only mode)"; return 0 ;; esac
+    else
+      mark_skip "$name" "paid - skipped (free-only mode)"; return 0
+    fi
+  fi
 
   if ! arch_supported "$arch_list"; then
     mark_skip "$name" "not available for $ARCH"
@@ -495,19 +523,19 @@ ensure_docker() {
 # Manual-download apps with no automatic installer (format: "Windows app|hint").
 # Handled at the very END so they never block the unattended stages.
 MANUAL_APPS=(
-  "Anaconda3|Anaconda (Linux)|Download the Anaconda installer .sh and run it|https://www.anaconda.com/download"
-  "ChemDraw / ChemOffice|MarvinSketch (MarvinSuite)|MarvinSuite from chemaxon.com|https://chemaxon.com/products/marvin/download"
-  "Foxit PDF Reader / Editor|Foxit PDF Reader (Linux)|Foxit Reader for Linux (.run installer)|https://www.foxit.com/pdf-reader/"
-  "Gurobi|Gurobi (Linux)|Gurobi Optimizer (academic/commercial) from gurobi.com|https://www.gurobi.com/downloads/gurobi-software/"
-  "Mathcad / PTC Mathcad Prime|SMath Studio|SMath Studio (free) from smath.com|https://en.smath.com/view/SMathStudio/summary"
-  "Microsoft Project|ProjectLibre|ProjectLibre (.deb/.rpm) from projectlibre.com|https://www.projectlibre.com/product/projectlibre-open-source/"
-  "PaperCut Print Deploy Client|PaperCut Print Deploy (Linux)|PaperCut Print Deploy client from your print server's portal|https://www.papercut.com/products/ng/print-deploy/"
-  "RealVNC Viewer|RealVNC Viewer (Linux)|RealVNC Viewer (.deb/.rpm)|https://www.realvnc.com/en/connect/download/viewer/"
-  "RStudio|RStudio (Linux)|RStudio Desktop (.deb/.rpm) from posit.co|https://posit.co/download/rstudio-desktop/"
-  "Rufus|Ventoy|Ventoy from ventoy.net; GUI alt: 'popsicle'|https://www.ventoy.net/en/download.html"
-  "SpotPlayer|SpotPlayer (Linux)|SpotPlayer (Sib) Linux build from sibm[a].ir|https://www.sibmaster.ir/"
-  "VMware Workstation|VMware Workstation Pro (Linux)|VMware Workstation Pro .bundle (free for personal use)|https://www.vmware.com/products/workstation-pro.html"
-  "WindTerm|WindTerm (Linux)|WindTerm from GitHub releases|https://github.com/kingToolbox/WindTerm/releases"
+  "Anaconda3|Anaconda (Linux)|Download the Anaconda installer .sh and run it|https://www.anaconda.com/download|0"
+  "ChemDraw / ChemOffice|MarvinSketch (MarvinSuite)|MarvinSuite from chemaxon.com|https://chemaxon.com/products/marvin/download|0"
+  "Foxit PDF Reader / Editor|Foxit PDF Reader (Linux)|Foxit Reader for Linux (.run installer)|https://www.foxit.com/pdf-reader/|0"
+  "Gurobi|Gurobi (Linux)|Gurobi Optimizer (academic/commercial) from gurobi.com|https://www.gurobi.com/downloads/gurobi-software/|1"
+  "Mathcad / PTC Mathcad Prime|SMath Studio|SMath Studio (free) from smath.com|https://en.smath.com/view/SMathStudio/summary|0"
+  "Microsoft Project|ProjectLibre|ProjectLibre (.deb/.rpm) from projectlibre.com|https://www.projectlibre.com/product/projectlibre-open-source/|0"
+  "PaperCut Print Deploy Client|PaperCut Print Deploy (Linux)|PaperCut Print Deploy client from your print server's portal|https://www.papercut.com/products/ng/print-deploy/|1"
+  "RealVNC Viewer|RealVNC Viewer (Linux)|RealVNC Viewer (.deb/.rpm)|https://www.realvnc.com/en/connect/download/viewer/|0"
+  "RStudio|RStudio (Linux)|RStudio Desktop (.deb/.rpm) from posit.co|https://posit.co/download/rstudio-desktop/|0"
+  "Rufus|Ventoy|Ventoy from ventoy.net; GUI alt: 'popsicle'|https://www.ventoy.net/en/download.html|0"
+  "SpotPlayer|SpotPlayer (Linux)|SpotPlayer (Sib) Linux build from sibm[a].ir|https://www.sibmaster.ir/|0"
+  "VMware Workstation|VMware Workstation Pro (Linux)|VMware Workstation Pro .bundle (free for personal use)|https://www.vmware.com/products/workstation-pro.html|0"
+  "WindTerm|WindTerm (Linux)|WindTerm from GitHub releases|https://github.com/kingToolbox/WindTerm/releases|0"
 )
 
 here=""
@@ -591,17 +619,28 @@ open_url() {
 # correctly placed or the user types 'skip'.
 install_manual_apps() {
   [ "${#MANUAL_APPS[@]}" -eq 0 ] && return 0
+  MODULE="Applications"   # manual downloads are part of the Applications module
   local base="${MIGRATE_MANUAL_DIR:-$DOWNLOAD_DIR/manual}"
   printf '\n'; log "Manual downloads (apps with no automatic installer) -- done last"
-  local entry name alt note url slug dir ans f got
+  local entry name alt note url paid slug dir ans f got
   for entry in "${MANUAL_APPS[@]}"; do
-    IFS='|' read -r name alt note url <<< "$entry"
+    IFS='|' read -r name alt note url paid <<< "$entry"
     slug="$(slugify "$name")"; dir="$base/$slug"; mkdir -p "$dir"
     printf '\n\n'
     if [ -n "$alt" ]; then
       printf '\033[1;34m==> Manual install: %s   --->   %s\033[0m\n' "$name" "$alt" >&3
     else
       printf '\033[1;34m==> Manual install: %s\033[0m\n' "$name" >&3
+    fi
+    # Free-only mode: this manual app's only alternative is paid. Ask before continuing.
+    if [ "${MIGRATE_FREE_ONLY:-no}" = "yes" ] && [ "${paid:-0}" = "1" ]; then
+      if [ -r /dev/tty ]; then
+        printf '  No free alternative exists for this application. Do you want to continue with the installation of the paid one? Answering with No means skipping this application (y/n): ' > /dev/tty
+        read -r ans < /dev/tty || ans="n"
+        case "$ans" in [Yy]*) ;; *) mark_skip "$name" "paid - skipped (free-only mode)"; continue ;; esac
+      else
+        mark_skip "$name" "paid - skipped (free-only mode)"; continue
+      fi
     fi
     [ -n "$note" ] && info "$note"
     if [ -n "$url" ]; then
@@ -643,33 +682,47 @@ install_manual_apps() {
   done
 }
 
-# Overall summary of EVERY operation across all stages (reads the shared log).
-print_combined_summary() {
-  local f="${RESULTS:-/tmp/migrate_to_linux_results.tsv}"
-  printf '\n'
-  log "==================== OVERALL SUMMARY ===================="
-  if [ ! -s "$f" ]; then info "No operations were recorded."; return 0; fi
+# Print the summary for ONE module from the shared log (fields: date,module,status,name,detail).
+print_module_summary() {  # print_module_summary "Module name"
+  local f="${RESULTS:-/tmp/migrate_to_linux_results.tsv}" m="$1"
+  awk -F'\t' -v m="$m" '$2==m{found=1} END{exit !found}' "$f" || return 0
   local nok nskip nman nfail
-  nok=$(awk   -F'\t' '{g=$2;gsub(/ /,"",g)} g=="OK"'     "$f" | wc -l)
-  nskip=$(awk -F'\t' '{g=$2;gsub(/ /,"",g)} g=="SKIP"'   "$f" | wc -l)
-  nman=$(awk  -F'\t' '{g=$2;gsub(/ /,"",g)} g=="MANUAL"' "$f" | wc -l)
-  nfail=$(awk -F'\t' '{g=$2;gsub(/ /,"",g)} g=="FAIL"'   "$f" | wc -l)
-  ok   "Succeeded : $nok"
-  info "Skipped   : $nskip"
-  warn "Manual    : $nman"
-  err  "Failed    : $nfail"
+  nok=$(awk   -F'\t' -v m="$m" '$2==m{g=$3;gsub(/ /,"",g); if(g=="OK")c++}     END{print c+0}' "$f")
+  nskip=$(awk -F'\t' -v m="$m" '$2==m{g=$3;gsub(/ /,"",g); if(g=="SKIP")c++}   END{print c+0}' "$f")
+  nman=$(awk  -F'\t' -v m="$m" '$2==m{g=$3;gsub(/ /,"",g); if(g=="MANUAL")c++} END{print c+0}' "$f")
+  nfail=$(awk -F'\t' -v m="$m" '$2==m{g=$3;gsub(/ /,"",g); if(g=="FAIL")c++}   END{print c+0}' "$f")
+  printf '\n'
+  # purple, extra-indented section title
+  printf '        \033[1;35m===== %s summary =====\033[0m\n' "$m" >&3
+  ok   "          Succeeded : $nok"
+  info "          Skipped   : $nskip"
+  warn "          Manual    : $nman"
+  err  "          Failed    : $nfail"
   if [ "$nfail" -gt 0 ]; then
-    err "Failures (1-line reason each):"
-    awk -F'\t' '{g=$2;gsub(/ /,"",g)} g=="FAIL"{printf "  - %s: %s\n",$3,$4}' "$f" >&3
+    err "          Failures (1-line reason each):"
+    awk -F'\t' -v m="$m" '{g=$3;gsub(/ /,"",g)} $2==m && g=="FAIL"{printf "            - %s: %s\n",$4,$5}' "$f" >&3
   fi
   if [ "$nman" -gt 0 ]; then
-    warn "Manual steps still needed:"
-    awk -F'\t' '{g=$2;gsub(/ /,"",g)} g=="MANUAL"{printf "  - %s: %s\n",$3,$4}' "$f" >&3
+    warn "          Manual steps still needed:"
+    awk -F'\t' -v m="$m" '{g=$3;gsub(/ /,"",g)} $2==m && g=="MANUAL"{printf "            - %s: %s\n",$4,$5}' "$f" >&3
   fi
   if [ "$nskip" -gt 0 ]; then
-    info "Skipped:"
-    awk -F'\t' '{g=$2;gsub(/ /,"",g)} g=="SKIP"{printf "  - %s\n",$3}' "$f" >&3
+    info "          Skipped:"
+    awk -F'\t' -v m="$m" '{g=$3;gsub(/ /,"",g)} $2==m && g=="SKIP"{printf "            - %s\n",$4}' "$f" >&3
   fi
+}
+
+# Final summary: comes after everything else, classified per big module in the order
+# they ran (Drivers -> Config settings -> Applications).
+print_combined_summary() {
+  local f="${RESULTS:-/tmp/migrate_to_linux_results.tsv}"
+  printf '\n\n'
+  log "==================== FINAL SUMMARY ===================="
+  if [ ! -s "$f" ]; then info "No operations were recorded."; return 0; fi
+  print_module_summary "Drivers"
+  print_module_summary "Config settings"
+  print_module_summary "Applications"
+  printf '\n'
   info "Full log: $f"
 }
 
@@ -692,19 +745,23 @@ main() {
   # ---- Stage questions, up front (each question is shown with its options) ----
   log "Setup questions (answer each one; the install then runs unattended):"
   local do_drivers=0 do_apps=0 do_settings=0 do_docker=0
-  ask "(1/7) Install device drivers?"     y && do_drivers=1
-  ask "(2/7) Install must-have software?" y && do_apps=1
+  ask "(1/9) Install device drivers?"     y && do_drivers=1
+  ask "(2/9) Install must-have software?" y && do_apps=1
   if [ "$do_apps" -eq 1 ]; then
-    MIGRATE_ALT_LIMIT="$(ask_number "(3/7) How many (if applicable) best alternatives of an application do you want to install?" 1)"
+    MIGRATE_ALT_LIMIT="$(ask_number "(3/9) How many (if applicable) best alternatives of an application do you want to install?" 1)"
     export MIGRATE_ALT_LIMIT
-    MIGRATE_VERSION_MODE="$(ask_ab "(4/7) Want to install same version of exact equivalents from Windows to Linux or the latest version?" "Same version" "Latest version")"
+    MIGRATE_VERSION_MODE="$(ask_ab "(4/9) Want to install same version of exact equivalents from Windows to Linux or the latest version?" "Same version" "Latest version")"
     export MIGRATE_VERSION_MODE
-    if ask "(5/7) Update apps that are already installed on Linux?" n; then MIGRATE_UPDATE_EXISTING=yes; else MIGRATE_UPDATE_EXISTING=no; fi
+    if ask "(5/9) Update apps that are already installed on Linux?" n; then MIGRATE_UPDATE_EXISTING=yes; else MIGRATE_UPDATE_EXISTING=no; fi
     export MIGRATE_UPDATE_EXISTING
+    if ask "(6/9) Install security-suite equivalents (antivirus, extra firewall, etc.)? Linux is hardened by default, so many users skip these." n; then MIGRATE_INSTALL_SECURITY=yes; else MIGRATE_INSTALL_SECURITY=no; fi
+    export MIGRATE_INSTALL_SECURITY
+    if ask "(7/9) Do you want to only install free applications and skip paid alternatives?" n; then MIGRATE_FREE_ONLY=yes; else MIGRATE_FREE_ONLY=no; fi
+    export MIGRATE_FREE_ONLY
   fi
-  ask "(6/7) Apply Windows settings?"     y && do_settings=1
+  ask "(8/9) Apply Windows settings?"     y && do_settings=1
   if [ -f "$here/docker_rebuild.sh" ]; then
-    ask "(7/7) Rebuild docker components (images, volumes, containers, networks, etc.)?" y && do_docker=1
+    ask "(9/9) Rebuild docker components (images, volumes, containers, networks, etc.)?" y && do_docker=1
   fi
 
   # ---- Run the selected stages, unattended.  Order: drivers -> settings -> apps ----
