@@ -2392,7 +2392,7 @@
             "note": "systemctl enable --now docker; add your user to the docker group",
             "review": true,
             "repo": {
-              "apt": "install -d -m 0755 /etc/apt/keyrings\n. /etc/os-release\ncurl -fsSL https://download.docker.com/linux/${ID}/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg\necho \"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${ID} ${VERSION_CODENAME} stable\" > /etc/apt/sources.list.d/docker.list",
+              "apt": "install -d -m 0755 /etc/apt/keyrings\n. /etc/os-release\ndocker_base=debian\ncase \" ${ID:-} ${ID_LIKE:-} \" in *ubuntu*) docker_base=ubuntu ;; esac\ndocker_suite=\"${UBUNTU_CODENAME:-${VERSION_CODENAME:-stable}}\"\ncurl -fsSL \"https://download.docker.com/linux/${docker_base}/gpg\" | gpg --batch --yes --dearmor -o /etc/apt/keyrings/docker.gpg\necho \"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${docker_base} ${docker_suite} stable\" > /etc/apt/sources.list.d/docker.list",
               "dnf": "dnf -y install dnf-plugins-core\ndnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo"
             },
             "exactEquivalent": true
@@ -2451,7 +2451,7 @@
             "note": "systemctl enable --now docker; add your user to the docker group",
             "review": true,
             "repo": {
-              "apt": "install -d -m 0755 /etc/apt/keyrings\n. /etc/os-release\ncurl -fsSL https://download.docker.com/linux/${ID}/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg\necho \"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${ID} ${VERSION_CODENAME} stable\" > /etc/apt/sources.list.d/docker.list",
+              "apt": "install -d -m 0755 /etc/apt/keyrings\n. /etc/os-release\ndocker_base=debian\ncase \" ${ID:-} ${ID_LIKE:-} \" in *ubuntu*) docker_base=ubuntu ;; esac\ndocker_suite=\"${UBUNTU_CODENAME:-${VERSION_CODENAME:-stable}}\"\ncurl -fsSL \"https://download.docker.com/linux/${docker_base}/gpg\" | gpg --batch --yes --dearmor -o /etc/apt/keyrings/docker.gpg\necho \"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${docker_base} ${docker_suite} stable\" > /etc/apt/sources.list.d/docker.list",
               "dnf": "dnf -y install dnf-plugins-core\ndnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo"
             },
             "exactEquivalent": true
@@ -3281,7 +3281,7 @@
               "dnf": "google-chrome-stable"
             },
             "repo": {
-              "apt": "install -d -m 0755 /etc/apt/keyrings\ncurl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /etc/apt/keyrings/google-chrome.gpg\necho \"deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main\" > /etc/apt/sources.list.d/google-chrome.list",
+              "apt": "install -d -m 0755 /etc/apt/keyrings\ncurl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --batch --yes --dearmor -o /etc/apt/keyrings/google-chrome.gpg\necho \"deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main\" > /etc/apt/sources.list.d/google-chrome.list",
               "dnf": "printf '%s\\n' '[google-chrome]' 'name=google-chrome' 'baseurl=https://dl.google.com/linux/chrome/rpm/stable/x86_64' 'enabled=1' 'gpgcheck=1' 'gpgkey=https://dl.google.com/linux/linux_signing_key.pub' > /etc/yum.repos.d/google-chrome.repo"
             }
           }
@@ -4939,7 +4939,7 @@
               "dnf": "microsoft-edge-stable"
             },
             "repo": {
-              "apt": "install -d -m 0755 /etc/apt/keyrings\ncurl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg\necho \"deb [arch=amd64,arm64 signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/edge stable main\" > /etc/apt/sources.list.d/microsoft-edge.list",
+              "apt": "install -d -m 0755 /etc/apt/keyrings\ncurl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --batch --yes --dearmor -o /etc/apt/keyrings/microsoft.gpg\necho \"deb [arch=amd64,arm64 signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/edge stable main\" > /etc/apt/sources.list.d/microsoft-edge.list",
               "dnf": "rpm --import https://packages.microsoft.com/keys/microsoft.asc\nprintf '%s\\n' '[microsoft-edge]' 'name=microsoft-edge' 'baseurl=https://packages.microsoft.com/yumrepos/edge' 'enabled=1' 'gpgcheck=1' 'gpgkey=https://packages.microsoft.com/keys/microsoft.asc' > /etc/yum.repos.d/microsoft-edge.repo"
             }
           }
@@ -8896,7 +8896,7 @@
               "dnf": "code"
             },
             "repo": {
-              "apt": "install -d -m 0755 /etc/apt/keyrings\ncurl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg\necho \"deb [arch=amd64,arm64 signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/code stable main\" > /etc/apt/sources.list.d/vscode.list",
+              "apt": "install -d -m 0755 /etc/apt/keyrings\ncurl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --batch --yes --dearmor -o /etc/apt/keyrings/microsoft.gpg\necho \"deb [arch=amd64,arm64 signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/code stable main\" > /etc/apt/sources.list.d/vscode.list",
               "dnf": "rpm --import https://packages.microsoft.com/keys/microsoft.asc\nprintf '%s\\n' '[code]' 'name=Visual Studio Code' 'baseurl=https://packages.microsoft.com/yumrepos/vscode' 'enabled=1' 'gpgcheck=1' 'gpgkey=https://packages.microsoft.com/keys/microsoft.asc' > /etc/yum.repos.d/vscode.repo"
             },
             "exactEquivalent": true

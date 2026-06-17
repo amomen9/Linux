@@ -692,19 +692,19 @@ main() {
   # ---- Stage questions, up front (each question is shown with its options) ----
   log "Setup questions (answer each one; the install then runs unattended):"
   local do_drivers=0 do_apps=0 do_settings=0 do_docker=0
-  ask "Install device drivers?"     y && do_drivers=1
-  ask "Install must-have software?" y && do_apps=1
+  ask "(1/7) Install device drivers?"     y && do_drivers=1
+  ask "(2/7) Install must-have software?" y && do_apps=1
   if [ "$do_apps" -eq 1 ]; then
-    MIGRATE_ALT_LIMIT="$(ask_number "How many (if applicable) best alternatives of an application do you want to install?" 1)"
+    MIGRATE_ALT_LIMIT="$(ask_number "(3/7) How many (if applicable) best alternatives of an application do you want to install?" 1)"
     export MIGRATE_ALT_LIMIT
-    MIGRATE_VERSION_MODE="$(ask_ab "Want to install same version exact equivalents from Windows or the latest version?" "Same version" "Latest version")"
+    MIGRATE_VERSION_MODE="$(ask_ab "(4/7) Want to install same version of exact equivalents from Windows to Linux or the latest version?" "Same version" "Latest version")"
     export MIGRATE_VERSION_MODE
-    if ask "Update apps that are already installed on Linux?" n; then MIGRATE_UPDATE_EXISTING=yes; else MIGRATE_UPDATE_EXISTING=no; fi
+    if ask "(5/7) Update apps that are already installed on Linux?" n; then MIGRATE_UPDATE_EXISTING=yes; else MIGRATE_UPDATE_EXISTING=no; fi
     export MIGRATE_UPDATE_EXISTING
   fi
-  ask "Apply Windows settings?"     y && do_settings=1
+  ask "(6/7) Apply Windows settings?"     y && do_settings=1
   if [ -f "$here/docker_rebuild.sh" ]; then
-    ask "Rebuild docker components (images, volumes, containers, networks, etc.)?" y && do_docker=1
+    ask "(7/7) Rebuild docker components (images, volumes, containers, networks, etc.)?" y && do_docker=1
   fi
 
   # ---- Run the selected stages, unattended.  Order: drivers -> settings -> apps ----
