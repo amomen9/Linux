@@ -33,12 +33,37 @@ slugify() { printf '%s' "$1" | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9-_';
 
 # ----------------------------- bookkeeping -----------------------------------
 RESULTS="${RESULTS:-/tmp/migrate_to_linux_results.tsv}"
-: > "$RESULTS" 2>/dev/null || RESULTS="$(mktemp)"
-declare -a OK_LIST=() SKIP_LIST=() FAIL_LIST=() MANUAL_LIST=()
+# execute_all sets MIGRATE_KEEP_RESULTS so the per-stage child scripts APPEND to one
+# shared log instead of truncating it, which lets execute_all print a combined
+# summary of every operation at the very end. Run standalone, a script truncates.
+if [ -z "${MIGRATE_KEEP_RESULTS:-}" ]; then
+  : > "$RESULTS" 2>/dev/null || RESULTS="$(mktemp)"
+fi
+declare -a OK_LIST=() SKIP_LIST=() FAIL_LIST=() FAIL_REASON=() MANUAL_LIST=()
+
+# LAST_ERR holds the 1-line reason from the most recent captured command failure.
+LAST_ERR=""
+
+# Run a command, show its output, and on failure capture the last output line into
+# LAST_ERR (a 1-line error reason). stdin stays attached, so interactive installers
+# still work. Returns the command's real exit code.
+capture() {
+  local rc tmp; tmp="$(mktemp 2>/dev/null || echo /tmp/mtl_cap.$$)"
+  "$@" 2>&1 | tee "$tmp" >&3
+  rc=${PIPESTATUS[0]}
+  LAST_ERR=""
+  if [ "$rc" -ne 0 ]; then
+    LAST_ERR="$(grep -v '^[[:space:]]*$' "$tmp" 2>/dev/null | tail -n 1)"
+    [ -z "$LAST_ERR" ] && LAST_ERR="exit code $rc"
+  fi
+  rm -f "$tmp" 2>/dev/null || true
+  return "$rc"
+}
+
 record_line() { printf '%s\t%-6s\t%s\t%s\n' "$(date '+%F %T')" "$1" "$2" "${3:-}" >> "$RESULTS"; }
 mark_ok()     { OK_LIST+=("$1");     record_line OK     "$1" "${2:-}"; ok "installed: $1"; }
 mark_skip()   { SKIP_LIST+=("$1");   record_line SKIP   "$1" "${2:-}"; info "skipped: $1 (${2:-already present})"; }
-mark_fail()   { FAIL_LIST+=("$1");   record_line FAIL   "$1" "${2:-}"; err "failed: $1 ${2:+- $2}"; }
+mark_fail()   { FAIL_LIST+=("$1"); FAIL_REASON+=("${2:-unknown error}"); record_line FAIL "$1" "${2:-}"; err "failed: $1 ${2:+- $2}"; }
 mark_manual() { MANUAL_LIST+=("$1"); record_line MANUAL "$1" "${2:-}"; warn "manual step required: $1 ${2:+- $2}"; }
 
 print_summary() {
@@ -48,7 +73,8 @@ print_summary() {
   info "Manual: ${#MANUAL_LIST[@]}"
   info "Failed: ${#FAIL_LIST[@]}"
   if [ "${#FAIL_LIST[@]}" -gt 0 ]; then
-    warn "Failed items:"; for i in "${FAIL_LIST[@]}"; do info "  - $i"; done
+    warn "Failures (1-line reason each):"
+    for i in "${!FAIL_LIST[@]}"; do err "  - ${FAIL_LIST[$i]}: ${FAIL_REASON[$i]}"; done
   fi
   if [ "${#MANUAL_LIST[@]}" -gt 0 ]; then
     warn "Need a manual step:"; for i in "${MANUAL_LIST[@]}"; do info "  - $i"; done
@@ -170,7 +196,11 @@ flatpak_installed() { flatpak info "$1" >/dev/null 2>&1; }
 
 install_flatpak() {  # install_flatpak APPID
   local id="$1"
-  flatpak_installed "$id" && return 0
+  if flatpak_installed "$id"; then
+    # Already present: update it if the user asked to update existing apps.
+    [ "${MIGRATE_UPDATE_EXISTING:-no}" = "yes" ] && flatpak update -y --noninteractive "$id"
+    return 0
+  fi
   flatpak install -y --noninteractive flathub "$id"
 }
 
@@ -245,6 +275,22 @@ install_local_package() {  # install_local_package FILE
   esac
 }
 
+# Best-effort install of a package matching a specific (Windows) version. Tries the
+# major-version package name and an exact version pin. Returns 0 on success, 1 if no
+# matching version could be installed (caller then falls back to latest). pacman is
+# rolling-release, so version pinning is not supported there.
+install_native_version() {  # install_native_version PKG WINVER
+  local pkg="$1" ver="$2" major
+  major="$(printf '%s' "$ver" | grep -oE '[0-9]+' | head -n1)"
+  [ -z "$major" ] && return 1
+  case "$PM" in
+    apt)    capture pm_install "${pkg}-${major}" || capture pm_install "${pkg}=${ver}" ;;
+    dnf)    capture pm_install "${pkg}${major}" || capture pm_install "${pkg}-${major}" || capture pm_install "${pkg}-${ver}" ;;
+    zypper) capture pm_install "${pkg}${major}" || capture pm_install "${pkg}-${ver}" ;;
+    pacman) return 1 ;;
+  esac
+}
+
 # =============================================================================
 #  install_app  --  the multi-strategy, Flatpak-first dispatcher
 # -----------------------------------------------------------------------------
@@ -256,7 +302,7 @@ install_local_package() {  # install_local_package FILE
 #           deb-url | github-deb | manual
 # =============================================================================
 install_app() {
-  local name="" alt="" method="" flatpak="" snap_pkg="" arch_list=""
+  local name="" alt="" method="" flatpak="" snap_pkg="" arch_list="" winver=""
   local apt="" dnf="" zypper="" pacman=""
   local url_x86="" url_arm="" webapp_url="" docker_image="" github_repo="" note=""
   while [ "$#" -gt 0 ]; do
@@ -271,6 +317,7 @@ install_app() {
       --zypper)  zypper="$2"; shift 2 ;;
       --pacman)  pacman="$2"; shift 2 ;;
       --arch)    arch_list="$2"; shift 2 ;;
+      --winver)  winver="$2"; shift 2 ;;
       --url-x86) url_x86="$2"; shift 2 ;;
       --url-arm) url_arm="$2"; shift 2 ;;
       --webapp)  webapp_url="$2"; shift 2 ;;
@@ -288,9 +335,9 @@ install_app() {
   fi
 
   if [ -n "$alt" ]; then
-    printf '\n\033[1;34m==> Installing: %s   --->   %s\033[0m\n' "$name" "$alt" >&3
+    printf '\n\n\033[1;34m==> Installing: %s   --->   %s\033[0m\n' "$name" "$alt" >&3
   else
-    printf '\n\033[1;34m==> Installing: %s\033[0m\n' "$name" >&3
+    printf '\n\n\033[1;34m==> Installing: %s\033[0m\n' "$name" >&3
   fi
   [ -n "$note" ] && info "$note"
 
@@ -300,85 +347,124 @@ install_app() {
     apt) native_pkg="$apt" ;; dnf) native_pkg="$dnf" ;;
     zypper) native_pkg="$zypper" ;; pacman) native_pkg="$pacman" ;;
   esac
+  local slug; slug="$(slugify "$name")"
 
+  # ---- single-path methods ----
   case "$method" in
-    flatpak)
-      if [ -n "$flatpak" ] && ensure_flatpak && install_flatpak "$flatpak"; then
-        mark_ok "$name" "flatpak $flatpak"; return 0
-      fi
-      if [ -n "$native_pkg" ]; then
-        pm_refresh
-        if pm_install $native_pkg; then mark_ok "$name" "native $native_pkg (flatpak fell back)"; return 0; fi
-      fi
-      mark_fail "$name" "flatpak ${flatpak:-?} unavailable and no native fallback"
-      ;;
-    native)
-      if [ -z "$native_pkg" ]; then
-        if [ -n "$flatpak" ] && ensure_flatpak && install_flatpak "$flatpak"; then
-          mark_ok "$name" "flatpak $flatpak (no native pkg for $PM)"; return 0
-        fi
-        mark_manual "$name" "no $PM package name known (needs review)"; return 0
-      fi
-      if pm_installed "${native_pkg%% *}"; then mark_skip "$name" "already installed"; return 0; fi
-      pm_refresh
-      if pm_install $native_pkg; then mark_ok "$name" "native $native_pkg"; return 0; fi
-      if [ -n "$flatpak" ] && ensure_flatpak && install_flatpak "$flatpak"; then
-        mark_ok "$name" "flatpak $flatpak (native failed)"; return 0
-      fi
-      mark_fail "$name" "native $native_pkg failed"
-      ;;
-    snap)
-      if [ -n "$snap_pkg" ] && ensure_snap && snap install $snap_pkg; then
-        mark_ok "$name" "snap $snap_pkg"; return 0
-      fi
-      if [ -n "$flatpak" ] && ensure_flatpak && install_flatpak "$flatpak"; then
-        mark_ok "$name" "flatpak $flatpak (snap fell back)"; return 0
-      fi
-      mark_manual "$name" "snap unavailable on this distro"
-      ;;
     webapp)
-      webapp_desktop "$name" "$webapp_url"
-      ;;
+      webapp_desktop "$name" "$webapp_url"; return 0 ;;
     docker)
-      if ensure_docker; then
-        if docker pull "$docker_image" >/dev/null 2>&1; then
-          mark_ok "$name" "docker image pulled: $docker_image (run it yourself)"
-        else mark_fail "$name" "docker pull $docker_image failed"; fi
-      else mark_manual "$name" "install Docker, then: docker run $docker_image"; fi
-      ;;
+      if ensure_docker && capture docker pull "$docker_image"; then
+        mark_ok "$name" "docker image pulled: $docker_image (run it yourself)"
+      else mark_fail "$name" "${LAST_ERR:-could not pull docker image $docker_image}"; fi
+      return 0 ;;
     wine-bottles)
-      if ensure_flatpak && install_flatpak com.usebottles.bottles; then
+      if ensure_flatpak && capture install_flatpak com.usebottles.bottles; then
         mark_ok "$name" "via Bottles (flatpak) - configure the Windows app inside Bottles"
-      else mark_manual "$name" "install Bottles (flatpak) to run this Windows app"; fi
-      ;;
-    deb-url|github-deb)
-      local url=""; [ "$ARCH" = "aarch64" ] && url="$url_arm" || url="$url_x86"
-      if [ -z "$url" ]; then mark_manual "$name" "no download URL for $ARCH"; return 0; fi
-      local f="$DOWNLOAD_DIR/${name// /_}.pkg"
-      if download_file "$url" "$f" && install_local_package "$f"; then
-        mark_ok "$name" "downloaded package"
-      else mark_fail "$name" "download/install from $url failed"; fi
-      ;;
-    manual|*)
-      # If execute_all.sh staged a user-supplied file for this app, install it.
-      local mslug mdir mf minstalled
-      mslug="$(slugify "$name")"
-      mdir="${MIGRATE_MANUAL_DIR:-$DOWNLOAD_DIR/manual}/$mslug"
+      else mark_fail "$name" "${LAST_ERR:-could not install Bottles (flatpak)}"; fi
+      return 0 ;;
+    manual)
+      local mdir="${MIGRATE_MANUAL_DIR:-$DOWNLOAD_DIR/manual}/$slug" mf got=0
       if [ -d "$mdir" ] && [ -n "$(ls -A "$mdir" 2>/dev/null)" ]; then
-        minstalled=0
-        for mf in "$mdir"/*; do
-          case "$mf" in
-            *.deb|*.rpm|*.pkg.tar.*|*.pkg.tar) install_local_package "$mf" && minstalled=1 ;;
-            *) info "staged file (not a distro package): $mf" ;;
-          esac
-        done
-        if [ "$minstalled" -eq 1 ]; then mark_ok "$name" "installed from staged file"
-        else mark_manual "$name" "file staged in $mdir - install/run it manually${note:+ ($note)}"; fi
+        for mf in "$mdir"/*; do [ -f "$mf" ] && install_by_ext "$mf" && got=1; done
+        if [ "$got" -eq 1 ]; then mark_ok "$name" "installed from staged file"
+        else mark_fail "$name" "${LAST_ERR:-staged file could not be installed}"; fi
       else
-        local hint="$webapp_url$url_x86$github_repo"
-        mark_manual "$name" "${note:-manual install}${hint:+ ($hint)}"
+        mark_manual "$name" "${note:-manual install}"
       fi
-      ;;
+      return 0 ;;
+  esac
+
+  # ---- multi-backend methods (req: try every available pm until one works) ----
+  # The declared method goes first; then EVERY other available backend is tried as a
+  # fallback (native / flatpak / snap / direct-download) before the app is failed.
+  local order
+  case "$method" in
+    flatpak)            order="flatpak native snap deburl" ;;
+    native)             order="native flatpak snap deburl" ;;
+    snap)               order="snap flatpak native deburl" ;;
+    deb-url|github-deb) order="deburl native flatpak snap" ;;
+    *)                  order="flatpak native snap deburl" ;;
+  esac
+
+  local b url f rfn
+  for b in $order; do
+    case "$b" in
+      flatpak)
+        [ -n "$flatpak" ] || continue
+        ensure_flatpak || continue
+        if capture install_flatpak "$flatpak"; then mark_ok "$name" "flatpak $flatpak"; return 0; fi ;;
+      native)
+        [ -n "$native_pkg" ] || continue
+        # vendor's own repo first, for the latest upstream build (if defined).
+        rfn="repo_setup_$(printf '%s' "$slug" | tr '-' '_')"
+        if declare -F "$rfn" >/dev/null 2>&1; then
+          info "configuring vendor repository for $name ..."
+          "$rfn" || warn "vendor repo setup failed; falling back to the distro repo"
+        fi
+        pm_refresh
+        # Skip if present, UNLESS the user asked to update existing apps (then
+        # pm_install upgrades it to the latest available).
+        if pm_installed "${native_pkg%% *}" && [ "${MIGRATE_UPDATE_EXISTING:-no}" != "yes" ]; then
+          mark_skip "$name" "already installed"; return 0
+        fi
+        # match the Windows version when the user chose "same version".
+        if [ "${MIGRATE_VERSION_MODE:-latest}" = "same" ] && [ -n "$winver" ]; then
+          if install_native_version "$native_pkg" "$winver"; then mark_ok "$name" "native $native_pkg (matched Windows $winver)"; return 0; fi
+          warn "could not match Windows version $winver; installing latest"
+        fi
+        if capture pm_install $native_pkg; then mark_ok "$name" "native $native_pkg"; return 0; fi ;;
+      snap)
+        [ -n "$snap_pkg" ] || continue
+        ensure_snap || continue
+        if capture snap install $snap_pkg; then mark_ok "$name" "snap $snap_pkg"; return 0; fi ;;
+      deburl)
+        [ -n "$url_x86$url_arm" ] || continue
+        url="$url_x86"; [ "$ARCH" = "aarch64" ] && [ -n "$url_arm" ] && url="$url_arm"
+        [ -n "$url" ] || continue
+        f="$DOWNLOAD_DIR/${name// /_}.pkg"
+        if capture download_file "$url" "$f" && capture install_local_package "$f"; then mark_ok "$name" "downloaded package"; return 0; fi ;;
+    esac
+  done
+
+  mark_fail "$name" "${LAST_ERR:-no available package manager could install it}"
+}
+
+# Install the Nth-best alternative of an app only if the user asked for at least
+# N alternatives (MIGRATE_ALT_LIMIT, default 1). Usage:  app_alt RANK install_app ...
+app_alt() {
+  local rank="$1"; shift
+  local limit="${MIGRATE_ALT_LIMIT:-1}"
+  case "$limit" in ''|*[!0-9]*) limit=1 ;; esac
+  if [ "$rank" -le "$limit" ]; then "$@"; fi
+  return 0
+}
+
+# Handle a user-downloaded installer FILE according to its extension. Returns 0 on
+# success, 1 on failure (LAST_ERR holds a 1-line reason). Used by the manual phase.
+install_by_ext() {  # install_by_ext FILE
+  local f="$1"
+  case "$f" in
+    *.deb|*.rpm|*.pkg.tar.zst|*.pkg.tar.xz|*.pkg.tar)
+      capture install_local_package "$f" ;;
+    *.sh)
+      chmod +x "$f" 2>/dev/null; capture bash "$f" ;;
+    *.run|*.bin|*.bundle)
+      chmod +x "$f" 2>/dev/null; capture "$f" ;;
+    *.appimage|*.AppImage)
+      chmod +x "$f" 2>/dev/null
+      mkdir -p /opt/migrate_appimages
+      if cp -f "$f" /opt/migrate_appimages/ 2>/dev/null; then return 0
+      else LAST_ERR="could not place AppImage in /opt/migrate_appimages"; return 1; fi ;;
+    *.tar.gz|*.tgz|*.tar.bz2|*.tbz2|*.tar.xz|*.txz|*.tar)
+      mkdir -p "${f%/*}/extracted"
+      capture tar -xf "$f" -C "${f%/*}/extracted" ;;
+    *.zip)
+      if ! have_cmd unzip; then LAST_ERR="unzip is not installed"; return 1; fi
+      mkdir -p "${f%/*}/extracted"
+      capture unzip -o "$f" -d "${f%/*}/extracted" ;;
+    *)
+      LAST_ERR="unsupported file type: .${f##*.}"; return 1 ;;
   esac
 }
 

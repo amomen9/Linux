@@ -35,10 +35,10 @@ run_as_user() {
 }
 
 gset() {  # gset SCHEMA KEY VALUE  (GNOME/Cinnamon share most schemas)
-  if run_as_user gsettings set "$1" "$2" "$3" 2>/dev/null; then
+  if capture run_as_user gsettings set "$1" "$2" "$3"; then
     ok "$1 $2 = $3"
   else
-    warn "could not set $1 $2 (schema may not exist on $DE)"
+    mark_fail "config: $1 $2" "${LAST_ERR:-could not set (schema may not exist on $DE)}"
   fi
 }
 
@@ -82,8 +82,10 @@ apply_keyboard_layout() {
       local srcs="[('xkb', 'us')]"
       [ "$layouts" = "us,ir" ] && srcs="[('xkb', 'us'), ('xkb', 'ir')]"
       gset org.gnome.desktop.input-sources sources "$srcs" ;;
-    *) if have_cmd localectl; then localectl set-x11-keymap "$layouts" 2>/dev/null \
-         && ok "x11 keymap = $layouts" || mark_manual "keyboard layout" "$CFG_keyboard_layout"; fi ;;
+    *) if have_cmd localectl; then
+         if capture localectl set-x11-keymap "$layouts"; then ok "x11 keymap = $layouts"
+         else mark_fail "keyboard layout" "${LAST_ERR:-localectl set-x11-keymap failed}"; fi
+       fi ;;
   esac
 }
 
@@ -105,8 +107,11 @@ apply_lid_behavior() {
   local conf=/etc/systemd/logind.conf
   [ -f "$conf" ] || { info "no logind.conf"; return 0; }
   if ! grep -q '^HandleLidSwitch=' "$conf"; then
-    printf 'HandleLidSwitch=suspend\nHandleLidSwitchExternalPower=suspend\n' >> "$conf"
-    ok "configured lid -> suspend (restart systemd-logind to apply)"
+    if printf 'HandleLidSwitch=suspend\nHandleLidSwitchExternalPower=suspend\n' >> "$conf" 2>/dev/null; then
+      ok "configured lid -> suspend (restart systemd-logind to apply)"
+    else
+      mark_fail "lid behavior" "could not write $conf"
+    fi
   else
     info "lid behavior already configured"
   fi
