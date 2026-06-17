@@ -60,13 +60,19 @@ capture() {
   return "$rc"
 }
 
-record_line() { printf '%s\t%-6s\t%s\t%s\n' "$(date '+%F %T')" "$1" "$2" "${3:-}" >> "$RESULTS"; }
+# MODULE tags which big module (Drivers / Config settings / Applications) each result
+# belongs to, so execute_all can print a per-module classified summary at the end.
+MODULE="${MODULE:-General}"
+record_line() { printf '%s\t%s\t%-6s\t%s\t%s\n' "$(date '+%F %T')" "${MODULE:-General}" "$1" "$2" "${3:-}" >> "$RESULTS"; }
 mark_ok()     { OK_LIST+=("$1");     record_line OK     "$1" "${2:-}"; ok "installed: $1"; }
 mark_skip()   { SKIP_LIST+=("$1");   record_line SKIP   "$1" "${2:-}"; info "skipped: $1 (${2:-already present})"; }
 mark_fail()   { FAIL_LIST+=("$1"); FAIL_REASON+=("${2:-unknown error}"); record_line FAIL "$1" "${2:-}"; err "failed: $1 ${2:+- $2}"; }
 mark_manual() { MANUAL_LIST+=("$1"); record_line MANUAL "$1" "${2:-}"; warn "manual step required: $1 ${2:+- $2}"; }
 
 print_summary() {
+  # When orchestrated by execute_all, it prints ONE combined, classified summary at
+  # the very end; suppress the per-stage summary here to avoid mid-run clutter.
+  [ -n "${MIGRATE_KEEP_RESULTS:-}" ] && return 0
   log "Summary"
   info "OK:     ${#OK_LIST[@]}"
   info "Skip:   ${#SKIP_LIST[@]}"
@@ -302,7 +308,7 @@ install_native_version() {  # install_native_version PKG WINVER
 #           deb-url | github-deb | manual
 # =============================================================================
 install_app() {
-  local name="" alt="" method="" flatpak="" snap_pkg="" arch_list="" winver=""
+  local name="" alt="" method="" flatpak="" snap_pkg="" arch_list="" winver="" is_security=0 is_paid=0
   local apt="" dnf="" zypper="" pacman=""
   local url_x86="" url_arm="" webapp_url="" docker_image="" github_repo="" note=""
   while [ "$#" -gt 0 ]; do
@@ -323,11 +329,33 @@ install_app() {
       --webapp)  webapp_url="$2"; shift 2 ;;
       --docker)  docker_image="$2"; shift 2 ;;
       --github)  github_repo="$2"; shift 2 ;;
-      --note)    note="$2"; shift 2 ;;
+      --note)     note="$2"; shift 2 ;;
+      --security) is_security=1; shift ;;
+      --paid)     is_paid=1; shift ;;
       *) shift ;;
     esac
   done
   [ -z "$name" ] && return 0
+
+  # Security-suite equivalents (antivirus/firewall, etc.) are only installed when the
+  # user opted in; many skip them because Linux is hardened by default.
+  if [ "$is_security" -eq 1 ] && [ "${MIGRATE_INSTALL_SECURITY:-no}" != "yes" ]; then
+    mark_skip "$name" "security suite - not installed (opted out)"
+    return 0
+  fi
+
+  # Free-only mode: this app's only alternative is paid. Ask whether to proceed.
+  if [ "${MIGRATE_FREE_ONLY:-no}" = "yes" ] && [ "$is_paid" -eq 1 ]; then
+    local _fans=""
+    if [ -r /dev/tty ]; then
+      printf '\n\n\033[1;33m==> %s%s has no free alternative.\033[0m\n' "$name" "${alt:+ ---> $alt}" >&3
+      printf '  No free alternative exists for this application. Do you want to continue with the installation of the paid one? Answering with No means skipping this application (y/n): ' > /dev/tty
+      read -r _fans < /dev/tty || _fans="n"
+      case "$_fans" in [Yy]*) ;; *) mark_skip "$name" "paid - skipped (free-only mode)"; return 0 ;; esac
+    else
+      mark_skip "$name" "paid - skipped (free-only mode)"; return 0
+    fi
+  fi
 
   if ! arch_supported "$arch_list"; then
     mark_skip "$name" "not available for $ARCH"

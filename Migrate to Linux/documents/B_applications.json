@@ -3891,7 +3891,8 @@
               "dnf": "clamtk",
               "pacman": "clamtk"
             },
-            "review": true
+            "review": true,
+            "security": true
           }
         },
         {
@@ -4583,7 +4584,8 @@
               "dnf": "clamtk",
               "pacman": "clamtk"
             },
-            "review": true
+            "review": true,
+            "security": true
           }
         },
         {
