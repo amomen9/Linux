@@ -89,10 +89,11 @@ function Add-Flag {
 
 # Build one `install_app ...` line from an install descriptor object + name.
 function New-InstallCall {
-    param([string] $Name, $Install)
+    param([string] $Name, [string] $Alt, $Install)
     $parts = New-Object System.Collections.Generic.List[string]
     $parts.Add('install_app')
     Add-Flag $parts '--name' $Name
+    Add-Flag $parts '--alt' $Alt
 
     $method = Get-Prop $Install 'method'
     if (-not $method) { $method = 'manual' }
@@ -153,6 +154,7 @@ $manifest = Get-Content -Raw -Path $ManifestPath | ConvertFrom-Json
 $apps = $manifest.applications
 
 $appLines = New-Object System.Collections.Generic.List[string]
+$manualLines = New-Object System.Collections.Generic.List[string]
 $emittedNames = New-Object System.Collections.Generic.HashSet[string]
 $enriched = 0; $fallback = 0
 
@@ -167,11 +169,23 @@ foreach ($app in $apps) {
     if (-not $best) { continue }
 
     $name = [string](Get-Prop $app 'name')
+    $altName = [string](Get-Prop $best 'name')
     $install = Get-Prop $best 'install'
     if ($install) { $enriched++ } else { $install = New-FallbackInstall $best; $fallback++ }
 
-    $appLines.Add(('  ' + (New-InstallCall -Name $name -Install $install)))
+    $appLines.Add(('  ' + (New-InstallCall -Name $name -Alt $altName -Install $install)))
     [void]$emittedNames.Add($name.ToLowerInvariant())
+
+    # Apps whose Linux install needs a user-supplied file go into MANUAL_APPS so
+    # execute_all.sh can prompt for the file path up front.
+    if (Get-Prop $install 'promptFile') {
+        $hint = [string](Get-Prop $install 'note')
+        if (-not $hint) {
+            $dl = Get-Prop $install 'downloadUrl'
+            if ($dl) { $hint = [string](Get-Prop $dl 'x86_64') }
+        }
+        $manualLines.Add('  "' + (ConvertTo-BashString $name) + '|' + (ConvertTo-BashString ($hint -replace '\|', ' ')) + '"')
+    }
 }
 
 # Additional hand-curated CSV (free-text) -> manual entries, de-duped by name.
@@ -187,13 +201,14 @@ if (Test-Path $AdditionalCsv) {
         $note = (@($pkgs, $src) | Where-Object { $_ }) -join ' | '
         $inst = [pscustomobject]@{ method = 'manual'; note = $note }
         if ($url) { $inst | Add-Member -NotePropertyName downloadUrl -NotePropertyValue ([pscustomobject]@{ x86_64 = $url }) }
-        $appLines.Add(('  ' + (New-InstallCall -Name $name -Install $inst)))
+        $appLines.Add(('  ' + (New-InstallCall -Name $name -Alt $pkgs -Install $inst)))
         [void]$emittedNames.Add($name.ToLowerInvariant())
     }
 }
 
 $appsData = ($appLines -join "`n")
-Write-Host ("  apps: {0} total ({1} enriched, {2} fallback)" -f $appLines.Count, $enriched, $fallback) -ForegroundColor Green
+$manualData = ($manualLines -join "`n")
+Write-Host ("  apps: {0} total ({1} enriched, {2} fallback); {3} manual file-prompt app(s)" -f $appLines.Count, $enriched, $fallback, $manualLines.Count) -ForegroundColor Green
 
 # ---------------------------------------------------------------------------
 # 2. SETTINGS  (from C_windows_configs.csv)
@@ -249,7 +264,7 @@ $map = @{
     'install_must_have_software.sh.tmpl' = @{ apps = $appsData }
     'apply_settings.sh.tmpl'             = @{ settings = $settingsData }
     'install_device_drivers.sh.tmpl'     = @{ drivers = $driversData }
-    'execute_all.sh.tmpl'                = @{}
+    'execute_all.sh.tmpl'                = @{ manual = $manualData }
 }
 
 foreach ($tmplName in $map.Keys) {
@@ -261,6 +276,7 @@ foreach ($tmplName in $map.Keys) {
     if ($map[$tmplName].ContainsKey('apps'))     { $content = $content.Replace('### __APPS_DATA__ ###', $map[$tmplName].apps) }
     if ($map[$tmplName].ContainsKey('settings')) { $content = $content.Replace('### __SETTINGS_DATA__ ###', $map[$tmplName].settings) }
     if ($map[$tmplName].ContainsKey('drivers'))  { $content = $content.Replace('### __DRIVERS_DATA__ ###', $map[$tmplName].drivers) }
+    if ($map[$tmplName].ContainsKey('manual'))   { $content = $content.Replace('### __MANUAL_APPS__ ###', $map[$tmplName].manual) }
 
     # Normalize to LF, no trailing CR, no BOM.
     $content = $content -replace "`r`n", "`n" -replace "`r", "`n"

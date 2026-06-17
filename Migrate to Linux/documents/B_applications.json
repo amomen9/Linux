@@ -1151,7 +1151,8 @@
             "note": "Download the Anaconda installer .sh and run it",
             "downloadUrl": {
               "x86_64": "https://www.anaconda.com/download"
-            }
+            },
+            "promptFile": true
           }
         },
         {
@@ -1980,7 +1981,8 @@
             "note": "MarvinSuite from chemaxon.com",
             "downloadUrl": {
               "x86_64": "https://chemaxon.com/products/marvin"
-            }
+            },
+            "promptFile": true
           }
         },
         {
@@ -2985,7 +2987,8 @@
             "note": "Foxit Reader for Linux (.run installer)",
             "downloadUrl": {
               "x86_64": "https://www.foxit.com/pdf-reader/"
-            }
+            },
+            "promptFile": true
           }
         },
         {
@@ -3467,7 +3470,8 @@
             "note": "Gurobi Optimizer (academic/commercial) from gurobi.com",
             "downloadUrl": {
               "x86_64": "https://www.gurobi.com/downloads/"
-            }
+            },
+            "promptFile": true
           }
         },
         {
@@ -4645,7 +4649,8 @@
             "note": "SMath Studio (free) from smath.com",
             "downloadUrl": {
               "x86_64": "https://en.smath.com/view/SMathStudio/summary"
-            }
+            },
+            "promptFile": true
           }
         },
         {
@@ -5044,7 +5049,8 @@
             "note": "ProjectLibre (.deb/.rpm) from projectlibre.com",
             "downloadUrl": {
               "x86_64": "https://www.projectlibre.com/"
-            }
+            },
+            "promptFile": true
           }
         },
         {
@@ -6604,7 +6610,8 @@
           "downloadUrl": "See notes for download location",
           "install": {
             "method": "manual",
-            "note": "PaperCut Print Deploy client from your print server's portal"
+            "note": "PaperCut Print Deploy client from your print server's portal",
+            "promptFile": true
           }
         }
       ]
@@ -7443,7 +7450,8 @@
             "note": "RealVNC Viewer (.deb/.rpm)",
             "downloadUrl": {
               "x86_64": "https://www.realvnc.com/en/connect/download/viewer/"
-            }
+            },
+            "promptFile": true
           }
         },
         {
@@ -7600,7 +7608,8 @@
             "note": "RStudio Desktop (.deb/.rpm) from posit.co",
             "downloadUrl": {
               "x86_64": "https://posit.co/download/rstudio-desktop/"
-            }
+            },
+            "promptFile": true
           }
         },
         {
@@ -7639,7 +7648,8 @@
             "note": "Ventoy from ventoy.net; GUI alt: 'popsicle'",
             "downloadUrl": {
               "x86_64": "https://github.com/ventoy/Ventoy/releases"
-            }
+            },
+            "promptFile": true
           }
         },
         {
@@ -8190,7 +8200,8 @@
           "downloadUrl": "https://spotplayer.ir/",
           "install": {
             "method": "manual",
-            "note": "SpotPlayer (Sib) Linux build from sibm[a].ir"
+            "note": "SpotPlayer (Sib) Linux build from sibm[a].ir",
+            "promptFile": true
           }
         }
       ]
@@ -8875,7 +8886,8 @@
             "note": "VMware Workstation Pro .bundle (free for personal use)",
             "downloadUrl": {
               "x86_64": "https://www.vmware.com/products/workstation-pro.html"
-            }
+            },
+            "promptFile": true
           }
         },
         {
@@ -9583,7 +9595,8 @@
             "note": "WindTerm from GitHub releases",
             "downloadUrl": {
               "x86_64": "https://github.com/kingToolbox/WindTerm/releases"
-            }
+            },
+            "promptFile": true
           }
         }
       ]

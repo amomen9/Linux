@@ -35,6 +35,10 @@ err()  { printf '\033[1;31m%s\033[0m\n' "$*" >&3; }
 
 have_cmd() { command -v "$1" >/dev/null 2>&1; }
 
+# Filesystem-safe slug from an app name. execute_all.sh stages user-supplied
+# files for "manual" apps under $MIGRATE_MANUAL_DIR/<slug>/ using the SAME slug.
+slugify() { printf '%s' "$1" | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9-_'; }
+
 # ----------------------------- bookkeeping -----------------------------------
 RESULTS="${RESULTS:-/tmp/migrate_to_linux_results.tsv}"
 : > "$RESULTS" 2>/dev/null || RESULTS="$(mktemp)"
@@ -260,12 +264,13 @@ install_local_package() {  # install_local_package FILE
 #           deb-url | github-deb | manual
 # =============================================================================
 install_app() {
-  local name="" method="" flatpak="" snap_pkg="" arch_list=""
+  local name="" alt="" method="" flatpak="" snap_pkg="" arch_list=""
   local apt="" dnf="" zypper="" pacman=""
   local url_x86="" url_arm="" webapp_url="" docker_image="" github_repo="" note=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --name)    name="$2"; shift 2 ;;
+      --alt)     alt="$2"; shift 2 ;;
       --method)  method="$2"; shift 2 ;;
       --flatpak) flatpak="$2"; shift 2 ;;
       --snap)    snap_pkg="$2"; shift 2 ;;
@@ -290,7 +295,11 @@ install_app() {
     return 0
   fi
 
-  log "Installing: $name"
+  if [ -n "$alt" ]; then
+    printf '\n\033[1;34m==> Installing: %s   --->   %s\033[0m\n' "$name" "$alt" >&3
+  else
+    printf '\n\033[1;34m==> Installing: %s\033[0m\n' "$name" >&3
+  fi
   [ -n "$note" ] && info "$note"
 
   # native package name for the running family
@@ -359,8 +368,24 @@ install_app() {
       else mark_fail "$name" "download/install from $url failed"; fi
       ;;
     manual|*)
-      local hint="$webapp_url$url_x86$github_repo"
-      mark_manual "$name" "${note:-manual install}${hint:+ ($hint)}"
+      # If execute_all.sh staged a user-supplied file for this app, install it.
+      local mslug mdir mf minstalled
+      mslug="$(slugify "$name")"
+      mdir="${MIGRATE_MANUAL_DIR:-$DOWNLOAD_DIR/manual}/$mslug"
+      if [ -d "$mdir" ] && [ -n "$(ls -A "$mdir" 2>/dev/null)" ]; then
+        minstalled=0
+        for mf in "$mdir"/*; do
+          case "$mf" in
+            *.deb|*.rpm|*.pkg.tar.*|*.pkg.tar) install_local_package "$mf" && minstalled=1 ;;
+            *) info "staged file (not a distro package): $mf" ;;
+          esac
+        done
+        if [ "$minstalled" -eq 1 ]; then mark_ok "$name" "installed from staged file"
+        else mark_manual "$name" "file staged in $mdir - install/run it manually${note:+ ($note)}"; fi
+      else
+        local hint="$webapp_url$url_x86$github_repo"
+        mark_manual "$name" "${note:-manual install}${hint:+ ($hint)}"
+      fi
       ;;
   esac
 }
