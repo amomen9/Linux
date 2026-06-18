@@ -707,8 +707,13 @@ print_module_summary() {  # print_module_summary "Module name"
     awk -F'\t' -v m="$m" '{g=$3;gsub(/ /,"",g)} $2==m && g=="MANUAL"{printf "            - %s: %s\n",$4,$5}' "$f" >&3
   fi
   if [ "$nskip" -gt 0 ]; then
-    info "          Skipped:"
-    awk -F'\t' -v m="$m" '{g=$3;gsub(/ /,"",g)} $2==m && g=="SKIP"{printf "            - %s\n",$4}' "$f" >&3
+    # Group skipped items by their reason: "Skipped: <reason>" with its items beneath.
+    local r
+    while IFS= read -r r; do
+      [ -z "$r" ] && continue
+      info "          Skipped: $r"
+      awk -F'\t' -v m="$m" -v rr="$r" '{g=$3;gsub(/ /,"",g); d=$5; if(d=="")d="already present"} $2==m && g=="SKIP" && d==rr{printf "            - %s\n",$4}' "$f" >&3
+    done < <(awk -F'\t' -v m="$m" '{g=$3;gsub(/ /,"",g); d=$5; if(d=="")d="already present"} $2==m && g=="SKIP"{print d}' "$f" | sort -u)
   fi
 }
 
