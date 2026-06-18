@@ -357,6 +357,31 @@ re-rate a device or add a new chip, edit that table and re-run.
 
 ---
 
+## Update the manifest with AI
+
+When you run `run_project.ps1`, any installed Windows app that is **not found in the
+manifest** (`documents/B_applications.json`) is printed as a yellow **warning** listing
+the unmatched app names (and the same list is shown again at the start of
+`execute_all.sh` on Linux). Those apps get no Linux equivalent until you add them.
+
+You don't have to write the manifest entries by hand. Open this project in any
+AI coding agent (Claude Code, etc.) and paste the prompt below verbatim - it will run the
+detector, read the warning list, and fill in the missing entries (plus refresh the
+existing ones) with current data:
+
+```text
+Make a test-run of run_project.ps1 and see the list of applications that will be given as a warning for not being found on the manifest. Add them to the manifest with the latest avaiable data from the internet in manifest entries format. Also in the end, update the already existing application list with respect to the latest available versions, best alternatives, download link, and everything else that can be updated. Strictly do not change anything else
+```
+
+After the agent finishes, re-run `run_project.ps1` and use the regenerated
+`Execute on Linux!` scripts.
+
+> Note: the `installedVersion` / `installedEdition` fields on each entry are **dynamic** -
+> the toolkit refreshes them from your actual Windows install on every run, so you don't
+> need to maintain them. Everything else in an entry is static curated data.
+
+---
+
 ## Settings migration - structured output
 
 When `apply_settings.sh` runs, every `_apply_*` function produces structured lines:

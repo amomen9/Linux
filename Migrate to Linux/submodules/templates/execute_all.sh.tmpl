@@ -154,6 +154,10 @@ show_unmatched_warning() {
   warn "To include them, add entries to the manifest file on your Windows machine:"
   warn "    documents/B_applications.json"
   warn "then re-run run_project.ps1 and use the regenerated 'Execute on Linux!' scripts."
+  # Record them so they appear as a dedicated skip group in the final summary.
+  local prev="$MODULE"; MODULE="Applications"
+  for a in "${UNMATCHED_APPS[@]}"; do record_line SKIP "$a" "not in the manifest"; done
+  MODULE="$prev"
 }
 
 run_stage() {  # run_stage script.sh  (helper scripts live in submodules/)

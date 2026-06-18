@@ -189,7 +189,154 @@ $apps = $manifest.applications
 
 # All manifest app names (lowercased) for the "not in manifest" check below.
 $manifestNames = New-Object System.Collections.Generic.HashSet[string]
-foreach ($app in $apps) { [void]$manifestNames.Add(([string](Get-Prop $app 'name')).ToLowerInvariant()) }
+$nameToApp = @{}
+foreach ($app in $apps) {
+    $nm = ([string](Get-Prop $app 'name')).ToLowerInvariant()
+    [void]$manifestNames.Add($nm)
+    if (-not $nameToApp.ContainsKey($nm)) { $nameToApp[$nm] = $app }
+}
+
+# ---------------------------------------------------------------------------
+# Match detected Windows apps to manifest entries by NORMALISED name, so that
+# version/edition suffixes in the registry DisplayName (e.g. "WinRAR 7.22",
+# "Microsoft 365 - en-us") still resolve to the static manifest entry. The
+# stripped version/edition are written back into two DYNAMIC manifest fields
+# (installedVersion / installedEdition) that are refreshed on every run; the
+# "same version" mode reads installedVersion as its pin target.
+# ---------------------------------------------------------------------------
+function Get-BaseName([string]$n) {
+    if (-not $n) { return '' }
+    $s = $n.ToLowerInvariant()
+    $s = $s -replace '\([^)]*\)', ' '                                   # (x64 en-US)
+    $s = $s -replace '\s+-\s+[a-z]{2}-[a-z]{2}\b', ' '                  #  - en-us
+    $s = $s -replace '\b(x64|x86|win64|win32|amd64|64-bit|32-bit)\b', ' '
+    $s = $s -replace '\b(version|release|update|build|from visual studio)\b', ' '
+    # Strip trailing version-ish tokens (a space-led token that contains a digit),
+    # e.g. " 7.22", " 10.0.301", " py313_26.3.2-2". Repeated for multi-token tails.
+    for ($i = 0; $i -lt 4; $i++) { $s = $s -replace '[\s\-_]+\S*\d\S*\s*$', ' ' }
+    $s = $s -replace '[^a-z0-9]+', ' '
+    return (($s -replace '\s+', ' ').Trim())
+}
+function Get-Edition([string]$raw, [string]$ver) {
+    if (-not $raw) { return '' }
+    $bits = New-Object System.Collections.Generic.List[string]
+    foreach ($m in [regex]::Matches($raw, '\(([^)]*)\)'))           { if ($m.Groups[1].Value.Trim()) { $bits.Add($m.Groups[1].Value.Trim()) } }
+    foreach ($m in [regex]::Matches($raw, '\b[a-z]{2}-[a-z]{2}\b')) { if (-not $bits.Contains($m.Value)) { $bits.Add($m.Value) } }
+    if ($raw -match '(?i)\bapps for enterprise\b') { $bits.Add('Apps for enterprise') }
+    return (($bits | Select-Object -Unique) -join ', ')
+}
+function Compare-Ver([string]$a, [string]$b) {
+    $va = $null; $vb = $null
+    # Treat every non-digit run as a separator (so "3.14-64" -> 3.14.64, not 3.1464),
+    # and keep at most 4 components ([version] accepts up to four).
+    $na = ((($a -replace '[^0-9]+', '.').Trim('.') -split '\.' | Select-Object -First 4) -join '.')
+    $nb = ((($b -replace '[^0-9]+', '.').Trim('.') -split '\.' | Select-Object -First 4) -join '.')
+    if ([version]::TryParse($na, [ref]$va) -and [version]::TryParse($nb, [ref]$vb)) { return $va.CompareTo($vb) }
+    return [string]::Compare($a, $b)
+}
+# Curated aliases for names that normalisation alone cannot bridge (embedded
+# numbers that are part of the name, or a different manifest wording). Key is a
+# substring of the lowercased DisplayName; value is the exact manifest name.
+$alias = [ordered]@{
+    'microsoft 365 apps'        = 'Microsoft 365 / Office'
+    'microsoft 365'             = 'Microsoft 365 / Office'
+    'microsoft office hub'      = 'Microsoft 365 / Office'
+    'visual studio build tools' = 'Visual Studio Build Tools / Community'
+    'visual studio community'   = 'Visual Studio Build Tools / Community'
+    'visual studio code'        = 'Visual Studio Code'
+    'whatsapp'                  = 'WhatsApp Desktop'
+    'whats app'                 = 'WhatsApp Desktop'
+    'onedrive'                  = 'Microsoft OneDrive'
+    'one drive'                 = 'Microsoft OneDrive'
+    'powershell'                = 'PowerShell'
+    'power shell'               = 'PowerShell'
+    'quick share'              = 'Nearby Share / Quick Share'
+    'nearby share'             = 'Nearby Share / Quick Share'
+    'hotspot shield'           = 'Hotspot Shield'
+    'zune music'               = 'Zune Music / Windows Media Player'
+    'internet download manager' = 'Internet Download Manager (IDM)'
+    'gnuwin32'                  = 'GnuWin32: Grep'
+    'lenovo vantage'           = 'Lenovo Vantage / Lenovo Vantage Service'
+    'lenovo go central'        = 'Lenovo Vantage / Lenovo Vantage Service'
+}
+$aliasKeys = @($alias.Keys | Sort-Object -Property Length -Descending)
+# Manifest base names, longest first (most specific wins).
+$appBases = @($apps | ForEach-Object { [pscustomobject]@{ App = $_; Base = (Get-BaseName ([string](Get-Prop $_ 'name'))) } } |
+             Where-Object { $_.Base } | Sort-Object -Property @{ Expression = { $_.Base.Length } } -Descending)
+
+function Find-ManifestApp([string]$csvName) {
+    $low = $csvName.ToLowerInvariant()
+    if ($nameToApp.ContainsKey($low)) { return $nameToApp[$low] }
+    foreach ($k in $aliasKeys) { if ($low.Contains($k)) { return $nameToApp[$alias[$k].ToLowerInvariant()] } }
+    $cb = Get-BaseName $csvName
+    if ($cb) {
+        # Exact base-name equality only: both sides have had version/edition suffixes
+        # stripped, so the same product reduces to the same base. (Prefix matching is
+        # avoided so distinct products like "Python Manager" don't fold into "Python".)
+        foreach ($e in $appBases) { if ($cb -eq $e.Base) { return $e.App } }
+    }
+    return $null
+}
+
+$verByName = @{}; $edByName = @{}
+$unmatchedLines = New-Object System.Collections.Generic.List[string]
+$unmatchedNames = New-Object System.Collections.Generic.List[string]
+if (Test-Path $SoftwareCsv) {
+    Write-Host "Reading detected software: $SoftwareCsv" -ForegroundColor Gray
+    foreach ($row in (Import-Csv -Path $SoftwareCsv)) {
+        $cn = [string]$row.Name
+        if (-not $cn) { continue }
+        $app = Find-ManifestApp $cn
+        if (-not $app) { $unmatchedLines.Add('  "' + (ConvertTo-BashString $cn) + '"'); $unmatchedNames.Add($cn); continue }
+        $key = ([string](Get-Prop $app 'name')).ToLowerInvariant()
+        $ver = [string]$row.Version
+        if (-not $ver) { $m = [regex]::Match($cn, '\d[\w.\-]*'); if ($m.Success) { $ver = $m.Value } }
+        if ($ver) {
+            if (-not $verByName.ContainsKey($key) -or (Compare-Ver $ver $verByName[$key]) -gt 0) { $verByName[$key] = $ver }
+        }
+        $ed = Get-Edition $cn $ver
+        if ($ed) {
+            if (-not $edByName.ContainsKey($key)) { $edByName[$key] = New-Object System.Collections.Generic.List[string] }
+            foreach ($p in ($ed -split ',\s*')) { if ($p -and -not $edByName[$key].Contains($p)) { $edByName[$key].Add($p) } }
+        }
+    }
+}
+# Write the dynamic fields onto the matched manifest entries (in memory).
+function Set-Prop($obj, $n, $v) {
+    if ($obj.PSObject.Properties[$n]) { $obj.$n = $v } else { $obj | Add-Member -NotePropertyName $n -NotePropertyValue $v }
+}
+$dynCount = 0
+foreach ($app in $apps) {
+    $key = ([string](Get-Prop $app 'name')).ToLowerInvariant()
+    $iv = if ($verByName.ContainsKey($key)) { $verByName[$key] } else { $null }
+    $ie = if ($edByName.ContainsKey($key)) { (($edByName[$key] | Select-Object -Unique) -join ', ') } else { $null }
+    if ($iv -or $ie) {
+        Set-Prop $app 'installedVersion' ([string]$iv)
+        Set-Prop $app 'installedEdition' ([string]$ie)
+        $dynCount++
+    }
+}
+# Persist the manifest so the dynamic fields are stored alongside the static data.
+try {
+    $json = ($manifest | ConvertTo-Json -Depth 40)
+    [System.IO.File]::WriteAllText($ManifestPath, $json, (New-Object System.Text.UTF8Encoding($false)))
+    Write-Host ("  refreshed installedVersion/installedEdition on {0} manifest entr(ies)" -f $dynCount) -ForegroundColor Green
+} catch {
+    Write-Host ("  WARNING: could not write dynamic fields back to manifest: {0}" -f $_.Exception.Message) -ForegroundColor Yellow
+}
+$unmatchedData = ($unmatchedLines -join "`n")
+# req27: report the not-in-manifest apps as a warning DURING this ps1 run (not only
+# later inside execute_all.sh), so the user sees them the moment the toolkit runs.
+if ($unmatchedNames.Count -gt 0) {
+    Write-Host ""
+    Write-Host ("WARNING: {0} detected Windows app(s) are NOT in the manifest -- no Linux equivalent will be installed for them:" -f $unmatchedNames.Count) -ForegroundColor Yellow
+    foreach ($u in $unmatchedNames) { Write-Host ("    - {0}" -f $u) -ForegroundColor Yellow }
+    Write-Host ("  Add them to the manifest ({0}) and re-run run_project.ps1." -f $ManifestPath) -ForegroundColor Yellow
+    Write-Host "  (See the README 'Update the manifest with AI' section for a ready-to-paste prompt.)" -ForegroundColor Yellow
+    Write-Host ""
+} else {
+    Write-Host "  all detected apps matched a manifest entry" -ForegroundColor Green
+}
 
 $appLines = New-Object System.Collections.Generic.List[string]
 $repoLines = New-Object System.Collections.Generic.List[string]
@@ -252,10 +399,13 @@ foreach ($app in $apps) {
     }
 
     # Windows version for exact native equivalents (req4): pass it so the runtime can
-    # honour "same version" when the user picks it. Use the first version-looking token.
+    # honour "same version" when the user picks it. Prefer the DYNAMIC installedVersion
+    # (the actual version detected on this Windows machine) and fall back to the static
+    # manifest version. Use the first version-looking token.
     $winver = ''
     if ($bestInstall -and (Get-Prop $bestInstall 'exactEquivalent')) {
-        $vv = [string](Get-Prop $app 'version')
+        $vv = [string](Get-Prop $app 'installedVersion')
+        if (-not $vv) { $vv = [string](Get-Prop $app 'version') }
         if ($vv -match '\d') {
             $tok = ($vv -split '[ /]') | Where-Object { $_ -match '^\d' } | Select-Object -First 1
             if ($tok) { $winver = [string]$tok }
@@ -302,21 +452,8 @@ $appsData = ((@($repoLines) + @($appLines)) -join "`n")
 $manualData = ($manualLines -join "`n")
 Write-Host ("  vendor repo setups: {0}" -f $repoSlugs.Count) -ForegroundColor Green
 Write-Host ("  apps: {0} total ({1} enriched, {2} fallback); {3} manual file-prompt app(s)" -f $appLines.Count, $enriched, $fallback, $manualLines.Count) -ForegroundColor Green
-
-# Detected Windows apps NOT present in the manifest (no Linux mapping). execute_all.sh
-# warns about these at startup so the user can add them and regenerate.
-$unmatchedLines = New-Object System.Collections.Generic.List[string]
-if (Test-Path $SoftwareCsv) {
-    foreach ($row in (Import-Csv -Path $SoftwareCsv)) {
-        $n = [string]$row.Name
-        if (-not $n) { continue }
-        if (-not $manifestNames.Contains($n.ToLowerInvariant())) {
-            $unmatchedLines.Add('  "' + (ConvertTo-BashString $n) + '"')
-        }
-    }
-}
-$unmatchedData = ($unmatchedLines -join "`n")
-Write-Host ("  detected apps not in manifest: {0}" -f $unmatchedLines.Count) -ForegroundColor Yellow
+# ($unmatchedData / dynamic installedVersion+installedEdition computed during the
+#  normalised-match pass above, right after the manifest was loaded.)
 
 # ---------------------------------------------------------------------------
 # 2. SETTINGS  (from C_windows_configs.csv)

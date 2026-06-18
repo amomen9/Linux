@@ -49,7 +49,7 @@
 "ninja","1.13.2","ninja-build","Win32","Available on Linux","ninja-build (Linux) (install: apt)","70","Free (FOSS)","yes","No, manual transfer","Native (APT package)","https://ninja-build.org/"
 "Node.js","24.15.0","Node.js Foundation","Win32","Available on Linux","Node.js (Linux) (install: apt)","70","Free (FOSS)","yes","No, manual transfer","Native (APT package)","https://nodejs.org/en/download/package-manager"
 "NordUpdater","1.5.0.1028","Nord Security","Win32","Needs Review - NOT IN MANIFEST","Not in manifest - research manually or add to B_applications.json","","","no","No, manual transfer","",""
-"NordVPN","8.5.1.0","Nord Security","Win32","Needs Review - NOT IN MANIFEST","Not in manifest - research manually or add to B_applications.json","","","no","No, manual transfer","",""
+"NordVPN","8.5.1.0","Nord Security","Win32","Official native app (apt/dnf repo + install script)","NordVPN for Linux (install: manual)","70","Paid","yes","yes","native","https://nordvpn.com/download/linux/"
 "Notepad++","8.9.6.4","Notepad++ Team","Win32","Native Alternative; Windows Emulator (Wine/Proton)","Notepadqq (install: apt)","70","Free (FOSS)","yes","No, manual transfer","Native (APT package)","https://notepadqq.com/"
 "oCam version 550.0","550.0","http://ohsoft.net/","Win32","Not Available; Native Alternative","OBS Studio (install: apt)","70","Free (FOSS)","yes","No, manual transfer","Native (APT package)","https://obsproject.com/download"
 "OpenSSH","8.9.1.0","Microsoft Corporation","Win32","Available on Linux","OpenSSH (native) (install: apt)","70","Free (FOSS)","yes","No, manual transfer","Native (APT package)","https://www.openssh.com/"
