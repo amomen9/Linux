@@ -859,7 +859,7 @@ main() {
     show_config "$cfg"
     printf '\n'
     if [ -r /dev/tty ]; then
-      ask "Do you want to continue with these configurations?" y && use_cfg=1
+      ask "Do you want to continue with these configurations (Choose N to answer them again)?" y && use_cfg=1
     else
       use_cfg=1
     fi
