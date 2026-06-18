@@ -29,7 +29,8 @@ param(
     [string] $ManifestPath,
     [string] $AdditionalCsv,
     [string] $ConfigCsv,
-    [string] $DriverCsv
+    [string] $DriverCsv,
+    [string] $SoftwareCsv
 )
 
 $ErrorActionPreference = 'Stop'
@@ -48,6 +49,7 @@ if (-not $ManifestPath)  { $ManifestPath  = Join-Path $documentsDir 'B_applicati
 if (-not $AdditionalCsv) { $AdditionalCsv = Join-Path $projRoot 'Additional_Manual_Linux_Software_Requirments.csv' }
 if (-not $ConfigCsv)     { $ConfigCsv     = Join-Path $documentsDir 'C_windows_configs.csv' }
 if (-not $DriverCsv)     { $DriverCsv     = Join-Path $documentsDir 'A_installed_windows_drivers.csv' }
+if (-not $SoftwareCsv)   { $SoftwareCsv   = Join-Path $documentsDir 'B_installed_windows_software.csv' }
 
 $commonPath = Join-Path $templatesDir '_common.sh'
 foreach ($p in @($templatesDir, $commonPath, $ManifestPath)) {
@@ -185,6 +187,10 @@ Write-Host "Reading manifest: $ManifestPath" -ForegroundColor Gray
 $manifest = Get-Content -Raw -Path $ManifestPath | ConvertFrom-Json
 $apps = $manifest.applications
 
+# All manifest app names (lowercased) for the "not in manifest" check below.
+$manifestNames = New-Object System.Collections.Generic.HashSet[string]
+foreach ($app in $apps) { [void]$manifestNames.Add(([string](Get-Prop $app 'name')).ToLowerInvariant()) }
+
 $appLines = New-Object System.Collections.Generic.List[string]
 $repoLines = New-Object System.Collections.Generic.List[string]
 $repoSlugs = New-Object System.Collections.Generic.HashSet[string]
@@ -297,6 +303,21 @@ $manualData = ($manualLines -join "`n")
 Write-Host ("  vendor repo setups: {0}" -f $repoSlugs.Count) -ForegroundColor Green
 Write-Host ("  apps: {0} total ({1} enriched, {2} fallback); {3} manual file-prompt app(s)" -f $appLines.Count, $enriched, $fallback, $manualLines.Count) -ForegroundColor Green
 
+# Detected Windows apps NOT present in the manifest (no Linux mapping). execute_all.sh
+# warns about these at startup so the user can add them and regenerate.
+$unmatchedLines = New-Object System.Collections.Generic.List[string]
+if (Test-Path $SoftwareCsv) {
+    foreach ($row in (Import-Csv -Path $SoftwareCsv)) {
+        $n = [string]$row.Name
+        if (-not $n) { continue }
+        if (-not $manifestNames.Contains($n.ToLowerInvariant())) {
+            $unmatchedLines.Add('  "' + (ConvertTo-BashString $n) + '"')
+        }
+    }
+}
+$unmatchedData = ($unmatchedLines -join "`n")
+Write-Host ("  detected apps not in manifest: {0}" -f $unmatchedLines.Count) -ForegroundColor Yellow
+
 # ---------------------------------------------------------------------------
 # 2. SETTINGS  (from C_windows_configs.csv)
 # ---------------------------------------------------------------------------
@@ -355,7 +376,7 @@ $map = @{
     'install_must_have_software.sh.tmpl' = @{ apps = $appsData }
     'apply_settings.sh.tmpl'             = @{ settings = $settingsData }
     'install_device_drivers.sh.tmpl'     = @{ drivers = $driversData }
-    'execute_all.sh.tmpl'                = @{ manual = $manualData }
+    'execute_all.sh.tmpl'                = @{ manual = $manualData; unmatched = $unmatchedData }
 }
 
 foreach ($tmplName in $map.Keys) {
@@ -368,6 +389,7 @@ foreach ($tmplName in $map.Keys) {
     if ($map[$tmplName].ContainsKey('settings')) { $content = $content.Replace('### __SETTINGS_DATA__ ###', $map[$tmplName].settings) }
     if ($map[$tmplName].ContainsKey('drivers'))  { $content = $content.Replace('### __DRIVERS_DATA__ ###', $map[$tmplName].drivers) }
     if ($map[$tmplName].ContainsKey('manual'))   { $content = $content.Replace('### __MANUAL_APPS__ ###', $map[$tmplName].manual) }
+    if ($map[$tmplName].ContainsKey('unmatched')){ $content = $content.Replace('### __UNMATCHED_APPS__ ###', $map[$tmplName].unmatched) }
 
     # Normalize to LF, no trailing CR, no BOM.
     $content = $content -replace "`r`n", "`n" -replace "`r", "`n"

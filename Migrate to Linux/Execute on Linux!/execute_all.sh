@@ -593,6 +593,64 @@ MANUAL_APPS=(
   "WindTerm|WindTerm (Linux)|WindTerm from GitHub releases|https://github.com/kingToolbox/WindTerm/releases|0"
 )
 
+# Windows apps that were detected but NOT found in the manifest (no Linux mapping).
+UNMATCHED_APPS=(
+  "µTorrent"
+  "Bitvise SSH Client 9.61"
+  "GnuWin32: Grep-2.5.4"
+  "Gurobi 13.0.1"
+  "Hotspot Shield 12.16.0"
+  "Internet Download Manager"
+  "Java 8 Update 491"
+  "K-Lite Mega Codec Pack 19.7.5"
+  "Lenovo Go Central"
+  "Lenovo Vantage Service"
+  "Lightshot-5.5.0.7"
+  "Microsoft .NET SDK 10.0.301 (x64) from Visual Studio"
+  "Microsoft 365 - en-us"
+  "Microsoft 365 - fa-ir"
+  "Microsoft 365 - fr-fr"
+  "Microsoft 365 Apps for enterprise - en-us"
+  "Microsoft 365 Apps for enterprise - fa-ir"
+  "Microsoft 365 Apps for enterprise - fr-fr"
+  "Microsoft Visual Studio Code"
+  "Miniconda3 py313_26.3.2-2 (Python 3.13.13 64-bit)"
+  "Mozilla Firefox (x64 en-US)"
+  "NordUpdater"
+  "NordVPN"
+  "OpenSSL 3.3.0"
+  "Pandoc 3.9"
+  "pgAdmin 4 version 9.10"
+  "PowerShell 7.5.3.0-x64"
+  "PowerShell 7-x64"
+  "Proxifier version 4.12"
+  "PuTTY release 0.83"
+  "Python 3.12.10"
+  "Python 3.14.3"
+  "Python 3.14.5"
+  "Python Launcher"
+  "Quick Share"
+  "R for Windows 4.5.2"
+  "RealVNC Viewer 7.15.0"
+  "SQL Server Management Studio 22"
+  "Visual Studio Build Tools 2022"
+  "Visual Studio Build Tools 2026 (2)"
+  "Visual Studio Community 2026"
+  "Windows Software Development Kit - Windows 10.0.26100.7705"
+  "Windows Software Development Kit - Windows 10.0.26100.8249"
+  "WinRAR 7.22"
+  "wkhtmltox 0.12.6-1"
+  "Hotspot Shield VPN"
+  "Lenovo Vantage"
+  "Microsoft Office Hub"
+  "Nearby Share"
+  "One Drive Sync"
+  "Power Shell"
+  "Python Manager"
+  "Whats App Desktop"
+  "Zune Music"
+)
+
 here=""
 
 # Yes/No question. The question text AND (y/n) are always printed to the terminal.
@@ -691,6 +749,40 @@ load_config() {  # load_config CONFIG_FILE
   export MIGRATE_ALT_LIMIT MIGRATE_VERSION_MODE MIGRATE_UPDATE_EXISTING MIGRATE_INSTALL_SECURITY MIGRATE_FREE_ONLY
   # docker rebuild only if a snapshot actually shipped with the installer
   [ -f "$here/submodules/docker_rebuild.sh" ] || do_docker=0
+}
+
+# Write the current answers (do_* + MIGRATE_*) back to the config file so a manual
+# run updates it for next time.
+yn() { [ "$1" = "1" ] && printf 'y' || printf 'n'; }   # 1 -> y, anything else -> n
+save_config() {  # save_config CONFIG_FILE
+  local cfg="$1"
+  {
+    printf '%s\n' '# Migrate to Linux -- saved answers for execute_all.sh'
+    printf '%s\n' '# Edit these values, or delete this file to be asked each question interactively.'
+    printf '%s\n' '# Yes/No = y/n ; VERSION_MODE = same|latest ; BEST_ALTERNATIVES = a whole number.'
+    printf 'INSTALL_DRIVERS=%s\n'   "$(yn "$do_drivers")"
+    printf 'INSTALL_APPS=%s\n'      "$(yn "$do_apps")"
+    printf 'BEST_ALTERNATIVES=%s\n' "${MIGRATE_ALT_LIMIT:-1}"
+    printf 'VERSION_MODE=%s\n'      "${MIGRATE_VERSION_MODE:-latest}"
+    printf 'UPDATE_EXISTING=%s\n'   "$([ "${MIGRATE_UPDATE_EXISTING:-no}" = yes ] && printf y || printf n)"
+    printf 'INSTALL_SECURITY=%s\n'  "$([ "${MIGRATE_INSTALL_SECURITY:-no}" = yes ] && printf y || printf n)"
+    printf 'FREE_ONLY=%s\n'         "$([ "${MIGRATE_FREE_ONLY:-no}" = yes ] && printf y || printf n)"
+    printf 'APPLY_SETTINGS=%s\n'    "$(yn "$do_settings")"
+    printf 'REBUILD_DOCKER=%s\n'    "$(yn "$do_docker")"
+  } > "$cfg" 2>/dev/null && info "Saved your answers to the config file: $cfg"
+}
+
+# Warn about Windows apps with no manifest entry (no Linux equivalent was mapped).
+show_unmatched_warning() {
+  [ "${#UNMATCHED_APPS[@]}" -eq 0 ] && return 0
+  printf '\n'
+  warn "WARNING: these apps were detected on Windows but were NOT found in the manifest,"
+  warn "so no Linux equivalent will be installed for them:"
+  local a
+  for a in "${UNMATCHED_APPS[@]}"; do info "  - $a"; done
+  warn "To include them, add entries to the manifest file on your Windows machine:"
+  warn "    documents/B_applications.json"
+  warn "then re-run run_project.ps1 and use the regenerated 'Execute on Linux!' scripts."
 }
 
 run_stage() {  # run_stage script.sh  (helper scripts live in submodules/)
@@ -852,6 +944,8 @@ main() {
   info "Family / pm  : ${FAMILY} / ${PM}"
   info "Architecture : ${ARCH}"
 
+  show_unmatched_warning
+
   # ---- Configuration: from the saved config file, or by asking each question ----
   local do_drivers=0 do_apps=0 do_settings=0 do_docker=0
   local cfg="$here/migrate.config" use_cfg=0
@@ -859,7 +953,7 @@ main() {
     show_config "$cfg"
     printf '\n'
     if [ -r /dev/tty ]; then
-      ask "Do you want to continue with these configurations (Choose N to answer them again)?" y && use_cfg=1
+      ask "Do you want to continue with these configurations\n (Choose N to answer them again, subsequently, the default values will change to your answers)?" y && use_cfg=1
     else
       use_cfg=1
     fi
@@ -888,6 +982,8 @@ main() {
     if [ -f "$here/submodules/docker_rebuild.sh" ]; then
       ask "(9/9) Rebuild docker components (If you have installed docker on Windows - images, volumes, containers, networks, etc.)?" y && do_docker=1
     fi
+    # Answered manually -> persist these answers as the new config defaults.
+    save_config "$cfg"
   fi
 
   # ---- Run the selected stages, unattended.  Order: drivers -> settings -> apps ----

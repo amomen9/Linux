@@ -10,7 +10,7 @@
 "calibre","9.5.0","Kovid Goyal","Win32","Available on Linux","calibre (Linux) (install: apt)","70","Free (FOSS)","yes","No, manual transfer","Native (APT package)","https://calibre-ebook.com/download_linux"
 "Cisco Jabber","14.3.0.58392","Cisco Systems, Inc","Win32","Not Available; Available as WebApp","Cisco Webex (Linux) (install: apt)","70","Freemium","yes","Yes","Native (APT package)","https://www.webex.com/downloads.html"
 "CMake","4.3.0","Kitware","Win32","Available on Linux","CMake (Linux) (install: apt)","70","Free (FOSS)","yes","No, manual transfer","Native (APT package)","https://cmake.org/download/"
-"Copilot","149.0.4022.66","Microsoft Corporation","Win32","Available as WebApp","Copilot (Web/PWA) (install: web)","70","Freemium","yes","Yes","WebApp","https://copilot.microsoft.com"
+"Copilot","149.0.4022.80","Microsoft Corporation","Win32","Available as WebApp","Copilot (Web/PWA) (install: web)","70","Freemium","yes","Yes","WebApp","https://copilot.microsoft.com"
 "Discord","1.0.9241","Discord Inc.","Win32","Available on Linux","Discord (Linux) (install: flatpak)","70","Free","yes","Yes","Native (Flatpak)","https://discord.com/download"
 "Docker Desktop","4.70.0","Docker Inc.","Win32","Available on Linux","Docker Engine (native) (install: apt)","70","Free (FOSS)","yes","Yes","Native (APT package)","https://docs.docker.com/engine/install/"
 "Dropbox","256.4.3790","Dropbox, Inc.","Win32","Available on Linux","Dropbox (Linux) (install: apt)","70","Freemium","yes","Yes","Native (APT package)","https://www.dropbox.com/install-linux"
