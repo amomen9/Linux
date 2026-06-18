@@ -347,6 +347,10 @@ $common = (Get-Content -Raw -Path $commonPath)
 $common = ($common -replace '^\#\![^\r\n]*\r?\n', '')
 
 $enc = New-Object System.Text.UTF8Encoding($false)
+# Helper scripts live in a "submodules" subfolder of the output; only execute_all.sh
+# stays at the top level as the single entry point.
+$subDir = Join-Path $OutputDir 'submodules'
+if (-not (Test-Path $subDir -PathType Container)) { New-Item -ItemType Directory -Path $subDir -Force | Out-Null }
 $map = @{
     'install_must_have_software.sh.tmpl' = @{ apps = $appsData }
     'apply_settings.sh.tmpl'             = @{ settings = $settingsData }
@@ -368,9 +372,38 @@ foreach ($tmplName in $map.Keys) {
     # Normalize to LF, no trailing CR, no BOM.
     $content = $content -replace "`r`n", "`n" -replace "`r", "`n"
     $outName = $tmplName -replace '\.tmpl$', ''
-    $outPath = Join-Path $OutputDir $outName
+    # execute_all.sh at the top; every other generated script under submodules/.
+    if ($outName -eq 'execute_all.sh') { $destDir = $OutputDir; $label = $outName }
+    else { $destDir = $subDir; $label = "submodules/$outName" }
+    $outPath = Join-Path $destDir $outName
     [System.IO.File]::WriteAllText($outPath, $content, $enc)
-    Write-Host "  generated: $outName" -ForegroundColor Green
+    Write-Host "  generated: $label" -ForegroundColor Green
+}
+
+# ---------------------------------------------------------------------------
+# 5. CONFIG FILE  (default answers for execute_all.sh, beside it)
+# ---------------------------------------------------------------------------
+# Written only if absent, so a user's edited answers survive regeneration.
+$configPath = Join-Path $OutputDir 'migrate.config'
+if (-not (Test-Path $configPath)) {
+    $cfg = @'
+# Migrate to Linux -- saved answers for execute_all.sh
+# Edit these values, or delete this file to be asked each question interactively.
+# Yes/No = y/n ; VERSION_MODE = same|latest ; BEST_ALTERNATIVES = a whole number.
+INSTALL_DRIVERS=y
+INSTALL_APPS=y
+BEST_ALTERNATIVES=1
+VERSION_MODE=same
+UPDATE_EXISTING=y
+INSTALL_SECURITY=n
+FREE_ONLY=n
+APPLY_SETTINGS=y
+REBUILD_DOCKER=y
+'@
+    [System.IO.File]::WriteAllText($configPath, (($cfg -replace "`r`n", "`n") + "`n"), $enc)
+    Write-Host "  generated: migrate.config" -ForegroundColor Green
+} else {
+    Write-Host "  kept existing migrate.config" -ForegroundColor Gray
 }
 
 Write-Host "`nDone. Universal installer written to: $OutputDir" -ForegroundColor Cyan

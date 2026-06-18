@@ -69,13 +69,61 @@ ask_ab() {  # ask_ab "Question" "Option a label" "Option b label"
   done
 }
 
-run_stage() {  # run_stage script.sh
+# Display a saved config file as question/answer lines.
+show_config() {  # show_config CONFIG_FILE
+  local cfg="$1" k v label
+  printf '\n'; log "Reading from the config file $cfg:"
+  while IFS='=' read -r k v; do
+    case "$k" in \#*|'') continue ;; esac
+    v="${v%%#*}"; v="$(printf '%s' "$v" | tr -d '[:space:]')"
+    case "$k" in
+      INSTALL_DRIVERS)   label="Install device drivers?" ;;
+      INSTALL_APPS)      label="Install must-have software?" ;;
+      BEST_ALTERNATIVES) label="How many best alternatives of an application to install?" ;;
+      VERSION_MODE)      label="Version of exact equivalents (same/latest)?" ;;
+      UPDATE_EXISTING)   label="Update apps already installed on Linux?" ;;
+      INSTALL_SECURITY)  label="Install security-suite equivalents?" ;;
+      FREE_ONLY)         label="Only install free applications (skip paid)?" ;;
+      APPLY_SETTINGS)    label="Apply Windows settings?" ;;
+      REBUILD_DOCKER)    label="Rebuild docker components?" ;;
+      *) continue ;;
+    esac
+    info "$label  $v"
+  done < "$cfg"
+}
+
+# Apply a saved config: set do_* (caller's vars via dynamic scope) + MIGRATE_* env.
+load_config() {  # load_config CONFIG_FILE
+  local cfg="$1" k v
+  while IFS='=' read -r k v; do
+    case "$k" in \#*|'') continue ;; esac
+    v="${v%%#*}"; v="$(printf '%s' "$v" | tr -d '[:space:]')"
+    case "$k" in
+      INSTALL_DRIVERS)   [ "$v" = y ] && do_drivers=1  || do_drivers=0 ;;
+      INSTALL_APPS)      [ "$v" = y ] && do_apps=1     || do_apps=0 ;;
+      BEST_ALTERNATIVES) MIGRATE_ALT_LIMIT="$v" ;;
+      VERSION_MODE)      MIGRATE_VERSION_MODE="$v" ;;
+      UPDATE_EXISTING)   [ "$v" = y ] && MIGRATE_UPDATE_EXISTING=yes  || MIGRATE_UPDATE_EXISTING=no ;;
+      INSTALL_SECURITY)  [ "$v" = y ] && MIGRATE_INSTALL_SECURITY=yes || MIGRATE_INSTALL_SECURITY=no ;;
+      FREE_ONLY)         [ "$v" = y ] && MIGRATE_FREE_ONLY=yes        || MIGRATE_FREE_ONLY=no ;;
+      APPLY_SETTINGS)    [ "$v" = y ] && do_settings=1 || do_settings=0 ;;
+      REBUILD_DOCKER)    [ "$v" = y ] && do_docker=1   || do_docker=0 ;;
+    esac
+  done < "$cfg"
+  : "${MIGRATE_ALT_LIMIT:=1}"; : "${MIGRATE_VERSION_MODE:=latest}"
+  : "${MIGRATE_UPDATE_EXISTING:=no}"; : "${MIGRATE_INSTALL_SECURITY:=no}"; : "${MIGRATE_FREE_ONLY:=no}"
+  export MIGRATE_ALT_LIMIT MIGRATE_VERSION_MODE MIGRATE_UPDATE_EXISTING MIGRATE_INSTALL_SECURITY MIGRATE_FREE_ONLY
+  # docker rebuild only if a snapshot actually shipped with the installer
+  [ -f "$here/submodules/docker_rebuild.sh" ] || do_docker=0
+}
+
+run_stage() {  # run_stage script.sh  (helper scripts live in submodules/)
   local step="$1"
-  if [ -f "$here/$step" ]; then
+  if [ -f "$here/submodules/$step" ]; then
     log "=== Running $step ==="
-    bash "$here/$step" || warn "$step reported errors (continuing)"
+    bash "$here/submodules/$step" || warn "$step reported errors (continuing)"
   else
-    warn "missing: $step"
+    warn "missing: submodules/$step"
   fi
 }
 
@@ -111,6 +159,7 @@ install_manual_apps() {
     else
       printf '\033[1;34m==> Manual install: %s\033[0m\n' "$name" >&3
     fi
+    info "This app's installer cannot be downloaded automatically by the Migration Toolkit (it usually requires accepting a licence / signing in, or has no stable direct download link)."
     # Free-only mode: this manual app's only alternative is paid. Ask before continuing.
     if [ "${MIGRATE_FREE_ONLY:-no}" = "yes" ] && [ "${paid:-0}" = "1" ]; then
       if [ -r /dev/tty ]; then
@@ -211,6 +260,7 @@ print_combined_summary() {
 }
 
 main() {
+  clear 2>/dev/null || printf '\033[2J\033[3J\033[H'
   require_root
   detect_distro
   detect_arch
@@ -226,26 +276,42 @@ main() {
   info "Family / pm  : ${FAMILY} / ${PM}"
   info "Architecture : ${ARCH}"
 
-  # ---- Stage questions, up front (each question is shown with its options) ----
-  log "Setup questions (answer each one; the install then runs unattended):"
+  # ---- Configuration: from the saved config file, or by asking each question ----
   local do_drivers=0 do_apps=0 do_settings=0 do_docker=0
-  ask "(1/9) Install device drivers?"     y && do_drivers=1
-  ask "(2/9) Install must-have software?" y && do_apps=1
-  if [ "$do_apps" -eq 1 ]; then
-    MIGRATE_ALT_LIMIT="$(ask_number "(3/9) How many (if applicable) best alternatives of an application do you want to install?" 1)"
-    export MIGRATE_ALT_LIMIT
-    MIGRATE_VERSION_MODE="$(ask_ab "(4/9) Want to install same version of exact equivalents from Windows to Linux or the latest version?" "Same version" "Latest version")"
-    export MIGRATE_VERSION_MODE
-    if ask "(5/9) Update apps that are already installed on Linux?" n; then MIGRATE_UPDATE_EXISTING=yes; else MIGRATE_UPDATE_EXISTING=no; fi
-    export MIGRATE_UPDATE_EXISTING
-    if ask "(6/9) Install security-suite equivalents (antivirus, extra firewall, etc.)? Linux is hardened by default, so many users skip these." n; then MIGRATE_INSTALL_SECURITY=yes; else MIGRATE_INSTALL_SECURITY=no; fi
-    export MIGRATE_INSTALL_SECURITY
-    if ask "(7/9) Do you want to only install free applications and skip paid alternatives?" n; then MIGRATE_FREE_ONLY=yes; else MIGRATE_FREE_ONLY=no; fi
-    export MIGRATE_FREE_ONLY
+  local cfg="$here/migrate.config" use_cfg=0
+  if [ -f "$cfg" ]; then
+    show_config "$cfg"
+    printf '\n'
+    if [ -r /dev/tty ]; then
+      ask "Do you want to continue with these configurations?" y && use_cfg=1
+    else
+      use_cfg=1
+    fi
   fi
-  ask "(8/9) Apply Windows settings?"     y && do_settings=1
-  if [ -f "$here/docker_rebuild.sh" ]; then
-    ask "(9/9) Rebuild docker components (images, volumes, containers, networks, etc.)?" y && do_docker=1
+
+  if [ "$use_cfg" -eq 1 ]; then
+    load_config "$cfg"
+    info "Using the saved configuration above."
+  else
+    log "Setup questions (answer each one; the install then runs unattended):"
+    ask "(1/9) Install device drivers?"     y && do_drivers=1
+    ask "(2/9) Install must-have software?" y && do_apps=1
+    if [ "$do_apps" -eq 1 ]; then
+      MIGRATE_ALT_LIMIT="$(ask_number "(3/9) How many (if applicable) best alternatives of an application do you want to install?" 1)"
+      export MIGRATE_ALT_LIMIT
+      MIGRATE_VERSION_MODE="$(ask_ab "(4/9) Want to install same version of exact equivalents from Windows to Linux or the latest version?" "Same version" "Latest version")"
+      export MIGRATE_VERSION_MODE
+      if ask "(5/9) Update apps that are already installed on Linux?" n; then MIGRATE_UPDATE_EXISTING=yes; else MIGRATE_UPDATE_EXISTING=no; fi
+      export MIGRATE_UPDATE_EXISTING
+      if ask "(6/9) Install security-suite equivalents (antivirus, extra firewall, etc.)? Linux is hardened by default, so many users skip these." n; then MIGRATE_INSTALL_SECURITY=yes; else MIGRATE_INSTALL_SECURITY=no; fi
+      export MIGRATE_INSTALL_SECURITY
+      if ask "(7/9) Do you want to only install free applications and skip paid alternatives?" n; then MIGRATE_FREE_ONLY=yes; else MIGRATE_FREE_ONLY=no; fi
+      export MIGRATE_FREE_ONLY
+    fi
+    ask "(8/9) Apply Windows settings?"     y && do_settings=1
+    if [ -f "$here/submodules/docker_rebuild.sh" ]; then
+      ask "(9/9) Rebuild docker components (If you have installed docker on Windows - images, volumes, containers, networks, etc.)?" y && do_docker=1
+    fi
   fi
 
   # ---- Run the selected stages, unattended.  Order: drivers -> settings -> apps ----
@@ -259,7 +325,7 @@ main() {
   # ---- Docker rebuild last (needs Docker, which the apps stage installs) ----
   if [ "$do_docker" -eq 1 ]; then
     log "=== Running docker_rebuild.sh ==="
-    bash "$here/docker_rebuild.sh" || warn "docker_rebuild.sh reported errors"
+    bash "$here/submodules/docker_rebuild.sh" || warn "docker_rebuild.sh reported errors"
   fi
 
   print_combined_summary

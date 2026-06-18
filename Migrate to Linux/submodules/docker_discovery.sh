@@ -235,12 +235,13 @@ done < <(docker ps -aq)
 emit ''
 emit 'log "Rebuild complete."'
 
-# Also place a copy in the "Execute on Linux!" folder so it ships to the target.
-mkdir -p "$INSTALLER_DIR" 2>/dev/null || true
-cp -f "$OUT" "$INSTALLER_DIR/docker_rebuild.sh" 2>/dev/null || true
+# Also place a copy in "Execute on Linux!/submodules" so it ships with the installer
+# (execute_all.sh runs helper scripts from the submodules subfolder).
+mkdir -p "$INSTALLER_DIR/submodules" 2>/dev/null || true
+cp -f "$OUT" "$INSTALLER_DIR/submodules/docker_rebuild.sh" 2>/dev/null || true
 
 log "Wrote $OUT"
-log "Wrote $INSTALLER_DIR/docker_rebuild.sh"
+log "Wrote $INSTALLER_DIR/submodules/docker_rebuild.sh"
 info "Review it, then run:  bash docker_rebuild.sh"
 warn "Caveats: volume DATA, healthchecks, devices, capabilities, ulimits, sysctls,"
 warn "         and compose context are not captured (best-effort topology rebuild)."
