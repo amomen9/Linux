@@ -227,12 +227,14 @@ $enc = New-Object System.Text.UTF8Encoding($false)
 $scriptDir = $PSScriptRoot
 if (-not $scriptDir) { $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path }
 $projRoot  = Split-Path -Parent $scriptDir
-$installerDir = Join-Path $projRoot 'Execute on Linux!'
-if (-not (Test-Path $installerDir)) { New-Item -ItemType Directory -Path $installerDir -Force | Out-Null }
+# The shipped copy lives in the installer's submodules subfolder (execute_all.sh runs
+# helper scripts from there); a copy is also kept next to this script.
+$installerSub = Join-Path (Join-Path $projRoot 'Execute on Linux!') 'submodules'
+if (-not (Test-Path $installerSub)) { New-Item -ItemType Directory -Path $installerSub -Force | Out-Null }
 
 $targets = @(
     (Join-Path $scriptDir 'docker_rebuild.sh'),
-    (Join-Path $installerDir 'docker_rebuild.sh')
+    (Join-Path $installerSub 'docker_rebuild.sh')
 )
 foreach ($t in $targets) {
     [System.IO.File]::WriteAllText($t, $content, $enc)

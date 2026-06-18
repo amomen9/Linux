@@ -413,6 +413,19 @@ install_app() {
       return 0 ;;
   esac
 
+  # Universal "already installed" short-circuit. Unless the user asked to update
+  # existing apps to the LATEST version, an app that is already present is skipped
+  # entirely here -- BEFORE any vendor repo setup or download happens. This applies
+  # when "same version" was chosen OR when existing apps are not being updated.
+  if [ "${MIGRATE_VERSION_MODE:-latest}" = "same" ] || [ "${MIGRATE_UPDATE_EXISTING:-no}" != "yes" ]; then
+    if { [ -n "$native_pkg" ] && pm_installed "${native_pkg%% *}"; } \
+       || { [ -n "$flatpak" ] && have_cmd flatpak && flatpak_installed "$flatpak"; } \
+       || { [ -n "$snap_pkg" ] && have_cmd snap && snap list "${snap_pkg%% *}" >/dev/null 2>&1; }; then
+      mark_skip "$name" "already installed"
+      return 0
+    fi
+  fi
+
   # ---- multi-backend methods (req: try every available pm until one works) ----
   # The declared method goes first; then EVERY other available backend is tried as a
   # fallback (native / flatpak / snap / direct-download) before the app is failed.
@@ -426,6 +439,7 @@ install_app() {
   esac
 
   local b url f rfn
+  LAST_ERR=""   # so an empty value after the loop means "nothing was even attempted"
   for b in $order; do
     case "$b" in
       flatpak)
@@ -465,7 +479,48 @@ install_app() {
     esac
   done
 
-  mark_fail "$name" "${LAST_ERR:-no available package manager could install it}"
+  # A real install error -> report failure. But if nothing was even attempted (no
+  # package-manager route on this distro), show that and fall back to the manual
+  # download-by-user scheme (place the file, then done/skip, handled by extension).
+  if [ -n "$LAST_ERR" ]; then
+    mark_fail "$name" "$LAST_ERR"
+  else
+    err "no available package manager could install it"
+    manual_fallback "$name" "$alt" "$note" "$webapp_url$url_x86$github_repo"
+  fi
+}
+
+# Manual download-by-user fallback for an app no package manager could install.
+# Prompts the user to download + place the installer; handles it by extension; loops
+# until a valid file is placed ('done') or the user skips. Marks the result.
+manual_fallback() {  # manual_fallback NAME [ALT] [NOTE] [URL]
+  local name="$1" alt="$2" mnote="$3" murl="$4"
+  local base="${MIGRATE_MANUAL_DIR:-$DOWNLOAD_DIR/manual}"
+  local slug dir ans f got
+  slug="$(slugify "$name")"; dir="$base/$slug"; mkdir -p "$dir"
+  [ -n "$mnote" ] && info "$mnote"
+  [ -n "$murl" ] && info "More info / download: $murl"
+  info "Download the installer yourself and place it (keep its original file name) in:"
+  info "    $dir"
+  info "Then type 'done' (handled by extension: .deb/.rpm/.sh/.run/.bin/.bundle/.AppImage/.tar.gz/.zip/...); 'skip' to skip."
+  if [ ! -r /dev/tty ]; then mark_manual "$name" "no package manager route - needs manual download"; return 0; fi
+  while :; do
+    printf '  %s (done/skip): ' "$name" > /dev/tty
+    read -r ans < /dev/tty || ans="skip"
+    case "$ans" in
+      [Ss]|[Ss][Kk][Ii][Pp]) mark_skip "$name" "user skipped"; return 0 ;;
+      [Dd]|[Dd][Oo][Nn][Ee])
+        if [ -z "$(ls -A "$dir" 2>/dev/null)" ]; then
+          printf '\033[1;31m  No file found in %s -- place the file there, then type done (or skip).\033[0m\n' "$dir" > /dev/tty; continue
+        fi
+        got=0; LAST_ERR=""
+        for f in "$dir"/*; do [ -f "$f" ] || continue; install_by_ext "$f" && got=1; done
+        if [ "$got" -eq 1 ]; then mark_ok "$name" "installed from $dir"; return 0
+        else printf '\033[1;31m  %s -- fix the file in %s, then type done (or skip).\033[0m\n' "${LAST_ERR:-could not handle the file}" "$dir" > /dev/tty; fi
+        ;;
+      *) printf '\033[1;31m  Please type "done" or "skip".\033[0m\n' > /dev/tty ;;
+    esac
+  done
 }
 
 # Install the Nth-best alternative of an app only if the user asked for at least
@@ -590,13 +645,61 @@ ask_ab() {  # ask_ab "Question" "Option a label" "Option b label"
   done
 }
 
-run_stage() {  # run_stage script.sh
+# Display a saved config file as question/answer lines.
+show_config() {  # show_config CONFIG_FILE
+  local cfg="$1" k v label
+  printf '\n'; log "Reading from the config file $cfg:"
+  while IFS='=' read -r k v; do
+    case "$k" in \#*|'') continue ;; esac
+    v="${v%%#*}"; v="$(printf '%s' "$v" | tr -d '[:space:]')"
+    case "$k" in
+      INSTALL_DRIVERS)   label="Install device drivers?" ;;
+      INSTALL_APPS)      label="Install must-have software?" ;;
+      BEST_ALTERNATIVES) label="How many best alternatives of an application to install?" ;;
+      VERSION_MODE)      label="Version of exact equivalents (same/latest)?" ;;
+      UPDATE_EXISTING)   label="Update apps already installed on Linux?" ;;
+      INSTALL_SECURITY)  label="Install security-suite equivalents?" ;;
+      FREE_ONLY)         label="Only install free applications (skip paid)?" ;;
+      APPLY_SETTINGS)    label="Apply Windows settings?" ;;
+      REBUILD_DOCKER)    label="Rebuild docker components?" ;;
+      *) continue ;;
+    esac
+    info "$label  $v"
+  done < "$cfg"
+}
+
+# Apply a saved config: set do_* (caller's vars via dynamic scope) + MIGRATE_* env.
+load_config() {  # load_config CONFIG_FILE
+  local cfg="$1" k v
+  while IFS='=' read -r k v; do
+    case "$k" in \#*|'') continue ;; esac
+    v="${v%%#*}"; v="$(printf '%s' "$v" | tr -d '[:space:]')"
+    case "$k" in
+      INSTALL_DRIVERS)   [ "$v" = y ] && do_drivers=1  || do_drivers=0 ;;
+      INSTALL_APPS)      [ "$v" = y ] && do_apps=1     || do_apps=0 ;;
+      BEST_ALTERNATIVES) MIGRATE_ALT_LIMIT="$v" ;;
+      VERSION_MODE)      MIGRATE_VERSION_MODE="$v" ;;
+      UPDATE_EXISTING)   [ "$v" = y ] && MIGRATE_UPDATE_EXISTING=yes  || MIGRATE_UPDATE_EXISTING=no ;;
+      INSTALL_SECURITY)  [ "$v" = y ] && MIGRATE_INSTALL_SECURITY=yes || MIGRATE_INSTALL_SECURITY=no ;;
+      FREE_ONLY)         [ "$v" = y ] && MIGRATE_FREE_ONLY=yes        || MIGRATE_FREE_ONLY=no ;;
+      APPLY_SETTINGS)    [ "$v" = y ] && do_settings=1 || do_settings=0 ;;
+      REBUILD_DOCKER)    [ "$v" = y ] && do_docker=1   || do_docker=0 ;;
+    esac
+  done < "$cfg"
+  : "${MIGRATE_ALT_LIMIT:=1}"; : "${MIGRATE_VERSION_MODE:=latest}"
+  : "${MIGRATE_UPDATE_EXISTING:=no}"; : "${MIGRATE_INSTALL_SECURITY:=no}"; : "${MIGRATE_FREE_ONLY:=no}"
+  export MIGRATE_ALT_LIMIT MIGRATE_VERSION_MODE MIGRATE_UPDATE_EXISTING MIGRATE_INSTALL_SECURITY MIGRATE_FREE_ONLY
+  # docker rebuild only if a snapshot actually shipped with the installer
+  [ -f "$here/submodules/docker_rebuild.sh" ] || do_docker=0
+}
+
+run_stage() {  # run_stage script.sh  (helper scripts live in submodules/)
   local step="$1"
-  if [ -f "$here/$step" ]; then
+  if [ -f "$here/submodules/$step" ]; then
     log "=== Running $step ==="
-    bash "$here/$step" || warn "$step reported errors (continuing)"
+    bash "$here/submodules/$step" || warn "$step reported errors (continuing)"
   else
-    warn "missing: $step"
+    warn "missing: submodules/$step"
   fi
 }
 
@@ -632,6 +735,7 @@ install_manual_apps() {
     else
       printf '\033[1;34m==> Manual install: %s\033[0m\n' "$name" >&3
     fi
+    info "This app's installer cannot be downloaded automatically by the Migration Toolkit (it usually requires accepting a licence / signing in, or has no stable direct download link)."
     # Free-only mode: this manual app's only alternative is paid. Ask before continuing.
     if [ "${MIGRATE_FREE_ONLY:-no}" = "yes" ] && [ "${paid:-0}" = "1" ]; then
       if [ -r /dev/tty ]; then
@@ -732,6 +836,7 @@ print_combined_summary() {
 }
 
 main() {
+  clear 2>/dev/null || printf '\033[2J\033[3J\033[H'
   require_root
   detect_distro
   detect_arch
@@ -747,26 +852,42 @@ main() {
   info "Family / pm  : ${FAMILY} / ${PM}"
   info "Architecture : ${ARCH}"
 
-  # ---- Stage questions, up front (each question is shown with its options) ----
-  log "Setup questions (answer each one; the install then runs unattended):"
+  # ---- Configuration: from the saved config file, or by asking each question ----
   local do_drivers=0 do_apps=0 do_settings=0 do_docker=0
-  ask "(1/9) Install device drivers?"     y && do_drivers=1
-  ask "(2/9) Install must-have software?" y && do_apps=1
-  if [ "$do_apps" -eq 1 ]; then
-    MIGRATE_ALT_LIMIT="$(ask_number "(3/9) How many (if applicable) best alternatives of an application do you want to install?" 1)"
-    export MIGRATE_ALT_LIMIT
-    MIGRATE_VERSION_MODE="$(ask_ab "(4/9) Want to install same version of exact equivalents from Windows to Linux or the latest version?" "Same version" "Latest version")"
-    export MIGRATE_VERSION_MODE
-    if ask "(5/9) Update apps that are already installed on Linux?" n; then MIGRATE_UPDATE_EXISTING=yes; else MIGRATE_UPDATE_EXISTING=no; fi
-    export MIGRATE_UPDATE_EXISTING
-    if ask "(6/9) Install security-suite equivalents (antivirus, extra firewall, etc.)? Linux is hardened by default, so many users skip these." n; then MIGRATE_INSTALL_SECURITY=yes; else MIGRATE_INSTALL_SECURITY=no; fi
-    export MIGRATE_INSTALL_SECURITY
-    if ask "(7/9) Do you want to only install free applications and skip paid alternatives?" n; then MIGRATE_FREE_ONLY=yes; else MIGRATE_FREE_ONLY=no; fi
-    export MIGRATE_FREE_ONLY
+  local cfg="$here/migrate.config" use_cfg=0
+  if [ -f "$cfg" ]; then
+    show_config "$cfg"
+    printf '\n'
+    if [ -r /dev/tty ]; then
+      ask "Do you want to continue with these configurations?" y && use_cfg=1
+    else
+      use_cfg=1
+    fi
   fi
-  ask "(8/9) Apply Windows settings?"     y && do_settings=1
-  if [ -f "$here/docker_rebuild.sh" ]; then
-    ask "(9/9) Rebuild docker components (images, volumes, containers, networks, etc.)?" y && do_docker=1
+
+  if [ "$use_cfg" -eq 1 ]; then
+    load_config "$cfg"
+    info "Using the saved configuration above."
+  else
+    log "Setup questions (answer each one; the install then runs unattended):"
+    ask "(1/9) Install device drivers?"     y && do_drivers=1
+    ask "(2/9) Install must-have software?" y && do_apps=1
+    if [ "$do_apps" -eq 1 ]; then
+      MIGRATE_ALT_LIMIT="$(ask_number "(3/9) How many (if applicable) best alternatives of an application do you want to install?" 1)"
+      export MIGRATE_ALT_LIMIT
+      MIGRATE_VERSION_MODE="$(ask_ab "(4/9) Want to install same version of exact equivalents from Windows to Linux or the latest version?" "Same version" "Latest version")"
+      export MIGRATE_VERSION_MODE
+      if ask "(5/9) Update apps that are already installed on Linux?" n; then MIGRATE_UPDATE_EXISTING=yes; else MIGRATE_UPDATE_EXISTING=no; fi
+      export MIGRATE_UPDATE_EXISTING
+      if ask "(6/9) Install security-suite equivalents (antivirus, extra firewall, etc.)? Linux is hardened by default, so many users skip these." n; then MIGRATE_INSTALL_SECURITY=yes; else MIGRATE_INSTALL_SECURITY=no; fi
+      export MIGRATE_INSTALL_SECURITY
+      if ask "(7/9) Do you want to only install free applications and skip paid alternatives?" n; then MIGRATE_FREE_ONLY=yes; else MIGRATE_FREE_ONLY=no; fi
+      export MIGRATE_FREE_ONLY
+    fi
+    ask "(8/9) Apply Windows settings?"     y && do_settings=1
+    if [ -f "$here/submodules/docker_rebuild.sh" ]; then
+      ask "(9/9) Rebuild docker components (If you have installed docker on Windows - images, volumes, containers, networks, etc.)?" y && do_docker=1
+    fi
   fi
 
   # ---- Run the selected stages, unattended.  Order: drivers -> settings -> apps ----
@@ -780,7 +901,7 @@ main() {
   # ---- Docker rebuild last (needs Docker, which the apps stage installs) ----
   if [ "$do_docker" -eq 1 ]; then
     log "=== Running docker_rebuild.sh ==="
-    bash "$here/docker_rebuild.sh" || warn "docker_rebuild.sh reported errors"
+    bash "$here/submodules/docker_rebuild.sh" || warn "docker_rebuild.sh reported errors"
   fi
 
   print_combined_summary

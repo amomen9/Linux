@@ -403,6 +403,19 @@ install_app() {
       return 0 ;;
   esac
 
+  # Universal "already installed" short-circuit. Unless the user asked to update
+  # existing apps to the LATEST version, an app that is already present is skipped
+  # entirely here -- BEFORE any vendor repo setup or download happens. This applies
+  # when "same version" was chosen OR when existing apps are not being updated.
+  if [ "${MIGRATE_VERSION_MODE:-latest}" = "same" ] || [ "${MIGRATE_UPDATE_EXISTING:-no}" != "yes" ]; then
+    if { [ -n "$native_pkg" ] && pm_installed "${native_pkg%% *}"; } \
+       || { [ -n "$flatpak" ] && have_cmd flatpak && flatpak_installed "$flatpak"; } \
+       || { [ -n "$snap_pkg" ] && have_cmd snap && snap list "${snap_pkg%% *}" >/dev/null 2>&1; }; then
+      mark_skip "$name" "already installed"
+      return 0
+    fi
+  fi
+
   # ---- multi-backend methods (req: try every available pm until one works) ----
   # The declared method goes first; then EVERY other available backend is tried as a
   # fallback (native / flatpak / snap / direct-download) before the app is failed.
@@ -416,6 +429,7 @@ install_app() {
   esac
 
   local b url f rfn
+  LAST_ERR=""   # so an empty value after the loop means "nothing was even attempted"
   for b in $order; do
     case "$b" in
       flatpak)
@@ -455,7 +469,48 @@ install_app() {
     esac
   done
 
-  mark_fail "$name" "${LAST_ERR:-no available package manager could install it}"
+  # A real install error -> report failure. But if nothing was even attempted (no
+  # package-manager route on this distro), show that and fall back to the manual
+  # download-by-user scheme (place the file, then done/skip, handled by extension).
+  if [ -n "$LAST_ERR" ]; then
+    mark_fail "$name" "$LAST_ERR"
+  else
+    err "no available package manager could install it"
+    manual_fallback "$name" "$alt" "$note" "$webapp_url$url_x86$github_repo"
+  fi
+}
+
+# Manual download-by-user fallback for an app no package manager could install.
+# Prompts the user to download + place the installer; handles it by extension; loops
+# until a valid file is placed ('done') or the user skips. Marks the result.
+manual_fallback() {  # manual_fallback NAME [ALT] [NOTE] [URL]
+  local name="$1" alt="$2" mnote="$3" murl="$4"
+  local base="${MIGRATE_MANUAL_DIR:-$DOWNLOAD_DIR/manual}"
+  local slug dir ans f got
+  slug="$(slugify "$name")"; dir="$base/$slug"; mkdir -p "$dir"
+  [ -n "$mnote" ] && info "$mnote"
+  [ -n "$murl" ] && info "More info / download: $murl"
+  info "Download the installer yourself and place it (keep its original file name) in:"
+  info "    $dir"
+  info "Then type 'done' (handled by extension: .deb/.rpm/.sh/.run/.bin/.bundle/.AppImage/.tar.gz/.zip/...); 'skip' to skip."
+  if [ ! -r /dev/tty ]; then mark_manual "$name" "no package manager route - needs manual download"; return 0; fi
+  while :; do
+    printf '  %s (done/skip): ' "$name" > /dev/tty
+    read -r ans < /dev/tty || ans="skip"
+    case "$ans" in
+      [Ss]|[Ss][Kk][Ii][Pp]) mark_skip "$name" "user skipped"; return 0 ;;
+      [Dd]|[Dd][Oo][Nn][Ee])
+        if [ -z "$(ls -A "$dir" 2>/dev/null)" ]; then
+          printf '\033[1;31m  No file found in %s -- place the file there, then type done (or skip).\033[0m\n' "$dir" > /dev/tty; continue
+        fi
+        got=0; LAST_ERR=""
+        for f in "$dir"/*; do [ -f "$f" ] || continue; install_by_ext "$f" && got=1; done
+        if [ "$got" -eq 1 ]; then mark_ok "$name" "installed from $dir"; return 0
+        else printf '\033[1;31m  %s -- fix the file in %s, then type done (or skip).\033[0m\n' "${LAST_ERR:-could not handle the file}" "$dir" > /dev/tty; fi
+        ;;
+      *) printf '\033[1;31m  Please type "done" or "skip".\033[0m\n' > /dev/tty ;;
+    esac
+  done
 }
 
 # Install the Nth-best alternative of an app only if the user asked for at least
