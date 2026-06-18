@@ -359,6 +359,32 @@ Repology API پر می‌کند.
 
 ---
 
+## به‌روزرسانی فایل manifest با هوش مصنوعی
+
+هنگام اجرای `run_project.ps1`، هر برنامهٔ نصب‌شدهٔ ویندوزی که **در فایل manifest پیدا
+نشود** (`documents/B_applications.json`) به‌صورت یک **هشدار** زرد چاپ می‌شود که نام
+برنامه‌های نگاشت‌نشده را فهرست می‌کند (همین فهرست در ابتدای `execute_all.sh` روی لینوکس
+نیز نشان داده می‌شود). تا زمانی که این برنامه‌ها را اضافه نکنید، هیچ معادل لینوکسی برایشان
+نصب نمی‌شود.
+
+لازم نیست ورودی‌های manifest را دستی بنویسید. این پروژه را در هر عامل کدنویسی هوش مصنوعی
+(Claude Code و غیره) باز کنید و متن زیر را **عیناً** بچسبانید - اسکریپت شناسایی را اجرا
+می‌کند، فهرست هشدار را می‌خواند، و ورودی‌های جاافتاده را (به‌علاوهٔ به‌روزرسانی ورودی‌های
+موجود) با داده‌های روز پر می‌کند:
+
+```text
+Make a test-run of run_project.ps1 and see the list of applications that will be given as a warning for not being found on the manifest. Add them to the manifest with the latest avaiable data from the internet in manifest entries format. Also in the end, update the already existing application list with respect to the latest available versions, best alternatives, download link, and everything else that can be updated. Strictly do not change anything else
+```
+
+پس از پایان کار عامل، `run_project.ps1` را دوباره اجرا کنید و از اسکریپت‌های بازتولیدشدهٔ
+`Execute on Linux!` استفاده کنید.
+
+> یادداشت: فیلدهای `installedVersion` / `installedEdition` در هر ورودی **پویا** هستند -
+> این جعبه‌ابزار آن‌ها را در هر اجرا از روی نصب واقعی ویندوز شما تازه می‌کند، پس نیازی به
+> نگهداری دستی‌شان نیست. بقیهٔ یک ورودی، دادهٔ ثابتِ سامان‌یافته است.
+
+---
+
 ## مهاجرت تنظیمات - خروجی ساختاریافته
 
 وقتی `apply_settings.sh` اجرا می‌شود، هر تابع `_apply_*` خطوط ساختاریافته تولید می‌کند:
