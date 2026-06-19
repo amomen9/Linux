@@ -327,7 +327,7 @@ install_native_version() {  # install_native_version PKG WINVER
 install_app() {
   local name="" alt="" method="" flatpak="" snap_pkg="" arch_list="" winver="" is_security=0 is_paid=0
   local apt="" dnf="" zypper="" pacman=""
-  local url_x86="" url_arm="" webapp_url="" docker_image="" github_repo="" note=""
+  local url_x86="" url_arm="" url_deb="" url_rpm="" webapp_url="" docker_image="" github_repo="" note=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --name)    name="$2"; shift 2 ;;
@@ -343,6 +343,8 @@ install_app() {
       --winver)  winver="$2"; shift 2 ;;
       --url-x86) url_x86="$2"; shift 2 ;;
       --url-arm) url_arm="$2"; shift 2 ;;
+      --url-deb) url_deb="$2"; shift 2 ;;
+      --url-rpm) url_rpm="$2"; shift 2 ;;
       --webapp)  webapp_url="$2"; shift 2 ;;
       --docker)  docker_image="$2"; shift 2 ;;
       --github)  github_repo="$2"; shift 2 ;;
@@ -475,8 +477,12 @@ install_app() {
         ensure_snap || continue
         if capture snap install $snap_pkg; then mark_ok "$name" "snap $snap_pkg"; return 0; fi ;;
       deburl)
-        [ -n "$url_x86$url_arm" ] || continue
-        url="$url_x86"; [ "$ARCH" = "aarch64" ] && [ -n "$url_arm" ] && url="$url_arm"
+        [ -n "$url_x86$url_arm$url_deb$url_rpm" ] || continue
+        # Prefer the package format matching the distro family (.deb on apt, .rpm on
+        # dnf/zypper); fall back to the arch-keyed URLs when no format-specific one fits.
+        url=""
+        case "$PM" in apt) url="$url_deb" ;; dnf|zypper) url="$url_rpm" ;; esac
+        [ -n "$url" ] || { url="$url_x86"; [ "$ARCH" = "aarch64" ] && [ -n "$url_arm" ] && url="$url_arm"; }
         [ -n "$url" ] || continue
         f="$DOWNLOAD_DIR/${name// /_}.pkg"
         if capture download_file "$url" "$f" && capture install_local_package "$f"; then mark_ok "$name" "downloaded package"; return 0; fi ;;

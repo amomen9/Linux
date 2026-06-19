@@ -326,7 +326,7 @@ install_native_version() {  # install_native_version PKG WINVER
 install_app() {
   local name="" alt="" method="" flatpak="" snap_pkg="" arch_list="" winver="" is_security=0 is_paid=0
   local apt="" dnf="" zypper="" pacman=""
-  local url_x86="" url_arm="" webapp_url="" docker_image="" github_repo="" note=""
+  local url_x86="" url_arm="" url_deb="" url_rpm="" webapp_url="" docker_image="" github_repo="" note=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --name)    name="$2"; shift 2 ;;
@@ -342,6 +342,8 @@ install_app() {
       --winver)  winver="$2"; shift 2 ;;
       --url-x86) url_x86="$2"; shift 2 ;;
       --url-arm) url_arm="$2"; shift 2 ;;
+      --url-deb) url_deb="$2"; shift 2 ;;
+      --url-rpm) url_rpm="$2"; shift 2 ;;
       --webapp)  webapp_url="$2"; shift 2 ;;
       --docker)  docker_image="$2"; shift 2 ;;
       --github)  github_repo="$2"; shift 2 ;;
@@ -474,8 +476,12 @@ install_app() {
         ensure_snap || continue
         if capture snap install $snap_pkg; then mark_ok "$name" "snap $snap_pkg"; return 0; fi ;;
       deburl)
-        [ -n "$url_x86$url_arm" ] || continue
-        url="$url_x86"; [ "$ARCH" = "aarch64" ] && [ -n "$url_arm" ] && url="$url_arm"
+        [ -n "$url_x86$url_arm$url_deb$url_rpm" ] || continue
+        # Prefer the package format matching the distro family (.deb on apt, .rpm on
+        # dnf/zypper); fall back to the arch-keyed URLs when no format-specific one fits.
+        url=""
+        case "$PM" in apt) url="$url_deb" ;; dnf|zypper) url="$url_rpm" ;; esac
+        [ -n "$url" ] || { url="$url_x86"; [ "$ARCH" = "aarch64" ] && [ -n "$url_arm" ] && url="$url_arm"; }
         [ -n "$url" ] || continue
         f="$DOWNLOAD_DIR/${name// /_}.pkg"
         if capture download_file "$url" "$f" && capture install_local_package "$f"; then mark_ok "$name" "downloaded package"; return 0; fi ;;
@@ -807,7 +813,7 @@ repo_setup_visual_studio_code() {
 }
   app_alt 1 install_app --name "ABBYY FineReader PDF" --alt "Tesseract OCR + gImageReader" --method flatpak --flatpak "io.github.manisandro.gImageReader" --apt "gimagereader" --dnf "gimagereader"
   app_alt 1 install_app --name "Acronis Cyber Protect / True Image" --alt "Clonezilla" --method native --apt "clonezilla" --note "Clonezilla; also a bootable ISO from clonezilla.org"
-  app_alt 1 install_app --name "Adobe Acrobat Pro" --alt "Stirling PDF" --method docker --docker "frooodle/s-pdf:latest" --note "Stirling-PDF web UI on http://localhost:8080"
+  app_alt 1 install_app --name "Adobe Acrobat Pro" --alt "Stirling PDF" --method deb-url --url-deb "https://files.stirlingpdf.com/linux-installer.deb" --url-rpm "https://files.stirlingpdf.com/linux-installer.rpm" --note "Native Stirling-PDF install (.deb on apt families, .rpm on dnf/zypper); runs as a local service, web UI on http://localhost:8080 once started."
   app_alt 1 install_app --name "Adobe Audition" --alt "Audacity" --method flatpak --flatpak "org.audacityteam.Audacity" --apt "audacity" --dnf "audacity" --zypper "audacity" --pacman "audacity"
   app_alt 1 install_app --name "Adobe Digital Editions 4.5" --alt "calibre" --method flatpak --flatpak "com.calibre_ebook.calibre" --apt "calibre" --dnf "calibre" --zypper "calibre" --pacman "calibre"
   app_alt 2 install_app --name "Adobe Digital Editions 4.5" --alt "Thorium Reader" --method flatpak --note "needs manifest enrichment - see https://www.edrlab.org/software/thorium-reader/"
@@ -840,7 +846,7 @@ repo_setup_visual_studio_code() {
   app_alt 1 install_app --name "EaseUS Data Recovery Wizard" --alt "TestDisk + PhotoRec" --method native --apt "testdisk" --dnf "testdisk" --zypper "testdisk" --pacman "testdisk" --note "includes PhotoRec"
   app_alt 1 install_app --name "EaseUS Partition Master" --alt "GParted" --method native --apt "gparted" --dnf "gparted" --zypper "gparted" --pacman "gparted"
   app_alt 1 install_app --name "EaseUS Todo Backup" --alt "Timeshift" --method native --apt "timeshift" --dnf "timeshift" --pacman "timeshift"
-  app_alt 2 install_app --name "EaseUS Todo Backup" --alt "DÃƒÆ’Ã‚Â©jÃƒÆ’Ã‚Â  Dup (GNOME Backups)" --method native --note "needs manifest enrichment - see https://wiki.gnome.org/Apps/DejaDup"
+  app_alt 2 install_app --name "EaseUS Todo Backup" --alt "DÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â©jÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  Dup (GNOME Backups)" --method native --note "needs manifest enrichment - see https://wiki.gnome.org/Apps/DejaDup"
   app_alt 1 install_app --name "EndNote" --alt "Zotero" --method flatpak --flatpak "org.zotero.Zotero"
   app_alt 1 install_app --name "FlashBack Pro" --alt "OBS Studio + Kdenlive" --method flatpak --flatpak "com.obsproject.Studio" --apt "obs-studio"
   app_alt 1 install_app --name "Git" --alt "Git (Linux)" --winver "2.54.0" --method native --apt "git" --dnf "git" --zypper "git" --pacman "git"
@@ -882,7 +888,7 @@ repo_setup_visual_studio_code() {
   app_alt 1 install_app --name "Nearby Share / Quick Share" --alt "LocalSend" --method flatpak --flatpak "org.localsend.localsend_app"
   app_alt 1 install_app --name "Nero Burning ROM / Nero Platinum" --alt "K3b" --method flatpak --flatpak "org.kde.k3b" --apt "k3b" --dnf "k3b" --pacman "k3b"
   app_alt 1 install_app --name "ninja" --alt "ninja-build (Linux)" --winver "1.13.2" --method native --apt "ninja-build" --dnf "ninja-build" --zypper "ninja" --pacman "ninja"
-  app_alt 1 install_app --name "Nitro PDF Pro" --alt "Stirling PDF" --method docker --docker "frooodle/s-pdf:latest" --note "Stirling-PDF web UI on http://localhost:8080"
+  app_alt 1 install_app --name "Nitro PDF Pro" --alt "Stirling PDF" --method deb-url --url-deb "https://files.stirlingpdf.com/linux-installer.deb" --url-rpm "https://files.stirlingpdf.com/linux-installer.rpm" --note "Native Stirling-PDF install (.deb on apt families, .rpm on dnf/zypper); runs as a local service, web UI on http://localhost:8080 once started."
   app_alt 1 install_app --name "Node.js" --alt "Node.js (Linux)" --winver "24.15.0" --method native --apt "nodejs" --dnf "nodejs" --zypper "nodejs npm" --pacman "nodejs npm"
   app_alt 1 install_app --name "Notepad++" --alt "Notepadqq" --method native --apt "notepadqq" --note "alt: install 'code' or a GNOME/KDE editor"
   app_alt 1 install_app --name "oCam Screen Recorder" --alt "OBS Studio" --method flatpak --flatpak "com.obsproject.Studio" --apt "obs-studio"
@@ -938,7 +944,7 @@ repo_setup_visual_studio_code() {
   app_alt 1 install_app --name "ZBrush" --alt "Blender (Sculpt Mode)" --method flatpak --flatpak "org.blender.Blender" --apt "blender" --note "Blender Sculpt Mode"
   app_alt 1 install_app --name "Zoom Workplace" --alt "Zoom Workplace (Linux)" --method flatpak --flatpak "us.zoom.Zoom"
   app_alt 1 install_app --name "Zune Music / Windows Media Player" --alt "Rhythmbox" --method flatpak --flatpak "org.gnome.Rhythmbox" --apt "rhythmbox" --dnf "rhythmbox" --pacman "rhythmbox"
-  app_alt 1 install_app --name "Ãƒâ€šÃ‚ÂµTorrent" --alt "qBittorrent" --method flatpak --flatpak "org.qbittorrent.qBittorrent" --apt "qbittorrent" --dnf "qbittorrent" --zypper "qbittorrent" --pacman "qbittorrent"
+  app_alt 1 install_app --name "ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂµTorrent" --alt "qBittorrent" --method flatpak --flatpak "org.qbittorrent.qBittorrent" --apt "qbittorrent" --dnf "qbittorrent" --zypper "qbittorrent" --pacman "qbittorrent"
   app_alt 1 install_app --name "NordVPN" --alt "NordVPN for Linux" --method manual --note "Install via NordVPN's official script: sh <(curl -sSf https://downloads.nordcdn.com/apps/linux/install.sh)  -- or add their apt/dnf repo. Requires a NordVPN subscription to log in." --paid
   app_alt 1 install_app --name "Miniconda3" --alt "Miniconda (Linux)" --method manual --url-x86 "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh" --url-arm "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-aarch64.sh" --note "Download the Miniconda installer for your architecture and run: bash Miniconda3-latest-Linux-*.sh"
   install_app --name "Telegram" --alt "telegram-desktop (APT/Flatpak)" --method manual --url-x86 "https://telegram.org/dl/desktop/linux" --note "telegram-desktop (APT/Flatpak) | telegram.org"

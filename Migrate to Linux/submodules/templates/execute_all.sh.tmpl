@@ -192,9 +192,11 @@ install_manual_apps() {
   MODULE="Applications"   # manual downloads are part of the Applications module
   local base="${MIGRATE_MANUAL_DIR:-$DOWNLOAD_DIR/manual}"
   printf '\n'; log "Manual downloads (apps with no automatic installer) -- done last"
-  local entry name alt note url paid slug dir ans f got
+  local entry name alt note url paid slug dir ans f got skip_all=0
   for entry in "${MANUAL_APPS[@]}"; do
     IFS='|' read -r name alt note url paid <<< "$entry"
+    # "skip all" chosen earlier: skip this and every remaining manual app without prompting.
+    if [ "$skip_all" -eq 1 ]; then mark_skip "$name" "user skipped (skip all)"; continue; fi
     slug="$(slugify "$name")"; dir="$base/$slug"; mkdir -p "$dir"
     printf '\n\n'
     if [ -n "$alt" ]; then
@@ -222,12 +224,15 @@ install_manual_apps() {
     info "Download the installer and place it (keep its original file name) in:"
     info "    $dir"
     info "Then type 'done'. The file is handled by its extension (.deb/.rpm/.sh/"
-    info ".run/.bin/.bundle/.AppImage/.tar.gz/.zip/...); 'skip' to skip this app."
+    info ".run/.bin/.bundle/.AppImage/.tar.gz/.zip/...); 'skip' to skip this app,"
+    info "or 'skip all' to skip this and every remaining manual app."
     if [ ! -r /dev/tty ]; then mark_skip "$name" "no tty for manual prompt"; continue; fi
     while :; do
-      printf '  %s (done/skip): ' "$name" > /dev/tty
+      printf '  %s (done/skip/skip all): ' "$name" > /dev/tty
       read -r ans < /dev/tty || ans="skip"
       case "$ans" in
+        [Aa]|[Aa][Ll][Ll]|[Ss][Kk][Ii][Pp][Aa][Ll][Ll]|'skip all'|'Skip all'|'Skip All'|'SKIP ALL')
+          skip_all=1; mark_skip "$name" "user skipped (skip all)"; break ;;
         [Ss]|[Ss][Kk][Ii][Pp])
           mark_skip "$name" "user skipped"; break ;;
         [Dd]|[Dd][Oo][Nn][Ee])
@@ -332,7 +337,7 @@ main() {
     show_config "$cfg"
     printf '\n'
     if [ -r /dev/tty ]; then
-      ask "Do you want to continue with these configurations\n (Choose N to answer them again, subsequently, the default values will change to your answers)?" y && use_cfg=1
+      ask $'Do you want to continue with these configurations\n (Choose N to answer them again, subsequently, the default values will change to your answers)?' y && use_cfg=1
     else
       use_cfg=1
     fi
