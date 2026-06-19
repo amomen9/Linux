@@ -287,7 +287,7 @@ print_module_summary() {  # print_module_summary "Module name"
     local r
     while IFS= read -r r; do
       [ -z "$r" ] && continue
-      info "          Skipped: $r"
+      printf '                 \033[38;5;208mSkipped: %s\033[0m\n' "$r" >&3
       awk -F'\t' -v m="$m" -v rr="$r" '{g=$3;gsub(/ /,"",g); d=$5; if(d=="")d="already present"} $2==m && g=="SKIP" && d==rr{printf "            - %s\n",$4}' "$f" >&3
     done < <(awk -F'\t' -v m="$m" '{g=$3;gsub(/ /,"",g); d=$5; if(d=="")d="already present"} $2==m && g=="SKIP"{print d}' "$f" | sort -u)
   fi
