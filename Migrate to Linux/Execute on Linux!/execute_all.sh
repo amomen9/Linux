@@ -328,7 +328,7 @@ install_native_version() {  # install_native_version PKG WINVER
 install_app() {
   local name="" alt="" method="" flatpak="" snap_pkg="" arch_list="" winver="" is_security=0 is_paid=0
   local apt="" dnf="" zypper="" pacman=""
-  local url_x86="" url_arm="" webapp_url="" docker_image="" github_repo="" note=""
+  local url_x86="" url_arm="" url_deb="" url_rpm="" webapp_url="" docker_image="" github_repo="" note=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --name)    name="$2"; shift 2 ;;
@@ -344,6 +344,8 @@ install_app() {
       --winver)  winver="$2"; shift 2 ;;
       --url-x86) url_x86="$2"; shift 2 ;;
       --url-arm) url_arm="$2"; shift 2 ;;
+      --url-deb) url_deb="$2"; shift 2 ;;
+      --url-rpm) url_rpm="$2"; shift 2 ;;
       --webapp)  webapp_url="$2"; shift 2 ;;
       --docker)  docker_image="$2"; shift 2 ;;
       --github)  github_repo="$2"; shift 2 ;;
@@ -476,8 +478,12 @@ install_app() {
         ensure_snap || continue
         if capture snap install $snap_pkg; then mark_ok "$name" "snap $snap_pkg"; return 0; fi ;;
       deburl)
-        [ -n "$url_x86$url_arm" ] || continue
-        url="$url_x86"; [ "$ARCH" = "aarch64" ] && [ -n "$url_arm" ] && url="$url_arm"
+        [ -n "$url_x86$url_arm$url_deb$url_rpm" ] || continue
+        # Prefer the package format matching the distro family (.deb on apt, .rpm on
+        # dnf/zypper); fall back to the arch-keyed URLs when no format-specific one fits.
+        url=""
+        case "$PM" in apt) url="$url_deb" ;; dnf|zypper) url="$url_rpm" ;; esac
+        [ -n "$url" ] || { url="$url_x86"; [ "$ARCH" = "aarch64" ] && [ -n "$url_arm" ] && url="$url_arm"; }
         [ -n "$url" ] || continue
         f="$DOWNLOAD_DIR/${name// /_}.pkg"
         if capture download_file "$url" "$f" && capture install_local_package "$f"; then mark_ok "$name" "downloaded package"; return 0; fi ;;
@@ -893,9 +899,11 @@ install_manual_apps() {
   MODULE="Applications"   # manual downloads are part of the Applications module
   local base="${MIGRATE_MANUAL_DIR:-$DOWNLOAD_DIR/manual}"
   printf '\n'; log "Manual downloads (apps with no automatic installer) -- done last"
-  local entry name alt note url paid slug dir ans f got
+  local entry name alt note url paid slug dir ans f got skip_all=0
   for entry in "${MANUAL_APPS[@]}"; do
     IFS='|' read -r name alt note url paid <<< "$entry"
+    # "skip all" chosen earlier: skip this and every remaining manual app without prompting.
+    if [ "$skip_all" -eq 1 ]; then mark_skip "$name" "user skipped (skip all)"; continue; fi
     slug="$(slugify "$name")"; dir="$base/$slug"; mkdir -p "$dir"
     printf '\n\n'
     if [ -n "$alt" ]; then
@@ -923,12 +931,15 @@ install_manual_apps() {
     info "Download the installer and place it (keep its original file name) in:"
     info "    $dir"
     info "Then type 'done'. The file is handled by its extension (.deb/.rpm/.sh/"
-    info ".run/.bin/.bundle/.AppImage/.tar.gz/.zip/...); 'skip' to skip this app."
+    info ".run/.bin/.bundle/.AppImage/.tar.gz/.zip/...); 'skip' to skip this app,"
+    info "or 'skip all' to skip this and every remaining manual app."
     if [ ! -r /dev/tty ]; then mark_skip "$name" "no tty for manual prompt"; continue; fi
     while :; do
-      printf '  %s (done/skip): ' "$name" > /dev/tty
+      printf '  %s (done/skip/skip all): ' "$name" > /dev/tty
       read -r ans < /dev/tty || ans="skip"
       case "$ans" in
+        [Aa]|[Aa][Ll][Ll]|[Ss][Kk][Ii][Pp][Aa][Ll][Ll]|'skip all'|'Skip all'|'Skip All'|'SKIP ALL')
+          skip_all=1; mark_skip "$name" "user skipped (skip all)"; break ;;
         [Ss]|[Ss][Kk][Ii][Pp])
           mark_skip "$name" "user skipped"; break ;;
         [Dd]|[Dd][Oo][Nn][Ee])
@@ -1033,7 +1044,7 @@ main() {
     show_config "$cfg"
     printf '\n'
     if [ -r /dev/tty ]; then
-      ask "Do you want to continue with these configurations\n (Choose N to answer them again, subsequently, the default values will change to your answers)?" y && use_cfg=1
+      ask $'Do you want to continue with these configurations\n (Choose N to answer them again, subsequently, the default values will change to your answers)?' y && use_cfg=1
     else
       use_cfg=1
     fi

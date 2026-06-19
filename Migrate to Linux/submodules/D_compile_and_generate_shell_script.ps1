@@ -119,6 +119,8 @@ function New-InstallCall {
     if ($dl) {
         Add-Flag $parts '--url-x86' (Get-Prop $dl 'x86_64')
         Add-Flag $parts '--url-arm' (Get-Prop $dl 'aarch64')
+        Add-Flag $parts '--url-deb' (Get-Prop $dl 'deb')
+        Add-Flag $parts '--url-rpm' (Get-Prop $dl 'rpm')
     }
 
     Add-Flag $parts '--webapp' (Get-Prop $Install 'webappUrl')
