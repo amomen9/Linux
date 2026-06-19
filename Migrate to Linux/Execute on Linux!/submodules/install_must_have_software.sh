@@ -719,7 +719,7 @@ repo_setup_visual_studio_code() {
   app_alt 1 install_app --name "EaseUS Data Recovery Wizard" --alt "TestDisk + PhotoRec" --method native --apt "testdisk" --dnf "testdisk" --zypper "testdisk" --pacman "testdisk" --note "includes PhotoRec"
   app_alt 1 install_app --name "EaseUS Partition Master" --alt "GParted" --method native --apt "gparted" --dnf "gparted" --zypper "gparted" --pacman "gparted"
   app_alt 1 install_app --name "EaseUS Todo Backup" --alt "Timeshift" --method native --apt "timeshift" --dnf "timeshift" --pacman "timeshift"
-  app_alt 2 install_app --name "EaseUS Todo Backup" --alt "DÃ©jÃ  Dup (GNOME Backups)" --method native --note "needs manifest enrichment - see https://wiki.gnome.org/Apps/DejaDup"
+  app_alt 2 install_app --name "EaseUS Todo Backup" --alt "DÃƒÂ©jÃƒÂ  Dup (GNOME Backups)" --method native --note "needs manifest enrichment - see https://wiki.gnome.org/Apps/DejaDup"
   app_alt 1 install_app --name "EndNote" --alt "Zotero" --method flatpak --flatpak "org.zotero.Zotero"
   app_alt 1 install_app --name "FlashBack Pro" --alt "OBS Studio + Kdenlive" --method flatpak --flatpak "com.obsproject.Studio" --apt "obs-studio"
   app_alt 1 install_app --name "Git" --alt "Git (Linux)" --winver "2.54.0" --method native --apt "git" --dnf "git" --zypper "git" --pacman "git"
@@ -817,7 +817,7 @@ repo_setup_visual_studio_code() {
   app_alt 1 install_app --name "ZBrush" --alt "Blender (Sculpt Mode)" --method flatpak --flatpak "org.blender.Blender" --apt "blender" --note "Blender Sculpt Mode"
   app_alt 1 install_app --name "Zoom Workplace" --alt "Zoom Workplace (Linux)" --method flatpak --flatpak "us.zoom.Zoom"
   app_alt 1 install_app --name "Zune Music / Windows Media Player" --alt "Rhythmbox" --method flatpak --flatpak "org.gnome.Rhythmbox" --apt "rhythmbox" --dnf "rhythmbox" --pacman "rhythmbox"
-  app_alt 1 install_app --name "ÂµTorrent" --alt "qBittorrent" --method flatpak --flatpak "org.qbittorrent.qBittorrent" --apt "qbittorrent" --dnf "qbittorrent" --zypper "qbittorrent" --pacman "qbittorrent"
+  app_alt 1 install_app --name "Ã‚ÂµTorrent" --alt "qBittorrent" --method flatpak --flatpak "org.qbittorrent.qBittorrent" --apt "qbittorrent" --dnf "qbittorrent" --zypper "qbittorrent" --pacman "qbittorrent"
   app_alt 1 install_app --name "NordVPN" --alt "NordVPN for Linux" --method manual --note "Install via NordVPN's official script: sh <(curl -sSf https://downloads.nordcdn.com/apps/linux/install.sh)  -- or add their apt/dnf repo. Requires a NordVPN subscription to log in." --paid
   app_alt 1 install_app --name "Miniconda3" --alt "Miniconda (Linux)" --method manual --url-x86 "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh" --url-arm "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-aarch64.sh" --note "Download the Miniconda installer for your architecture and run: bash Miniconda3-latest-Linux-*.sh"
   install_app --name "Telegram" --alt "telegram-desktop (APT/Flatpak)" --method manual --url-x86 "https://telegram.org/dl/desktop/linux" --note "telegram-desktop (APT/Flatpak) | telegram.org"
