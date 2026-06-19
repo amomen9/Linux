@@ -298,6 +298,7 @@ print_combined_summary() {
   print_module_summary "Drivers"
   print_module_summary "Config settings"
   print_module_summary "Applications"
+  print_launched_containers
   printf '\n'
   info "Full log: $f"
 }
@@ -312,6 +313,9 @@ main() {
   # Share ONE results log across all stages so the final summary covers everything.
   export RESULTS="${RESULTS:-/tmp/migrate_to_linux_results.tsv}"
   : > "$RESULTS" 2>/dev/null || true
+  # Shared log of containers launched by the docker install method (req28).
+  export DOCKER_LAUNCHED="${DOCKER_LAUNCHED:-/tmp/migrate_to_linux_launched.tsv}"
+  : > "$DOCKER_LAUNCHED" 2>/dev/null || true
   export MIGRATE_KEEP_RESULTS=1
 
   log "Migrate to Linux  --  Run All"
