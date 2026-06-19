@@ -614,7 +614,8 @@ apply_display_scaling() {
   [ -z "${CFG_scaling:-}" ] && return 0
   local pct factor; pct="$(printf '%s' "$CFG_scaling" | tr -cd '0-9')"
   [ -z "$pct" ] && return 0
-  factor="$(awk "BEGIN{printf \"%.2f\", $pct/100}")"
+  # LC_NUMERIC=C forces a '.' decimal separator; gsettings rejects locale commas (e.g. "1,50").
+  factor="$(LC_NUMERIC=C awk "BEGIN{printf \"%.2f\", $pct/100}")"
   log "Display scaling: ${CFG_scaling} (text-scaling-factor ${factor})"
   case "$DE" in
     gnome|cinnamon) gset org.gnome.desktop.interface text-scaling-factor "$factor" ;;
