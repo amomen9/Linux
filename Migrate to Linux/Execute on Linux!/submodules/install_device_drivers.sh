@@ -48,6 +48,13 @@ RESULTS="${RESULTS:-/tmp/migrate_to_linux_results.tsv}"
 if [ -z "${MIGRATE_KEEP_RESULTS:-}" ]; then
   : > "$RESULTS" 2>/dev/null || RESULTS="$(mktemp)"
 fi
+# Containers launched by the docker install method are recorded here (one TSV row per
+# container: winapp \t image \t container \t how-to) so the end-of-run summary can print
+# a "Launched containers" section. Shares the same cross-stage model as RESULTS.
+DOCKER_LAUNCHED="${DOCKER_LAUNCHED:-/tmp/migrate_to_linux_launched.tsv}"
+if [ -z "${MIGRATE_KEEP_RESULTS:-}" ]; then
+  : > "$DOCKER_LAUNCHED" 2>/dev/null || DOCKER_LAUNCHED="$(mktemp)"
+fi
 declare -a OK_LIST=() SKIP_LIST=() FAIL_LIST=() FAIL_REASON=() MANUAL_LIST=()
 
 # LAST_ERR holds the 1-line reason from the most recent captured command failure.
@@ -94,6 +101,7 @@ print_summary() {
   if [ "${#MANUAL_LIST[@]}" -gt 0 ]; then
     warn "Need a manual step:"; for i in "${MANUAL_LIST[@]}"; do info "  - $i"; done
   fi
+  print_launched_containers
   info "Full log: $RESULTS"
 }
 
@@ -391,10 +399,7 @@ install_app() {
     webapp)
       webapp_desktop "$name" "$webapp_url"; return 0 ;;
     docker)
-      if ensure_docker && capture docker pull "$docker_image"; then
-        mark_ok "$name" "docker image pulled: $docker_image (run it yourself)"
-      else mark_fail "$name" "${LAST_ERR:-could not pull docker image $docker_image}"; fi
-      return 0 ;;
+      docker_launch_app "$name" "$docker_image" "$note"; return 0 ;;
     wine-bottles)
       if ensure_flatpak && capture install_flatpak com.usebottles.bottles; then
         mark_ok "$name" "via Bottles (flatpak) - configure the Windows app inside Bottles"
@@ -571,6 +576,122 @@ ensure_docker() {
   esac
   have_cmd docker && systemctl enable --now docker 2>/dev/null
   have_cmd docker
+}
+
+# =============================================================================
+#  DOCKER CONTAINER LAUNCHING  (apps whose Linux equivalent IS a container)
+# -----------------------------------------------------------------------------
+#  For each app with install.method=docker we pull the image, attach it to ONE
+#  shared bridge network, and start a container with sensible defaults. Host
+#  ports are taken from the image's EXPOSED ports and bumped by 1 on conflict.
+#  If a container for the same image already exists, we just (re)start it instead
+#  of creating a duplicate. These are NOT the images migrated from Windows Docker
+#  (those are handled separately by docker_rebuild.sh).
+# =============================================================================
+DOCKER_NET="${DOCKER_NET:-migrate-bridge}"
+
+ensure_docker_net() {
+  docker network inspect "$DOCKER_NET" >/dev/null 2>&1 && return 0
+  capture docker network create --driver bridge "$DOCKER_NET" >/dev/null 2>&1 || \
+    docker network create --driver bridge "$DOCKER_NET" >/dev/null 2>&1
+}
+
+# Track host ports assigned during this run; combined with live listener checks.
+_MIGRATE_PORTS_TAKEN=""
+_port_in_use() {  # _port_in_use PORT
+  local p="$1"
+  case " $_MIGRATE_PORTS_TAKEN " in *" $p "*) return 0 ;; esac
+  if have_cmd ss; then
+    ss -ltnH 2>/dev/null | awk '{print $4}' | sed 's/.*[:.]//' | grep -qx "$p" && return 0
+  elif have_cmd netstat; then
+    netstat -ltn 2>/dev/null | awk 'NR>2{print $4}' | sed 's/.*[:.]//' | grep -qx "$p" && return 0
+  fi
+  return 1
+}
+_pick_port() {  # _pick_port DESIRED -> free host port (incrementing on conflict)
+  local p="$1"
+  [ -z "$p" ] && { printf ''; return 0; }
+  while _port_in_use "$p"; do p=$((p + 1)); done
+  _MIGRATE_PORTS_TAKEN="$_MIGRATE_PORTS_TAKEN $p"
+  printf '%s' "$p"
+}
+
+# Human-readable "how to use" line derived from the container's published ports.
+_docker_howto() {  # _docker_howto CONTAINER NOTE
+  local c="$1" note="$2" hp howto
+  hp="$(docker port "$c" 2>/dev/null | sed -n 's/.*:\([0-9]\{1,\}\)$/\1/p' | head -n1)"
+  if [ -n "$hp" ]; then howto="open http://localhost:${hp} in your browser"
+  else howto="attach with: docker exec -it ${c} sh"; fi
+  howto="${howto}; start/stop with: docker start ${c} / docker stop ${c}"
+  [ -n "$note" ] && howto="${howto} (${note})"
+  printf '%s' "$howto"
+}
+
+# Record a launched container ONCE (one line per container, deduped by name).
+_record_launched() {  # _record_launched WINAPP IMAGE CONTAINER NOTE
+  local winapp="$1" image="$2" c="$3" note="$4"
+  if [ -f "$DOCKER_LAUNCHED" ] && cut -f3 "$DOCKER_LAUNCHED" 2>/dev/null | grep -qx "$c"; then return 0; fi
+  printf '%s\t%s\t%s\t%s\n' "$winapp" "$image" "$c" "$(_docker_howto "$c" "$note")" >> "$DOCKER_LAUNCHED"
+}
+
+docker_launch_app() {  # docker_launch_app WINAPP IMAGE NOTE
+  local winapp="$1" image="$2" note="$3"
+  [ -z "$image" ] && { mark_fail "$winapp" "no docker image specified"; return 0; }
+  if ! ensure_docker; then mark_fail "$winapp" "docker is not available"; return 0; fi
+  docker info >/dev/null 2>&1 || systemctl start docker 2>/dev/null || true
+
+  # Stable container name derived from the image (so the SAME image always maps to
+  # the SAME container -> reuse instead of duplicate).
+  local base cname
+  base="${image##*/}"; base="${base%%:*}"
+  cname="migrate-$(slugify "$base")"
+
+  # Already created (this run or a previous one)? Just start it if stopped; never
+  # create a second container for the same image.
+  if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$cname"; then
+    if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$cname"; then
+      info "container already running: $cname"
+    else
+      capture docker start "$cname" >/dev/null 2>&1 || docker start "$cname" >/dev/null 2>&1 || true
+    fi
+    _record_launched "$winapp" "$image" "$cname" "$note"
+    mark_ok "$winapp" "using existing container: $cname"
+    return 0
+  fi
+
+  if ! capture docker pull "$image"; then mark_fail "$winapp" "${LAST_ERR:-could not pull docker image $image}"; return 0; fi
+  ensure_docker_net
+
+  # Map each EXPOSED container port to a free host port (incrementing on conflict).
+  local pflags="" ep cport hport
+  for ep in $(docker image inspect --format '{{range $p,$_ := .Config.ExposedPorts}}{{$p}} {{end}}' "$image" 2>/dev/null); do
+    cport="${ep%%/*}"
+    [ -z "$cport" ] && continue
+    hport="$(_pick_port "$cport")"
+    [ -n "$hport" ] && pflags="$pflags -p ${hport}:${cport}"
+  done
+
+  # shellcheck disable=SC2086
+  if capture docker run -d --name "$cname" --network "$DOCKER_NET" --restart unless-stopped $pflags "$image"; then
+    _record_launched "$winapp" "$image" "$cname" "$note"
+    mark_ok "$winapp" "container launched: $cname"
+  else
+    mark_fail "$winapp" "${LAST_ERR:-could not start container for $image}"
+  fi
+}
+
+# Purple "Launched containers" section (one line per container). Printed at the end
+# of a run by execute_all (orchestrated) or print_summary (standalone stage).
+print_launched_containers() {
+  local f="${DOCKER_LAUNCHED:-/tmp/migrate_to_linux_launched.tsv}"
+  [ -s "$f" ] || return 0
+  printf '\n' >&3
+  printf '        \033[1;35m===== Launched containers =====\033[0m\n' >&3
+  local winapp image cname howto
+  while IFS="$(printf '\t')" read -r winapp image cname howto; do
+    [ -z "$cname" ] && continue
+    info "          ${winapp}  --> image:'${image}' | container: '${cname}' | How to use: ${howto}"
+  done < "$f"
 }
 
 
