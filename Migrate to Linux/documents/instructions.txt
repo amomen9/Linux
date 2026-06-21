@@ -61,13 +61,28 @@ Docker capture/rebuild flow:
   - The generated execute_all.sh asks the STAGE questions up front (each shown with
     its (y/n) option): drivers / apps / settings, plus "Migrate docker components?"
     (only if a sibling docker_rebuild.sh exists). It runs the chosen stages
-    unattended, then the docker rebuild if requested.
+    unattended, then the docker rebuild if requested. The apps stage also asks how
+    many best alternatives to install ("...(excluding wine - Windows emulator)") and,
+    as the LAST question, "Install the non-cross-platform Windows applications under
+    the Windows emulator (wine) too? (y/n)" (sets MIGRATE_WINE_NONCROSS). All answers
+    persist to migrate.config.
+  - DRY-RUN / REPORT-ONLY: execute_all.sh --dry-run (also --report-only, -n, or
+    MIGRATE_DRY_RUN=yes) prints the full per-app plan and makes NO changes (no root
+    required); only the apps plan is simulated - the driver/settings/docker stages are
+    skipped.
   - MANUAL DOWNLOADS run LAST. Apps flagged install.promptFile=true in the manifest
     are excluded from install_must_have_software.sh and collected into the
-    MANUAL_APPS array in execute_all.sh. For each, execute_all shows where to place
-    the file and asks (done/skip); on "done" it verifies the file is present under
-    $MIGRATE_MANUAL_DIR/<slug>/ and installs it (red error + re-ask if missing/bad),
-    looping until the file is correctly placed or the user types skip.
+    MANUAL_APPS array in execute_all.sh. For each, execute_all shows what to download
+    and asks for the installer PATH - typed in single quotes, a full path or one
+    relative to the user's ~/Downloads - with choices ('installer path'/skip/skip all);
+    the file is installed by extension (red error + re-ask on a bad path), looping
+    until a valid path is given or the user skips. The prompt shows the Linux
+    alternative's name. The SAME 'installer path'/skip/skip all scheme is used by every
+    download-by-user fallback in the engine.
+  - VERIFICATION + UNINSTALL: after each install the engine re-checks the
+    package/Flatpak/Snap is present (else it is marked UNVERIFIED, not OK); every
+    successful install is ledgered and an uninstall_migrated_apps.sh is written to the
+    user's home folder.
 
 To regenerate the installer after editing the manifest or CSVs:
   .\run_project.ps1 -SkipDetection      (regenerate scripts only)
@@ -494,16 +509,28 @@ POSTGRESQL (explicit requirement)
   (apt.postgresql.org, suite "<codename>-pgdg") and install the latest postgresql
   + postgresql-client.
 
-WINE + NOTEPAD++ (explicit requirements)
-  * Install WineHQ from the official winehq.org repository (add i386 architecture first).
-  * After Wine is installed, additionally install the real Notepad++ Windows
-    installer under Wine using the official GitHub release .exe (silent install
-    with /S flag). Check for an existing Notepad++.exe in the Wine prefix first;
-    skip re-installation if present (idempotent).
-  * After Wine is configured, force Wine DPI to 192 (LogPixels = 0xC0) via
-    `wine reg add` so fonts and UI are readable on high-DPI displays. Run this as
-    the $SUDO_USER so it writes to their ~/.wine prefix.
-  * The native Linux alternatives (notepadqq, geany) are also installed via APT.
+WINE (WINDOWS EMULATOR) - OPTIONAL, FOR NON-CROSS-PLATFORM APPS
+  * Gated by the setup question "Install the non-cross-platform Windows applications
+    under the Windows emulator (wine) too?" (MIGRATE_WINE_NONCROSS=yes). The generator
+    emits a `wine_app "<name>" "<windowsInstaller-url>"` call for every DETECTED app that
+    is a Win32 desktop app with no native "Available on Linux" build (e.g. Notepad++,
+    WinRAR, IDM).
+  * Install Wine via the native package manager (add i386 first on apt). Then, per app:
+      - If the manifest entry has a "windowsInstaller" URL (a trusted, official, DIRECT
+        installer link; currently Notepad++ and WinRAR), DOWNLOAD it and run it under
+        Wine silently (.exe -> /S, .msi -> msiexec /i /qn, .bat -> cmd /c).
+      - Otherwise ASK for the installer path ('installer path'/skip/skip all; full path
+        or relative to ~/Downloads; any extension .exe/.msi/.bat/...).
+  * Each app gets its OWN isolated Wine prefix (~/.local/share/wineprefixes/<slug>),
+    created/owned by $SUDO_USER; apply a winetricks font baseline (corefonts) best-effort.
+  * After install, force Wine DPI to 240 (LogPixels = 0xF0, i.e. 2.5x of the 96 default)
+    via `wine reg add`, run as $SUDO_USER, so fonts/UI are readable. Generate .desktop
+    launchers for any Start-Menu .lnk shortcuts the installer created.
+  * Wine is INDEPENDENT of the alternatives count: with alternatives > 0 the native
+    alternative(s) AND the Wine app are installed; with 0, only the Wine app is.
+  * The native Linux alternatives (e.g. notepadqq/geany for Notepad++; p7zip for WinRAR)
+    are still installed via the normal alternatives path. The windowsInstaller URLs are
+    version-pinned, so they need an occasional refresh (a 404 falls back to the prompt).
 
 POWERTOYS REPLACEMENTS (explicit requirements)
   PowerToys maps to MULTIPLE separate Linux packages, each covering one feature:
@@ -1070,6 +1097,9 @@ PART E2 - LINUX DRIVER INSTALLER  (<Target OS>/install_device_drivers.sh)
   A single entry point that runs the whole migration on the target machine.
     * Bash; cd to its own dir (SCRIPT_DIR) so child scripts resolve ../*.csv.
     * require root (children each need root).
+    * DRY-RUN: --dry-run / --report-only / -n (or MIGRATE_DRY_RUN=yes) prints the
+      per-app plan and changes nothing; it skips require-root and runs only the apps
+      plan (driver/settings/docker stages are skipped, config is not saved).
     * For each stage IN ORDER - settings, apps, drivers -
         apply_settings.sh, install_must_have_software.sh, install_device_drivers.sh:
       chmod +x the script, then run "./<script>" inheriting the terminal (each child
@@ -1078,7 +1108,13 @@ PART E2 - LINUX DRIVER INSTALLER  (<Target OS>/install_device_drivers.sh)
       NEVER stops the remaining stages. A missing script is "MISSING", not a failure.
     * Print a per-stage OK/FAILED/MISSING summary with exit codes + elapsed time;
       exit non-zero iff any stage failed.
-  Run with:  sudo ./execute_all.sh
+    * Setup answers persist to migrate.config; the LAST setup question is the optional
+      Wine (Windows emulator) install for non-cross-platform apps (MIGRATE_WINE_NONCROSS).
+    * Manual / download-by-user prompts use 'installer path'/skip/skip all (path in
+      single quotes, full or relative to ~/Downloads). After the run, write
+      uninstall_migrated_apps.sh to the user's home; installs that cannot be confirmed
+      present are reported UNVERIFIED (not OK).
+  Run with:  sudo ./execute_all.sh        (add --dry-run to preview without changes)
 
 
 ===============================================================================
@@ -1126,11 +1162,16 @@ PART E2 - LINUX DRIVER INSTALLER  (<Target OS>/install_device_drivers.sh)
       LC_ALL=C float formatting for dconf, dconf cleanup-on-failure, and the
       localectl→/etc/default/keyboard fallback.
   [ ] (Re)generate <Target OS>/execute_all.sh per PART F (chmod +x then run
-      settings -> apps -> drivers, continue-on-error, per-stage summary).
-  [ ] Update README.md to match.
+      settings -> apps -> drivers, continue-on-error, per-stage summary). Ensure it
+      supports --dry-run/--report-only, asks the optional Wine question last
+      (MIGRATE_WINE_NONCROSS), uses 'installer path'/skip/skip all for manual prompts,
+      marks unconfirmed installs UNVERIFIED, and writes uninstall_migrated_apps.sh.
+  [ ] Update README.md and README_fa.md to match.
   [ ] Confirm the installers hard-code NO architecture or release - codename,
       DEB_ARCH and KARCH are all auto-detected on the target and used everywhere.
-  [ ] Validate: PowerShell parses (AST), every bash script passes `bash -n`.
+  [ ] Validate: PowerShell parses (AST), every bash script passes `bash -n`. The
+      .github/workflows/distro-dry-run.yml CI regenerates the scripts and dry-runs them
+      in an apt/dnf/zypper/pacman container matrix on every change.
   [ ] Confirm SpotPlayer remains MANUAL only with explicit user warning about
       unverified source.
 ===============================================================================

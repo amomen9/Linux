@@ -6174,6 +6174,7 @@
                          },
                          {
                              "name":  "Notepad++",
+                             "windowsInstaller":  "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.9.6.4/npp.8.9.6.4.Installer.x64.exe",
                              "version":  "8.9.3",
                              "publisher":  "Notepad++ Team",
                              "sourceType":  "Win32",
@@ -9823,6 +9824,7 @@
                          },
                          {
                              "name":  "WinRAR",
+                             "windowsInstaller":  "https://www.rarlab.com/rar/winrar-x64-722.exe",
                              "version":  "7.13.0",
                              "publisher":  "win.rar GmbH",
                              "sourceType":  "Win32",
