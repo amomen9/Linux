@@ -499,37 +499,136 @@ install_app() {
   fi
 }
 
+# Resolve a user-typed installer path: strip surrounding single/double quotes and
+# outer whitespace; absolute paths and ~/... are used as-is; a bare/relative path is
+# taken relative to the logged-in user's Downloads folder. Echoes the resolved path.
+resolve_user_path() {  # resolve_user_path RAW
+  local p="$1"
+  p="${p#"${p%%[![:space:]]*}"}"; p="${p%"${p##*[![:space:]]}"}"   # trim outer whitespace
+  case "$p" in
+    \'*\') p="${p#\'}"; p="${p%\'}" ;;
+    \"*\") p="${p#\"}"; p="${p%\"}" ;;
+  esac
+  case "$p" in
+    '')    : ;;
+    /*)    : ;;
+    '~')   p="$TARGET_HOME" ;;
+    '~/'*) p="$TARGET_HOME/${p#\~/}" ;;
+    *)     p="$TARGET_HOME/Downloads/$p" ;;
+  esac
+  printf '%s' "$p"
+}
+
+# Run a wine (Windows emulator) command as the logged-in user in their default 64-bit
+# wine prefix (the installer itself usually runs as root under sudo).
+run_wine() {  # run_wine CMD [ARGS...]
+  if [ "$(id -u)" -eq 0 ] && [ "$TARGET_USER" != "root" ]; then
+    sudo -u "$TARGET_USER" env HOME="$TARGET_HOME" WINEARCH=win64 WINEPREFIX="$TARGET_HOME/.wine" WINEDEBUG=-all "$@"
+  else
+    env HOME="$TARGET_HOME" WINEARCH=win64 WINEPREFIX="$TARGET_HOME/.wine" WINEDEBUG=-all "$@"
+  fi
+}
+
+# Ensure wine (the Windows emulator) is installed via the native package manager.
+ensure_wine() {
+  have_cmd wine && return 0
+  info "installing wine (Windows emulator) ..."
+  case "$PM" in
+    apt)    dpkg --add-architecture i386 2>/dev/null || true; pm_refresh; capture pm_install wine64 wine32 || capture pm_install wine ;;
+    dnf)    capture pm_install wine ;;
+    zypper) capture pm_install wine ;;
+    pacman) capture pm_install wine ;;
+  esac
+  have_cmd wine
+}
+
 # Manual download-by-user fallback for an app no package manager could install.
-# Prompts the user to download + place the installer; handles it by extension; loops
-# until a valid file is placed ('done') or the user skips. Marks the result.
+# Asks the user to download the installer and type its path (full, or relative to the
+# logged-in user's Downloads folder) in single quotes; installs it by extension; loops
+# until a valid path is given or the user skips. Marks the result.
 manual_fallback() {  # manual_fallback NAME [ALT] [NOTE] [URL]
   local name="$1" alt="$2" mnote="$3" murl="$4"
-  local base="${MIGRATE_MANUAL_DIR:-$DOWNLOAD_DIR/manual}"
-  local slug dir ans f got
-  slug="$(slugify "$name")"; dir="$base/$slug"; mkdir -p "$dir"
+  # "skip all" chosen earlier: skip this and every remaining manual app without prompting.
+  if [ "${MANUAL_FALLBACK_SKIP_ALL:-0}" = "1" ]; then mark_skip "$name" "user skipped (skip all)"; return 0; fi
+  local ans f disp="${alt:-$name}"
   [ -n "$mnote" ] && info "$mnote"
   [ -n "$murl" ] && info "More info / download: $murl"
-  info "Download the installer yourself and place it (keep its original file name) in:"
-  info "    $dir"
-  info "Then type 'done' (handled by extension: .deb/.rpm/.sh/.run/.bin/.bundle/.AppImage/.tar.gz/.zip/...); 'skip' to skip."
+  info "Download the installer yourself (unzip it first if it is zipped)."
+  info "Then type its path in single quotes -- either a full path, or one relative to ${TARGET_HOME}/Downloads."
+  info "Any valid installer extension works (.deb/.rpm/.sh/.run/.bin/.bundle/.AppImage/.tar.gz/.zip/...); 'skip' to skip this app, or 'skip all' to skip this and every remaining manual app."
   if [ ! -r /dev/tty ]; then mark_manual "$name" "no package manager route - needs manual download"; return 0; fi
   while :; do
-    printf '  %s (done/skip): ' "$name" > /dev/tty
+    printf "  %s ('installer path'/skip/skip all): " "$disp" > /dev/tty
     read -r ans < /dev/tty || ans="skip"
     case "$ans" in
+      [Aa]|[Aa][Ll][Ll]|[Ss][Kk][Ii][Pp][Aa][Ll][Ll]|'skip all'|'Skip all'|'Skip All'|'SKIP ALL')
+        MANUAL_FALLBACK_SKIP_ALL=1; mark_skip "$name" "user skipped (skip all)"; return 0 ;;
       [Ss]|[Ss][Kk][Ii][Pp]) mark_skip "$name" "user skipped"; return 0 ;;
-      [Dd]|[Dd][Oo][Nn][Ee])
-        if [ -z "$(ls -A "$dir" 2>/dev/null)" ]; then
-          printf '\033[1;31m  No file found in %s -- place the file there, then type done (or skip).\033[0m\n' "$dir" > /dev/tty; continue
+      *)
+        f="$(resolve_user_path "$ans")"
+        if [ -z "$f" ] || [ ! -f "$f" ] || [ ! -r "$f" ]; then
+          printf "\033[1;31m  No readable file at that path -- type the path in single quotes (e.g. '%s/Downloads/app.deb'), or skip.\033[0m\n" "$TARGET_HOME" > /dev/tty; continue
         fi
-        got=0; LAST_ERR=""
-        for f in "$dir"/*; do [ -f "$f" ] || continue; install_by_ext "$f" && got=1; done
-        if [ "$got" -eq 1 ]; then mark_ok "$name" "installed from $dir"; return 0
-        else printf '\033[1;31m  %s -- fix the file in %s, then type done (or skip).\033[0m\n' "${LAST_ERR:-could not handle the file}" "$dir" > /dev/tty; fi
+        LAST_ERR=""
+        if install_by_ext "$f"; then mark_ok "$name" "installed from $f"; return 0
+        else printf "\033[1;31m  %s -- fix the file and re-enter its path, or skip.\033[0m\n" "${LAST_ERR:-could not handle the file}" > /dev/tty; fi
         ;;
-      *) printf '\033[1;31m  Please type "done" or "skip".\033[0m\n' > /dev/tty ;;
     esac
   done
+}
+
+# Install a non-cross-platform Windows app under wine (the Windows emulator), when the
+# user opted in (MIGRATE_WINE_NONCROSS=yes). Tries the manifest-provided Windows
+# installer URL first; on failure (or none) asks for the installer path in single
+# quotes. After installing, scales the wine font/DPI to 2.5x (LogPixels 240) so the
+# app is readable. Marks the result.
+wine_app() {  # wine_app NAME [WINDOWS_INSTALLER_URL]
+  [ "${MIGRATE_WINE_NONCROSS:-no}" = "yes" ] || return 0
+  local name="$1" winurl="${2:-}" ans f winpath="" slug dir rc
+  if [ "${WINE_SKIP_ALL:-0}" = "1" ]; then mark_skip "$name (wine - Windows emulator)" "user skipped (skip all)"; return 0; fi
+  printf '\n\n\033[1;34m==> Install under wine (Windows emulator): %s\033[0m\n' "$name" >&3
+  if ! ensure_wine; then mark_fail "$name (wine - Windows emulator)" "${LAST_ERR:-could not install wine}"; return 0; fi
+  run_wine wineboot -u >/dev/null 2>&1 || true
+  slug="$(slugify "$name")"; dir="${MIGRATE_MANUAL_DIR:-$DOWNLOAD_DIR/manual}/wine-$slug"; mkdir -p "$dir"
+  # 1) auto-download the Windows installer if the manifest provided a URL.
+  if [ -n "$winurl" ]; then
+    f="$dir/${slug}-setup.exe"
+    info "Downloading the Windows installer for $name (to run under wine - Windows emulator) ..."
+    if capture download_file "$winurl" "$f"; then winpath="$f"
+    else warn "automatic download failed -- you can provide the installer yourself."; fi
+  fi
+  # 2) manual fallback: ask for the installer path in single quotes.
+  if [ -z "$winpath" ]; then
+    if [ ! -r /dev/tty ]; then mark_manual "$name (wine - Windows emulator)" "provide a Windows installer to run under wine"; return 0; fi
+    info "Download the Windows installer for $name (unzip it first if it is zipped)."
+    info "Then type its path in single quotes -- either a full path, or one relative to ${TARGET_HOME}/Downloads."
+    info "Any valid installer extension works (.exe, .msi, .bat, etc.); 'skip' to skip this app, or 'skip all' to skip every remaining wine (Windows emulator) install."
+    while :; do
+      printf "  %s ('installer path'/skip/skip all): " "$name" > /dev/tty
+      read -r ans < /dev/tty || ans="skip"
+      case "$ans" in
+        [Aa]|[Aa][Ll][Ll]|[Ss][Kk][Ii][Pp][Aa][Ll][Ll]|'skip all'|'Skip all'|'Skip All'|'SKIP ALL')
+          WINE_SKIP_ALL=1; mark_skip "$name (wine - Windows emulator)" "user skipped (skip all)"; return 0 ;;
+        [Ss]|[Ss][Kk][Ii][Pp]) mark_skip "$name (wine - Windows emulator)" "user skipped"; return 0 ;;
+        *)
+          winpath="$(resolve_user_path "$ans")"
+          if [ -n "$winpath" ] && [ -f "$winpath" ] && [ -r "$winpath" ]; then break
+          else printf "\033[1;31m  No readable file at that path -- type the path in single quotes (e.g. '%s/Downloads/setup.exe'), or skip.\033[0m\n" "$TARGET_HOME" > /dev/tty; winpath=""; fi ;;
+      esac
+    done
+  fi
+  # 3) run the installer under wine (best-effort silent), then scale the font/DPI 2.5x.
+  info "installing $name under wine (Windows emulator) ..."
+  case "$winpath" in
+    *.msi|*.MSI)             capture run_wine wine msiexec /i "$winpath" /qn ;;
+    *.bat|*.BAT|*.cmd|*.CMD) capture run_wine wine cmd /c "$winpath" ;;
+    *)                       capture run_wine wine "$winpath" /S ;;
+  esac
+  rc=$?
+  # font size 2.5x: default wine DPI 96 -> 240 (LogPixels 0xF0), applied right after install.
+  run_wine wine reg add 'HKEY_CURRENT_USER\Control Panel\Desktop' /v LogPixels /t REG_DWORD /d 0x000000F0 /f >/dev/null 2>&1 || true
+  if [ "$rc" -eq 0 ]; then mark_ok "$name (wine - Windows emulator)" "installed under wine; font/DPI scaled to 2.5x (240)"
+  else mark_fail "$name (wine - Windows emulator)" "${LAST_ERR:-wine install failed}"; fi
 }
 
 # Install the Nth-best alternative of an app only if the user asked for at least
@@ -812,113 +911,177 @@ repo_setup_visual_studio_code() {
   esac
 }
   app_alt 1 install_app --name "ABBYY FineReader PDF" --alt "Tesseract OCR + gImageReader" --method flatpak --flatpak "io.github.manisandro.gImageReader" --apt "gimagereader" --dnf "gimagereader"
+  wine_app "ABBYY FineReader PDF" ""
   app_alt 1 install_app --name "Acronis Cyber Protect / True Image" --alt "Clonezilla" --method native --apt "clonezilla" --note "Clonezilla; also a bootable ISO from clonezilla.org"
+  wine_app "Acronis Cyber Protect / True Image" ""
   app_alt 1 install_app --name "Adobe Acrobat Pro" --alt "Stirling PDF" --method deb-url --url-deb "https://files.stirlingpdf.com/linux-installer.deb" --url-rpm "https://files.stirlingpdf.com/linux-installer.rpm" --note "Native Stirling-PDF install (.deb on apt families, .rpm on dnf/zypper); runs as a local service, web UI on http://localhost:8080 once started."
+  wine_app "Adobe Acrobat Pro" ""
   app_alt 1 install_app --name "Adobe Audition" --alt "Audacity" --method flatpak --flatpak "org.audacityteam.Audacity" --apt "audacity" --dnf "audacity" --zypper "audacity" --pacman "audacity"
+  wine_app "Adobe Audition" ""
   app_alt 1 install_app --name "Adobe Digital Editions 4.5" --alt "calibre" --method flatpak --flatpak "com.calibre_ebook.calibre" --apt "calibre" --dnf "calibre" --zypper "calibre" --pacman "calibre"
   app_alt 2 install_app --name "Adobe Digital Editions 4.5" --alt "Thorium Reader" --method flatpak --note "needs manifest enrichment - see https://www.edrlab.org/software/thorium-reader/"
+  wine_app "Adobe Digital Editions 4.5" ""
   app_alt 1 install_app --name "Adobe Dreamweaver" --alt "Visual Studio Code" --method flatpak --flatpak "com.visualstudio.code"
+  wine_app "Adobe Dreamweaver" ""
   app_alt 1 install_app --name "Adobe InDesign" --alt "Scribus" --method flatpak --flatpak "net.scribus.Scribus" --apt "scribus" --dnf "scribus" --zypper "scribus" --pacman "scribus"
+  wine_app "Adobe InDesign" ""
   app_alt 1 install_app --name "Adobe Lightroom / Lightroom Classic" --alt "darktable" --method flatpak --flatpak "org.darktable.Darktable" --apt "darktable" --dnf "darktable" --zypper "darktable" --pacman "darktable"
+  wine_app "Adobe Lightroom / Lightroom Classic" ""
   app_alt 1 install_app --name "Advanced IP Scanner" --alt "Angry IP Scanner" --method manual --url-x86 "https://github.com/angryip/ipscan/releases" --note "Angry IP Scanner .deb/.rpm (needs Java)"
+  wine_app "Advanced IP Scanner" ""
   app_alt 1 install_app --name "Advanced Port Scanner" --alt "RustScan + nmap" --method native --apt "nmap" --dnf "nmap" --zypper "nmap" --pacman "nmap" --note "GUI: also install zenmap"
+  wine_app "Advanced Port Scanner" ""
   app_alt 1 install_app --name "AIDA64 / CPU-Z / GPU-Z / HWiNFO" --alt "CPU-X" --method flatpak --flatpak "io.github.thetumultuousunicornofdarkness.CPU-X" --dnf "cpu-x" --pacman "cpu-x"
+  wine_app "AIDA64 / CPU-Z / GPU-Z / HWiNFO" ""
   app_alt 1 install_app --name "Alarms & Clock" --alt "GNOME Clocks" --method flatpak --flatpak "org.gnome.clocks" --apt "gnome-clocks" --dnf "gnome-clocks" --pacman "gnome-clocks"
   app_alt 1 install_app --name "Anki Launcher" --alt "Anki (Linux)" --winver "25.09" --method flatpak --flatpak "net.ankiweb.Anki"
   app_alt 1 install_app --name "Any Video Converter (AVC)" --alt "HandBrake" --method flatpak --flatpak "fr.handbrake.ghb" --apt "handbrake" --dnf "HandBrake" --pacman "handbrake"
+  wine_app "Any Video Converter (AVC)" ""
   app_alt 1 install_app --name "AnyDesk" --alt "AnyDesk (Linux)" --method flatpak --flatpak "com.anydesk.Anydesk"
   app_alt 1 install_app --name "Autodesk 3ds Max" --alt "Blender" --method flatpak --flatpak "org.blender.Blender" --apt "blender" --dnf "blender" --zypper "blender" --pacman "blender"
+  wine_app "Autodesk 3ds Max" ""
   app_alt 1 install_app --name "Autodesk Fusion 360" --alt "FreeCAD" --method flatpak --flatpak "org.freecad.FreeCAD" --apt "freecad" --dnf "freecad" --zypper "freecad" --pacman "freecad"
+  wine_app "Autodesk Fusion 360" ""
   app_alt 1 install_app --name "Babylon" --alt "GoldenDict" --method native --apt "goldendict" --dnf "goldendict" --zypper "goldendict" --pacman "goldendict"
+  wine_app "Babylon" ""
   app_alt 1 install_app --name "Bandicam" --alt "OBS Studio" --method flatpak --flatpak "com.obsproject.Studio" --apt "obs-studio" --dnf "obs-studio" --pacman "obs-studio"
+  wine_app "Bandicam" ""
   app_alt 1 install_app --name "Bitvise SSH Client" --alt "OpenSSH" --method native --apt "openssh-client" --dnf "openssh-clients" --zypper "openssh" --pacman "openssh"
+  wine_app "Bitvise SSH Client" ""
   app_alt 1 install_app --name "calibre" --alt "calibre (Linux)" --winver "9.5.0" --method flatpak --flatpak "com.calibre_ebook.calibre" --apt "calibre" --dnf "calibre" --zypper "calibre" --pacman "calibre"
   app_alt 1 install_app --name "Camtasia" --alt "OBS Studio + Kdenlive" --method flatpak --flatpak "com.obsproject.Studio" --apt "obs-studio" --note "also install Kdenlive (org.kde.kdenlive) for editing"
+  wine_app "Camtasia" ""
   app_alt 1 install_app --name "CCleaner" --alt "BleachBit" --method flatpak --flatpak "org.bleachbit.BleachBit" --apt "bleachbit" --dnf "bleachbit" --zypper "bleachbit" --pacman "bleachbit"
+  wine_app "CCleaner" ""
   app_alt 1 install_app --name "CMake" --alt "CMake (Linux)" --winver "4.3.0" --method native --apt "cmake" --dnf "cmake" --zypper "cmake" --pacman "cmake"
   app_alt 1 install_app --name "CorelDRAW Graphics Suite" --alt "Inkscape" --method flatpak --flatpak "org.inkscape.Inkscape" --apt "inkscape" --dnf "inkscape" --zypper "inkscape" --pacman "inkscape"
+  wine_app "CorelDRAW Graphics Suite" ""
   app_alt 1 install_app --name "DBeaver Ultimate" --alt "DBeaver (Linux)" --method flatpak --flatpak "io.dbeaver.DBeaverCommunity"
   app_alt 1 install_app --name "Discord" --alt "Discord (Linux)" --method flatpak --flatpak "com.discordapp.Discord"
   app_alt 1 install_app --name "Docker Desktop" --alt "Docker Engine (native)" --winver "4.70.0" --method native --apt "docker-ce docker-ce-cli containerd.io docker-compose-plugin" --dnf "docker-ce docker-ce-cli containerd.io docker-compose-plugin" --zypper "docker" --pacman "docker" --note "systemctl enable --now docker; add your user to the docker group"
   app_alt 1 install_app --name "Docker Engine" --alt "Docker Engine (native, no VM)" --method native --apt "docker-ce docker-ce-cli containerd.io docker-compose-plugin" --dnf "docker-ce docker-ce-cli containerd.io docker-compose-plugin" --zypper "docker" --pacman "docker" --note "systemctl enable --now docker; add your user to the docker group"
   app_alt 1 install_app --name "Dropbox" --alt "Dropbox (Linux)" --method flatpak --flatpak "com.dropbox.Client"
   app_alt 1 install_app --name "DVDFab" --alt "MakeMKV" --method flatpak --flatpak "com.makemkv.MakeMKV"
+  wine_app "DVDFab" ""
   app_alt 1 install_app --name "EaseUS Data Recovery Wizard" --alt "TestDisk + PhotoRec" --method native --apt "testdisk" --dnf "testdisk" --zypper "testdisk" --pacman "testdisk" --note "includes PhotoRec"
+  wine_app "EaseUS Data Recovery Wizard" ""
   app_alt 1 install_app --name "EaseUS Partition Master" --alt "GParted" --method native --apt "gparted" --dnf "gparted" --zypper "gparted" --pacman "gparted"
+  wine_app "EaseUS Partition Master" ""
   app_alt 1 install_app --name "EaseUS Todo Backup" --alt "Timeshift" --method native --apt "timeshift" --dnf "timeshift" --pacman "timeshift"
-  app_alt 2 install_app --name "EaseUS Todo Backup" --alt "DÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©jÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â  Dup (GNOME Backups)" --method native --note "needs manifest enrichment - see https://wiki.gnome.org/Apps/DejaDup"
+  app_alt 2 install_app --name "EaseUS Todo Backup" --alt "DÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©jÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â  Dup (GNOME Backups)" --method native --note "needs manifest enrichment - see https://wiki.gnome.org/Apps/DejaDup"
+  wine_app "EaseUS Todo Backup" ""
   app_alt 1 install_app --name "EndNote" --alt "Zotero" --method flatpak --flatpak "org.zotero.Zotero"
+  wine_app "EndNote" ""
   app_alt 1 install_app --name "FlashBack Pro" --alt "OBS Studio + Kdenlive" --method flatpak --flatpak "com.obsproject.Studio" --apt "obs-studio"
+  wine_app "FlashBack Pro" ""
   app_alt 1 install_app --name "Git" --alt "Git (Linux)" --winver "2.54.0" --method native --apt "git" --dnf "git" --zypper "git" --pacman "git"
   app_alt 1 install_app --name "GitHub Desktop" --alt "GitKraken" --method flatpak --flatpak "com.axosoft.GitKraken"
+  wine_app "GitHub Desktop" ""
   app_alt 1 install_app --name "Glary Utilities" --alt "Stacer" --method flatpak --flatpak "com.github.oguzhaninan.Stacer" --apt "stacer"
+  wine_app "Glary Utilities" ""
   app_alt 1 install_app --name "GnuWin32: Grep" --alt "GNU grep (native)" --method native --apt "grep" --dnf "grep" --zypper "grep" --pacman "grep"
   app_alt 1 install_app --name "Google Chrome" --alt "Google Chrome (Linux)" --method native --flatpak "com.google.Chrome" --apt "google-chrome-stable" --dnf "google-chrome-stable"
   app_alt 1 install_app --name "Google Drive" --alt "Insync" --method manual --url-x86 "https://www.insynchq.com/downloads" --note "Insync (.deb/.rpm) from insynchq.com; FOSS alt: rclone / google-drive-ocamlfuse" --paid
+  wine_app "Google Drive" ""
   app_alt 1 install_app --name "Grammarly for Windows" --alt "LanguageTool" --method manual --note "LanguageTool: run via Docker (erikvl87/languagetool) or use the browser extension"
+  wine_app "Grammarly for Windows" ""
   app_alt 1 install_app --name "Hotspot Shield" --alt "Hotspot Shield (Linux)" --method manual --note "No official Linux client; use Proton VPN or OpenVPN instead"
   app_alt 1 install_app --name "IBM SPSS Statistics" --alt "PSPP" --method native --apt "pspp" --dnf "pspp"
   app_alt 1 install_app --name "Internet Download Manager (IDM)" --alt "uGet" --method native --apt "uget" --dnf "uget" --pacman "uget" --note "also install aria2 for multi-connection downloads"
+  wine_app "Internet Download Manager (IDM)" ""
   app_alt 1 install_app --name "IObit Advanced SystemCare" --alt "BleachBit" --method flatpak --flatpak "org.bleachbit.BleachBit" --apt "bleachbit"
+  wine_app "IObit Advanced SystemCare" ""
   app_alt 1 install_app --name "IObit Malware Fighter" --alt "ClamAV / ClamTk" --method native --apt "clamtk" --dnf "clamtk" --pacman "clamtk" --security
+  wine_app "IObit Malware Fighter" ""
   app_alt 1 install_app --name "IObit Uninstaller" --alt "Synaptic Package Manager" --method native --apt "synaptic" --note "Synaptic is APT-only; use your distro's software center elsewhere"
+  wine_app "IObit Uninstaller" ""
   app_alt 1 install_app --name "Java 8" --alt "OpenJDK (Eclipse Temurin)" --winver "8.0.4910.10" --method native --apt "default-jdk" --dnf "java-latest-openjdk" --zypper "java-openjdk" --pacman "jdk-openjdk"
   app_alt 1 install_app --name "KMPlayer" --alt "VLC Media Player" --method flatpak --flatpak "org.videolan.VLC" --apt "vlc" --dnf "vlc" --zypper "vlc" --pacman "vlc"
+  wine_app "KMPlayer" ""
   app_alt 1 install_app --name "LanguageTool (Grammarly Alternative)" --alt "LanguageTool Desktop" --method manual --note "LanguageTool Desktop: run via Docker (erikvl87/languagetool) or browser extension"
   app_alt 1 install_app --name "Lenovo Professional Wireless Rechargeable Combo" --alt "Solaar" --method flatpak --flatpak "io.github.pwr_solaar.solaar" --apt "solaar" --dnf "solaar" --pacman "solaar"
+  wine_app "Lenovo Professional Wireless Rechargeable Combo" ""
   app_alt 1 install_app --name "Lightshot" --alt "Flameshot" --method flatpak --flatpak "org.flameshot.Flameshot" --apt "flameshot" --dnf "flameshot" --zypper "flameshot" --pacman "flameshot"
+  wine_app "Lightshot" ""
   app_alt 1 install_app --name "Longman Dictionary of Contemporary English 5th Edition" --alt "GoldenDict / GoldenDict-ng" --method native --apt "goldendict" --dnf "goldendict" --zypper "goldendict" --pacman "goldendict"
+  wine_app "Longman Dictionary of Contemporary English 5th Edition" ""
   app_alt 1 install_app --name "Malwarebytes" --alt "ClamAV + ClamTk" --method native --apt "clamtk" --dnf "clamtk" --pacman "clamtk" --security
+  wine_app "Malwarebytes" ""
   app_alt 1 install_app --name "Microsoft .NET SDK" --alt ".NET SDK (Linux)" --winver "40.11.22621" --method snap --snap "dotnet-sdk --classic" --note "or use your distro's dotnet-sdk / Microsoft repo"
   app_alt 1 install_app --name "Microsoft 365 / Office" --alt "LibreOffice" --method flatpak --flatpak "org.libreoffice.LibreOffice" --apt "libreoffice" --dnf "libreoffice" --zypper "libreoffice" --pacman "libreoffice"
+  wine_app "Microsoft 365 / Office" ""
   app_alt 1 install_app --name "Microsoft Access" --alt "LibreOffice Base" --method flatpak --flatpak "org.libreoffice.LibreOffice" --apt "libreoffice-base" --dnf "libreoffice-base"
+  wine_app "Microsoft Access" ""
   app_alt 1 install_app --name "Microsoft Edge" --alt "Microsoft Edge (Linux)" --method native --flatpak "com.microsoft.Edge" --apt "microsoft-edge-stable" --dnf "microsoft-edge-stable"
   app_alt 1 install_app --name "Microsoft OneDrive" --alt "onedrive (abraunegg)" --method native --apt "onedrive" --dnf "onedrive" --pacman "onedrive"
+  wine_app "Microsoft OneDrive" ""
   app_alt 1 install_app --name "Microsoft Publisher" --alt "Scribus" --method flatpak --flatpak "net.scribus.Scribus" --apt "scribus"
+  wine_app "Microsoft Publisher" ""
   app_alt 1 install_app --name "Microsoft Visio" --alt "draw.io / Diagrams.net" --method flatpak --flatpak "com.jgraph.drawio.desktop"
+  wine_app "Microsoft Visio" ""
   app_alt 1 install_app --name "Microsoft Whiteboard" --alt "Excalidraw" --method webapp --webapp "https://excalidraw.com"
   app_alt 1 install_app --name "MiKTeX" --alt "TeX Live" --method native --apt "texlive" --dnf "texlive-scheme-basic" --zypper "texlive" --pacman "texlive-core" --note "install the -full variants for everything"
   app_alt 1 install_app --name "MobaXterm" --alt "Built-in terminal + OpenSSH" --method native --apt "openssh-client" --dnf "openssh-clients" --zypper "openssh" --pacman "openssh"
+  wine_app "MobaXterm" ""
   app_alt 1 install_app --name "Movavi Screen Recorder" --alt "OBS Studio" --method flatpak --flatpak "com.obsproject.Studio" --apt "obs-studio"
+  wine_app "Movavi Screen Recorder" ""
   app_alt 1 install_app --name "Movavi Video Converter" --alt "HandBrake" --method flatpak --flatpak "fr.handbrake.ghb" --apt "handbrake"
+  wine_app "Movavi Video Converter" ""
   app_alt 1 install_app --name "Movavi Video Editor" --alt "Kdenlive" --method flatpak --flatpak "org.kde.kdenlive" --apt "kdenlive" --dnf "kdenlive" --pacman "kdenlive"
-  app_alt 1 install_app --name "Mozilla Firefox" --alt "Firefox (Linux)" --winver "152.0" --method flatpak --flatpak "org.mozilla.firefox" --apt "firefox" --dnf "firefox" --zypper "MozillaFirefox" --pacman "firefox"
+  wine_app "Movavi Video Editor" ""
+  app_alt 1 install_app --name "Mozilla Firefox" --alt "Firefox (Linux)" --winver "152.0.1" --method flatpak --flatpak "org.mozilla.firefox" --apt "firefox" --dnf "firefox" --zypper "MozillaFirefox" --pacman "firefox"
   app_alt 1 install_app --name "MS Teams" --alt "Teams PWA (Edge/Chrome)" --method webapp --webapp "https://teams.microsoft.com"
   app_alt 1 install_app --name "MSI Afterburner" --alt "GOverlay + MangoHud" --method flatpak --flatpak "io.github.benjamimgois.goverlay" --apt "goverlay" --note "MangoHud overlay/limiter"
+  wine_app "MSI Afterburner" ""
   app_alt 1 install_app --name "Nearby Share / Quick Share" --alt "LocalSend" --method flatpak --flatpak "org.localsend.localsend_app"
+  wine_app "Nearby Share / Quick Share" ""
   app_alt 1 install_app --name "Nero Burning ROM / Nero Platinum" --alt "K3b" --method flatpak --flatpak "org.kde.k3b" --apt "k3b" --dnf "k3b" --pacman "k3b"
+  wine_app "Nero Burning ROM / Nero Platinum" ""
   app_alt 1 install_app --name "ninja" --alt "ninja-build (Linux)" --winver "1.13.2" --method native --apt "ninja-build" --dnf "ninja-build" --zypper "ninja" --pacman "ninja"
   app_alt 1 install_app --name "Nitro PDF Pro" --alt "Stirling PDF" --method deb-url --url-deb "https://files.stirlingpdf.com/linux-installer.deb" --url-rpm "https://files.stirlingpdf.com/linux-installer.rpm" --note "Native Stirling-PDF install (.deb on apt families, .rpm on dnf/zypper); runs as a local service, web UI on http://localhost:8080 once started."
+  wine_app "Nitro PDF Pro" ""
   app_alt 1 install_app --name "Node.js" --alt "Node.js (Linux)" --winver "24.15.0" --method native --apt "nodejs" --dnf "nodejs" --zypper "nodejs npm" --pacman "nodejs npm"
   app_alt 1 install_app --name "Notepad++" --alt "Notepadqq" --method native --apt "notepadqq" --note "alt: install 'code' or a GNOME/KDE editor"
+  wine_app "Notepad++" ""
   app_alt 1 install_app --name "oCam Screen Recorder" --alt "OBS Studio" --method flatpak --flatpak "com.obsproject.Studio" --apt "obs-studio"
+  wine_app "oCam Screen Recorder" ""
   app_alt 1 install_app --name "oCam version 550.0" --alt "OBS Studio" --method flatpak --flatpak "com.obsproject.Studio" --apt "obs-studio"
+  wine_app "oCam version 550.0" ""
   app_alt 1 install_app --name "OpenSSH" --alt "OpenSSH (native)" --winver "8.9.1.0" --method native --apt "openssh-client" --dnf "openssh-clients" --zypper "openssh" --pacman "openssh"
   app_alt 1 install_app --name "OpenSSL" --alt "OpenSSL (native)" --winver "3.3.0" --method native --apt "openssl" --dnf "openssl" --zypper "openssl" --pacman "openssl"
   app_alt 1 install_app --name "OpenVPN Connect" --alt "OpenVPN Connect (Linux)" --method native --apt "openvpn" --dnf "openvpn" --zypper "openvpn" --pacman "openvpn" --note "GUI: network-manager-openvpn"
   app_alt 1 install_app --name "Origin / OriginPro" --alt "LabPlot" --method flatpak --flatpak "org.kde.labplot2"
+  wine_app "Origin / OriginPro" ""
   app_alt 1 install_app --name "Outlook For Windows" --alt "Thunderbird" --method flatpak --flatpak "org.mozilla.Thunderbird" --apt "thunderbird" --dnf "thunderbird" --zypper "MozillaThunderbird" --pacman "thunderbird"
   app_alt 1 install_app --name "Paint" --alt "Pinta" --method flatpak --flatpak "com.github.PintaProject.Pinta" --apt "pinta" --dnf "pinta"
   app_alt 1 install_app --name "Pandoc" --alt "Pandoc (Linux)" --winver "3.9" --method native --apt "pandoc" --dnf "pandoc" --zypper "pandoc" --pacman "pandoc"
   app_alt 1 install_app --name "Parsec" --alt "Parsec (Linux)" --method flatpak --flatpak "com.parsecgaming.parsec" --arch "x86_64"
   app_alt 1 install_app --name "pgAdmin 4" --alt "pgAdmin 4 (Linux)" --method manual --url-x86 "https://www.pgadmin.org/download/" --note "pgAdmin 4 from the official apt/dnf repo"
   app_alt 1 install_app --name "pgNow" --alt "pgAdmin 4" --method manual --url-x86 "https://www.pgadmin.org/download/" --note "pgAdmin 4 from the official apt/dnf repo"
+  wine_app "pgNow" ""
   app_alt 1 install_app --name "Photos" --alt "Shotwell" --method flatpak --flatpak "org.gnome.Shotwell" --apt "shotwell" --dnf "shotwell" --pacman "shotwell"
   app_alt 1 install_app --name "PostgreSQL" --alt "PostgreSQL (PGDG repo)" --method native --apt "postgresql" --dnf "postgresql-server" --zypper "postgresql-server" --pacman "postgresql"
   app_alt 1 install_app --name "PowerShell" --alt "PowerShell (Linux)" --winver "7.6.3.0" --method snap --snap "powershell --classic" --note "or use the Microsoft package repo"
   app_alt 1 install_app --name "PowerToys" --alt "Frog (Text Extractor replacement)" --method flatpak --flatpak "com.github.tenderowl.frog"
+  wine_app "PowerToys" ""
   app_alt 1 install_app --name "Proton VPN (Hotspot Shield / Psiphon Alternative)" --alt "Proton VPN (Linux)" --method manual --note "No official Linux client; use Proton VPN or OpenVPN instead"
   app_alt 1 install_app --name "Proxifier" --alt "proxychains-ng" --method native --apt "proxychains4" --dnf "proxychains-ng" --zypper "proxychains-ng" --pacman "proxychains-ng"
+  wine_app "Proxifier" ""
   app_alt 1 install_app --name "Psiphon Conduit" --alt "Proton VPN" --method manual --url-x86 "https://protonvpn.com/support/official-linux-client/" --note "Proton VPN app via the official apt/dnf repo"
   app_alt 1 install_app --name "PuTTY" --alt "OpenSSH (native)" --method native --apt "openssh-client" --dnf "openssh-clients" --zypper "openssh" --pacman "openssh" --note "GUI alt: install 'putty'"
   app_alt 1 install_app --name "Python" --alt "python3 (system)" --winver "3.14.5150.0" --method native --apt "python3 python3-pip" --dnf "python3 python3-pip" --zypper "python3 python3-pip" --pacman "python python-pip"
   app_alt 1 install_app --name "R for Windows" --alt "R (Linux)" --winver "4.5.2" --method native --apt "r-base" --dnf "R" --zypper "R-base" --pacman "r"
   app_alt 1 install_app --name "Recuva" --alt "TestDisk + PhotoRec" --method native --apt "testdisk" --dnf "testdisk" --zypper "testdisk" --pacman "testdisk" --note "includes PhotoRec"
+  wine_app "Recuva" ""
   app_alt 1 install_app --name "Snagit" --alt "Flameshot + Ksnip" --method flatpak --flatpak "org.flameshot.Flameshot" --apt "flameshot" --note "also 'ksnip' for annotation"
+  wine_app "Snagit" ""
   app_alt 1 install_app --name "Snoopy" --alt "OpenSSH + terminal" --method native --apt "openssh-client" --dnf "openssh-clients" --zypper "openssh" --pacman "openssh"
+  wine_app "Snoopy" ""
   app_alt 1 install_app --name "Sound Recorder" --alt "GNOME Sound Recorder" --method flatpak --flatpak "org.gnome.SoundRecorder" --apt "gnome-sound-recorder"
   app_alt 1 install_app --name "SpeedFan" --alt "CoolerControl / Coolero" --method manual --url-x86 "https://gitlab.com/coolercontrol/coolercontrol/-/releases" --note "CoolerControl from gitlab releases; or lm-sensors + fancontrol"
+  wine_app "SpeedFan" ""
   app_alt 1 install_app --name "SQL Server Management Studio (SSMS)" --alt "DBeaver" --method flatpak --flatpak "io.dbeaver.DBeaverCommunity"
+  wine_app "SQL Server Management Studio (SSMS)" ""
   app_alt 1 install_app --name "Sticky Notes" --alt "GNOME Sticky Notes (sticky)" --method flatpak --flatpak "com.vixalien.sticky" --apt "gnote"
   app_alt 1 install_app --name "Strawberry Perl" --alt "Perl (native)" --winver "5.42.1" --method native --apt "perl" --dnf "perl" --zypper "perl" --pacman "perl"
   app_alt 1 install_app --name "Telegram Desktop" --alt "Telegram Desktop (Linux)" --method flatpak --flatpak "org.telegram.desktop" --apt "telegram-desktop" --dnf "telegram-desktop" --pacman "telegram-desktop"
@@ -927,26 +1090,35 @@ repo_setup_visual_studio_code() {
   app_alt 1 install_app --name "Ubuntu (WSL)" --alt "Native Linux" --method manual --note "Not applicable - you are already running Linux"
   app_alt 1 install_app --name "VirtualBox" --alt "VirtualBox (Linux)" --method native --apt "virtualbox" --dnf "VirtualBox" --zypper "virtualbox" --pacman "virtualbox" --note "needs matching kernel modules (dkms)"
   app_alt 1 install_app --name "Visual Studio Build Tools / Community" --alt ".NET SDK + VS Code" --method flatpak --flatpak "com.visualstudio.code" --note "also install the build toolchain (build-essential / @development-tools) and dotnet-sdk"
-  app_alt 1 install_app --name "Visual Studio Code" --alt "Visual Studio Code (Linux)" --winver "1.125.0" --method native --flatpak "com.visualstudio.code" --apt "code" --dnf "code"
+  wine_app "Visual Studio Build Tools / Community" ""
+  app_alt 1 install_app --name "Visual Studio Code" --alt "Visual Studio Code (Linux)" --winver "1.125.1" --method native --flatpak "com.visualstudio.code" --apt "code" --dnf "code"
   app_alt 1 install_app --name "Weather" --alt "GNOME Weather" --method flatpak --flatpak "org.gnome.Weather" --apt "gnome-weather" --dnf "gnome-weather" --pacman "gnome-weather"
   app_alt 1 install_app --name "WhatsApp Desktop" --alt "WhatsApp Web (PWA)" --method webapp --webapp "https://web.whatsapp.com"
   app_alt 1 install_app --name "WinDirStat" --alt "QDirStat" --method native --apt "qdirstat" --dnf "qdirstat" --pacman "qdirstat"
+  wine_app "WinDirStat" ""
   app_alt 1 install_app --name "Windows Calculator" --alt "GNOME Calculator" --method flatpak --flatpak "org.gnome.Calculator" --apt "gnome-calculator" --dnf "gnome-calculator" --pacman "gnome-calculator"
   app_alt 1 install_app --name "Windows Camera" --alt "Cheese" --method flatpak --flatpak "org.gnome.Cheese" --apt "cheese" --dnf "cheese" --pacman "cheese"
   app_alt 1 install_app --name "Windows Fax and Scan" --alt "Simple Scan (Document Scanner)" --method flatpak --flatpak "org.gnome.SimpleScan" --apt "simple-scan" --dnf "simple-scan" --pacman "simple-scan"
+  wine_app "Windows Fax and Scan" ""
   app_alt 1 install_app --name "Windows Movie Maker" --alt "OpenShot" --method flatpak --flatpak "org.openshot.OpenShot" --apt "openshot-qt" --dnf "openshot" --pacman "openshot"
+  wine_app "Windows Movie Maker" ""
   app_alt 1 install_app --name "Windows Notepad" --alt "GNOME Text Editor / gedit" --method flatpak --flatpak "org.gnome.TextEditor" --apt "gnome-text-editor" --dnf "gnome-text-editor"
   app_alt 1 install_app --name "Windows Store" --alt "GNOME Software / KDE Discover" --method native --apt "gnome-software" --dnf "gnome-software" --pacman "gnome-software" --note "KDE: plasma-discover"
   app_alt 1 install_app --name "Windows Terminal" --alt "GNOME Console / GNOME Terminal" --method native --apt "gnome-terminal" --dnf "gnome-terminal" --pacman "gnome-terminal" --note "or 'kgx' (GNOME Console)"
   app_alt 1 install_app --name "Wine (Windows Compatibility Layer)" --alt "Wine (winehq-stable)" --method native --apt "wine" --dnf "wine" --zypper "wine" --pacman "wine" --arch "x86_64" --note "enable i386/multilib for 32-bit support"
   app_alt 1 install_app --name "WinRAR" --alt "p7zip / 7-Zip" --method native --apt "p7zip-full" --dnf "p7zip p7zip-plugins" --zypper "p7zip" --pacman "p7zip" --note "also install 'unrar' for RAR archives"
+  wine_app "WinRAR" ""
   app_alt 1 install_app --name "wkhtmltox" --alt "wkhtmltopdf (Linux)" --method native --apt "wkhtmltopdf" --dnf "wkhtmltopdf" --pacman "wkhtmltopdf"
   app_alt 1 install_app --name "ZBrush" --alt "Blender (Sculpt Mode)" --method flatpak --flatpak "org.blender.Blender" --apt "blender" --note "Blender Sculpt Mode"
+  wine_app "ZBrush" ""
   app_alt 1 install_app --name "Zoom Workplace" --alt "Zoom Workplace (Linux)" --method flatpak --flatpak "us.zoom.Zoom"
   app_alt 1 install_app --name "Zune Music / Windows Media Player" --alt "Rhythmbox" --method flatpak --flatpak "org.gnome.Rhythmbox" --apt "rhythmbox" --dnf "rhythmbox" --pacman "rhythmbox"
-  app_alt 1 install_app --name "ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂµTorrent" --alt "qBittorrent" --method flatpak --flatpak "org.qbittorrent.qBittorrent" --apt "qbittorrent" --dnf "qbittorrent" --zypper "qbittorrent" --pacman "qbittorrent"
+  app_alt 1 install_app --name "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂµTorrent" --alt "qBittorrent" --method flatpak --flatpak "org.qbittorrent.qBittorrent" --apt "qbittorrent" --dnf "qbittorrent" --zypper "qbittorrent" --pacman "qbittorrent"
+  wine_app "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂµTorrent" ""
   app_alt 1 install_app --name "NordVPN" --alt "NordVPN for Linux" --method manual --note "Install via NordVPN's official script: sh <(curl -sSf https://downloads.nordcdn.com/apps/linux/install.sh)  -- or add their apt/dnf repo. Requires a NordVPN subscription to log in." --paid
+  wine_app "NordVPN" ""
   app_alt 1 install_app --name "Miniconda3" --alt "Miniconda (Linux)" --method manual --url-x86 "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh" --url-arm "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-aarch64.sh" --note "Download the Miniconda installer for your architecture and run: bash Miniconda3-latest-Linux-*.sh"
+  wine_app "Miniconda3" ""
   install_app --name "Telegram" --alt "telegram-desktop (APT/Flatpak)" --method manual --url-x86 "https://telegram.org/dl/desktop/linux" --note "telegram-desktop (APT/Flatpak) | telegram.org"
   install_app --name "PaperCut" --alt "PaperCut Print Deploy Native Linux client" --method manual --url-x86 "https://<server>:9174" --note "PaperCut Print Deploy Native Linux client | Your PaperCut server (https://<server>:9174)"
   install_app --name "Visual Studio Community 2026" --alt "VS Code (APT repo) + JetBrains Rider (optional)" --method manual --url-x86 "https://code.visualstudio.com/download" --note "VS Code (APT repo) + JetBrains Rider (optional) | code.visualstudio.com; jetbrains.com/rider"
