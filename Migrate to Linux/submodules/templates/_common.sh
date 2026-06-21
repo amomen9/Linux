@@ -491,37 +491,136 @@ install_app() {
   fi
 }
 
+# Resolve a user-typed installer path: strip surrounding single/double quotes and
+# outer whitespace; absolute paths and ~/... are used as-is; a bare/relative path is
+# taken relative to the logged-in user's Downloads folder. Echoes the resolved path.
+resolve_user_path() {  # resolve_user_path RAW
+  local p="$1"
+  p="${p#"${p%%[![:space:]]*}"}"; p="${p%"${p##*[![:space:]]}"}"   # trim outer whitespace
+  case "$p" in
+    \'*\') p="${p#\'}"; p="${p%\'}" ;;
+    \"*\") p="${p#\"}"; p="${p%\"}" ;;
+  esac
+  case "$p" in
+    '')    : ;;
+    /*)    : ;;
+    '~')   p="$TARGET_HOME" ;;
+    '~/'*) p="$TARGET_HOME/${p#\~/}" ;;
+    *)     p="$TARGET_HOME/Downloads/$p" ;;
+  esac
+  printf '%s' "$p"
+}
+
+# Run a wine (Windows emulator) command as the logged-in user in their default 64-bit
+# wine prefix (the installer itself usually runs as root under sudo).
+run_wine() {  # run_wine CMD [ARGS...]
+  if [ "$(id -u)" -eq 0 ] && [ "$TARGET_USER" != "root" ]; then
+    sudo -u "$TARGET_USER" env HOME="$TARGET_HOME" WINEARCH=win64 WINEPREFIX="$TARGET_HOME/.wine" WINEDEBUG=-all "$@"
+  else
+    env HOME="$TARGET_HOME" WINEARCH=win64 WINEPREFIX="$TARGET_HOME/.wine" WINEDEBUG=-all "$@"
+  fi
+}
+
+# Ensure wine (the Windows emulator) is installed via the native package manager.
+ensure_wine() {
+  have_cmd wine && return 0
+  info "installing wine (Windows emulator) ..."
+  case "$PM" in
+    apt)    dpkg --add-architecture i386 2>/dev/null || true; pm_refresh; capture pm_install wine64 wine32 || capture pm_install wine ;;
+    dnf)    capture pm_install wine ;;
+    zypper) capture pm_install wine ;;
+    pacman) capture pm_install wine ;;
+  esac
+  have_cmd wine
+}
+
 # Manual download-by-user fallback for an app no package manager could install.
-# Prompts the user to download + place the installer; handles it by extension; loops
-# until a valid file is placed ('done') or the user skips. Marks the result.
+# Asks the user to download the installer and type its path (full, or relative to the
+# logged-in user's Downloads folder) in single quotes; installs it by extension; loops
+# until a valid path is given or the user skips. Marks the result.
 manual_fallback() {  # manual_fallback NAME [ALT] [NOTE] [URL]
   local name="$1" alt="$2" mnote="$3" murl="$4"
-  local base="${MIGRATE_MANUAL_DIR:-$DOWNLOAD_DIR/manual}"
-  local slug dir ans f got
-  slug="$(slugify "$name")"; dir="$base/$slug"; mkdir -p "$dir"
+  # "skip all" chosen earlier: skip this and every remaining manual app without prompting.
+  if [ "${MANUAL_FALLBACK_SKIP_ALL:-0}" = "1" ]; then mark_skip "$name" "user skipped (skip all)"; return 0; fi
+  local ans f disp="${alt:-$name}"
   [ -n "$mnote" ] && info "$mnote"
   [ -n "$murl" ] && info "More info / download: $murl"
-  info "Download the installer yourself and place it (keep its original file name) in:"
-  info "    $dir"
-  info "Then type 'done' (handled by extension: .deb/.rpm/.sh/.run/.bin/.bundle/.AppImage/.tar.gz/.zip/...); 'skip' to skip."
+  info "Download the installer yourself (unzip it first if it is zipped)."
+  info "Then type its path in single quotes -- either a full path, or one relative to ${TARGET_HOME}/Downloads."
+  info "Any valid installer extension works (.deb/.rpm/.sh/.run/.bin/.bundle/.AppImage/.tar.gz/.zip/...); 'skip' to skip this app, or 'skip all' to skip this and every remaining manual app."
   if [ ! -r /dev/tty ]; then mark_manual "$name" "no package manager route - needs manual download"; return 0; fi
   while :; do
-    printf '  %s (done/skip): ' "$name" > /dev/tty
+    printf "  %s ('installer path'/skip/skip all): " "$disp" > /dev/tty
     read -r ans < /dev/tty || ans="skip"
     case "$ans" in
+      [Aa]|[Aa][Ll][Ll]|[Ss][Kk][Ii][Pp][Aa][Ll][Ll]|'skip all'|'Skip all'|'Skip All'|'SKIP ALL')
+        MANUAL_FALLBACK_SKIP_ALL=1; mark_skip "$name" "user skipped (skip all)"; return 0 ;;
       [Ss]|[Ss][Kk][Ii][Pp]) mark_skip "$name" "user skipped"; return 0 ;;
-      [Dd]|[Dd][Oo][Nn][Ee])
-        if [ -z "$(ls -A "$dir" 2>/dev/null)" ]; then
-          printf '\033[1;31m  No file found in %s -- place the file there, then type done (or skip).\033[0m\n' "$dir" > /dev/tty; continue
+      *)
+        f="$(resolve_user_path "$ans")"
+        if [ -z "$f" ] || [ ! -f "$f" ] || [ ! -r "$f" ]; then
+          printf "\033[1;31m  No readable file at that path -- type the path in single quotes (e.g. '%s/Downloads/app.deb'), or skip.\033[0m\n" "$TARGET_HOME" > /dev/tty; continue
         fi
-        got=0; LAST_ERR=""
-        for f in "$dir"/*; do [ -f "$f" ] || continue; install_by_ext "$f" && got=1; done
-        if [ "$got" -eq 1 ]; then mark_ok "$name" "installed from $dir"; return 0
-        else printf '\033[1;31m  %s -- fix the file in %s, then type done (or skip).\033[0m\n' "${LAST_ERR:-could not handle the file}" "$dir" > /dev/tty; fi
+        LAST_ERR=""
+        if install_by_ext "$f"; then mark_ok "$name" "installed from $f"; return 0
+        else printf "\033[1;31m  %s -- fix the file and re-enter its path, or skip.\033[0m\n" "${LAST_ERR:-could not handle the file}" > /dev/tty; fi
         ;;
-      *) printf '\033[1;31m  Please type "done" or "skip".\033[0m\n' > /dev/tty ;;
     esac
   done
+}
+
+# Install a non-cross-platform Windows app under wine (the Windows emulator), when the
+# user opted in (MIGRATE_WINE_NONCROSS=yes). Tries the manifest-provided Windows
+# installer URL first; on failure (or none) asks for the installer path in single
+# quotes. After installing, scales the wine font/DPI to 2.5x (LogPixels 240) so the
+# app is readable. Marks the result.
+wine_app() {  # wine_app NAME [WINDOWS_INSTALLER_URL]
+  [ "${MIGRATE_WINE_NONCROSS:-no}" = "yes" ] || return 0
+  local name="$1" winurl="${2:-}" ans f winpath="" slug dir rc
+  if [ "${WINE_SKIP_ALL:-0}" = "1" ]; then mark_skip "$name (wine - Windows emulator)" "user skipped (skip all)"; return 0; fi
+  printf '\n\n\033[1;34m==> Install under wine (Windows emulator): %s\033[0m\n' "$name" >&3
+  if ! ensure_wine; then mark_fail "$name (wine - Windows emulator)" "${LAST_ERR:-could not install wine}"; return 0; fi
+  run_wine wineboot -u >/dev/null 2>&1 || true
+  slug="$(slugify "$name")"; dir="${MIGRATE_MANUAL_DIR:-$DOWNLOAD_DIR/manual}/wine-$slug"; mkdir -p "$dir"
+  # 1) auto-download the Windows installer if the manifest provided a URL.
+  if [ -n "$winurl" ]; then
+    f="$dir/${slug}-setup.exe"
+    info "Downloading the Windows installer for $name (to run under wine - Windows emulator) ..."
+    if capture download_file "$winurl" "$f"; then winpath="$f"
+    else warn "automatic download failed -- you can provide the installer yourself."; fi
+  fi
+  # 2) manual fallback: ask for the installer path in single quotes.
+  if [ -z "$winpath" ]; then
+    if [ ! -r /dev/tty ]; then mark_manual "$name (wine - Windows emulator)" "provide a Windows installer to run under wine"; return 0; fi
+    info "Download the Windows installer for $name (unzip it first if it is zipped)."
+    info "Then type its path in single quotes -- either a full path, or one relative to ${TARGET_HOME}/Downloads."
+    info "Any valid installer extension works (.exe, .msi, .bat, etc.); 'skip' to skip this app, or 'skip all' to skip every remaining wine (Windows emulator) install."
+    while :; do
+      printf "  %s ('installer path'/skip/skip all): " "$name" > /dev/tty
+      read -r ans < /dev/tty || ans="skip"
+      case "$ans" in
+        [Aa]|[Aa][Ll][Ll]|[Ss][Kk][Ii][Pp][Aa][Ll][Ll]|'skip all'|'Skip all'|'Skip All'|'SKIP ALL')
+          WINE_SKIP_ALL=1; mark_skip "$name (wine - Windows emulator)" "user skipped (skip all)"; return 0 ;;
+        [Ss]|[Ss][Kk][Ii][Pp]) mark_skip "$name (wine - Windows emulator)" "user skipped"; return 0 ;;
+        *)
+          winpath="$(resolve_user_path "$ans")"
+          if [ -n "$winpath" ] && [ -f "$winpath" ] && [ -r "$winpath" ]; then break
+          else printf "\033[1;31m  No readable file at that path -- type the path in single quotes (e.g. '%s/Downloads/setup.exe'), or skip.\033[0m\n" "$TARGET_HOME" > /dev/tty; winpath=""; fi ;;
+      esac
+    done
+  fi
+  # 3) run the installer under wine (best-effort silent), then scale the font/DPI 2.5x.
+  info "installing $name under wine (Windows emulator) ..."
+  case "$winpath" in
+    *.msi|*.MSI)             capture run_wine wine msiexec /i "$winpath" /qn ;;
+    *.bat|*.BAT|*.cmd|*.CMD) capture run_wine wine cmd /c "$winpath" ;;
+    *)                       capture run_wine wine "$winpath" /S ;;
+  esac
+  rc=$?
+  # font size 2.5x: default wine DPI 96 -> 240 (LogPixels 0xF0), applied right after install.
+  run_wine wine reg add 'HKEY_CURRENT_USER\Control Panel\Desktop' /v LogPixels /t REG_DWORD /d 0x000000F0 /f >/dev/null 2>&1 || true
+  if [ "$rc" -eq 0 ]; then mark_ok "$name (wine - Windows emulator)" "installed under wine; font/DPI scaled to 2.5x (240)"
+  else mark_fail "$name (wine - Windows emulator)" "${LAST_ERR:-wine install failed}"; fi
 }
 
 # Install the Nth-best alternative of an app only if the user asked for at least
