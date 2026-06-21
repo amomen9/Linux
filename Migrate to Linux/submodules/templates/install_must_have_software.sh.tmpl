@@ -10,16 +10,19 @@
 ### __COMMON__ ###
 
 main() {
-  require_root
+  is_dry_run || require_root
   detect_distro
   detect_arch
   MODULE="Applications"
   log "Migrate to Linux  --  Must-Have Software"
+  is_dry_run && log "DRY-RUN (report only): no changes will be made."
   info "Distribution : ${DISTRO_NAME}"
   info "Family / pm  : ${FAMILY} / ${PM}"
   info "Architecture : ${ARCH}"
-  pm_refresh
-  ensure_flatpak || warn "Flatpak unavailable -- Flatpak-only apps will be skipped."
+  if ! is_dry_run; then
+    pm_refresh
+    ensure_flatpak || warn "Flatpak unavailable -- Flatpak-only apps will be skipped."
+  fi
 
   # ---------------------------------------------------------------------------
   # Application install list (generated from B_applications.json + the
