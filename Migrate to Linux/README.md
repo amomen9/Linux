@@ -18,7 +18,31 @@ Everything in this folder is already generated for **this machine**, so in most 
 ```bash
 cd "Migrate to Linux/Execute on Linux!"
 sudo ./execute_all.sh        # drivers → apps → settings, continue-on-error
+./execute_all.sh --dry-run   # or preview the whole plan first, changing nothing (no root needed)
 ```
+
+---
+
+## How this compares to similar projects
+
+Several tools touch the same problem from different angles. Here is how this kit relates to them:
+
+| Project | What it does | Link |
+| --- | --- | --- |
+| **Operese** | In-place Windows 10 → **Kubuntu only** conversion of files/settings (written in Rust); app migration is explicitly unfinished. Converts the partition in place. | <https://codeberg.org/Operese/operese> |
+| **WinApps** | Does not migrate - it **runs** the real Windows apps (Office/Adobe) inside a Windows VM and surfaces them on the Linux desktop over RDP. | <https://github.com/winapps-org/winapps> |
+| **AlternativeTo** | A manual directory for looking up Linux equivalents; no detection, no automation. | <https://alternativeto.net> |
+| **Ubuntu wiki: software-alternatives-migration** | A documented concept / checklist, not a working tool. | <https://wiki.ubuntu.com/software-alternatives-migration> |
+
+**What makes this project different**
+
+- **Cross-distro by design** - it detects apt/dnf/zypper/pacman at runtime and runs unchanged on Debian/Ubuntu, Fedora, openSUSE and Arch. Operese is Kubuntu-only; WinApps targets Ubuntu/Fedora.
+- **Alternatives-first and curated** - a JSON manifest rates every Windows app and offers **multiple ranked Linux alternatives, each with a competency score**, preferring native Linux apps (Flatpak-first) rather than running the Windows binaries (WinApps) or doing only best-guess app migration (Operese).
+- **Detect-on-Windows → generate self-contained scripts → run on Linux** - a clean offline split; the generated installer is unattended, idempotent, reports per app, and includes a manual-download workflow. No other tool here uses this generate-then-run model.
+- **Breadth beyond apps** - it also migrates settings, installs device drivers, can rebuild Docker components, and offers an **opt-in Wine path** for Windows-only apps (auto-download where a trusted URL exists, otherwise it prompts for the installer) - a hybrid between Operese (migrate) and WinApps (emulate).
+- **Trade-off** - by default it installs Linux-native replacements rather than converting the machine in place or running the actual Windows binaries, so it avoids their fragility but relies on good alternatives, with Wine as the fallback.
+
+In one line: **Operese migrates a machine, WinApps emulates apps, AlternativeTo is a lookup - this project is a cross-distro, curated *recommend-and-install* engine that turns a Windows software inventory into a reproducible native-Linux setup, with Wine as an opt-in fallback.**
 
 ---
 
@@ -68,6 +92,16 @@ recorded but never stops the others). Each stage keeps its own clean UI and logs
 `execute_all.sh` prints a per-stage OK/FAILED summary at the end and exits non-zero
 if any stage failed. Prefer the individual workflows below when you want to run
 just one stage.
+
+### Preview without changing anything (dry-run)
+
+Run any installer in **report-only mode** to see exactly what *would* happen - per app, and whether it would install natively, via Wine, or as a manual download - without touching the system:
+
+```bash
+./execute_all.sh --dry-run        # also accepts --report-only or -n, or set MIGRATE_DRY_RUN=yes
+```
+
+Dry-run needs no root, makes no changes and writes nothing - it just prints the plan and exits. Only the application plan is simulated; the driver, settings and Docker stages (which make system changes) are skipped.
 
 ### Workflow 1 - Migrate installed software
 
@@ -162,7 +196,7 @@ with native fallbacks. See [`Supported Distributions.txt`](Supported%20Distribut
 
 | File                                              | What it is                                                                                                                                   |
 | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Execute on Linux!/execute_all.sh`                | **One-shot orchestrator** - asks **up front** which stages to run (drivers / apps / settings) and whether to *"Migrate docker components?"* (only if a `docker_rebuild.sh` snapshot exists); runs them **unattended**; then handles manual-download apps **last** (place each file, then `done`/`skip`, with red errors + retry on a missing file). |
+| `Execute on Linux!/execute_all.sh`                | **One-shot orchestrator** - asks **up front** which stages to run (drivers / apps / settings) and whether to *"Migrate docker components?"* (only if a `docker_rebuild.sh` snapshot exists); runs them **unattended**; then handles manual-download apps **last** (type the installer's path in single quotes, or `skip`/`skip all`, with red errors + retry on a bad path). Also supports `--dry-run`. |
 | `Execute on Linux!/install_must_have_software.sh` | Unattended **root installer** - installs every app flagged `Must be included on Linux = yes`, Flatpak-first with per-family native fallback. |
 | `Execute on Linux!/install_device_drivers.sh`     | **Root driver installer** - firmware, GPU drivers, printing/scanning, plus a reference list of the Windows devices detected.                 |
 | `Execute on Linux!/apply_settings.sh`             | **Settings runner** - applies the captured Windows settings (scaling, lock, layout, privacy, lid) to GNOME/Cinnamon; KDE/others noted.      |
@@ -460,6 +494,23 @@ Error handling:
 - Individual file copy failures → skip that file, continue with the rest.
 - No tty (non-interactive environment) → skip silently.
 
+### Windows-only apps under Wine (the Windows emulator)
+
+For apps with no native Linux build, the installer can **also install the original Windows program under Wine** if you answer **yes** to the last setup question, *"Install the non-cross-platform Windows applications under the Windows emulator (wine) too?"*
+
+- Where a trusted official installer URL is recorded in the manifest (the `windowsInstaller` field; currently **Notepad++** and **WinRAR**), it is **downloaded and run automatically**. Otherwise you are asked for the installer path - type it **in single quotes**, a full path or one relative to your `~/Downloads` (any extension: `.exe`, `.msi`, `.bat`, …) - or `skip` / `skip all`.
+- Each Wine app gets its **own isolated Wine prefix**, its **font/DPI scaled to 2.5×** for readability, and `.desktop` launchers for any Start-Menu shortcuts the installer creates.
+- It is independent of the alternatives count: with alternatives **> 0** you get the Linux alternative(s) **and** the Wine version; with **0** you get **only** the Wine version. (That is why the "how many best alternatives" question says *"excluding wine"*.)
+
+### Manual downloads - the installer-path prompt
+
+Apps with no automatic installer are handled at the end. The installer tells you what to download, then asks for the file: type its path **in single quotes** - a full path, or one relative to your `~/Downloads` - or `skip` (this app) / `skip all` (every remaining manual app). The file is installed by its extension (`.deb`, `.rpm`, `.sh`, `.run`, `.AppImage`, `.tar.gz`, …), and the prompt shows the **Linux alternative's** name (what is being installed), not the original Windows app.
+
+### Post-install verification and the uninstall script
+
+- **Verification:** after each install the engine re-checks that the package / Flatpak / Snap is actually present; if it cannot confirm, the app is reported as **`UNVERIFIED`** ("installed but unverified") rather than as a false success, so problems show up in the summary.
+- **Uninstall:** everything installed is recorded and an **`uninstall_migrated_apps.sh`** is written to your home folder. Review it, then `sudo bash ~/uninstall_migrated_apps.sh` to undo the run - native packages, Flatpaks and Snaps are removed automatically; file and Wine installs get a manual note.
+
 ---
 
 ## Installing on Linux - Settings
@@ -513,10 +564,17 @@ and **PART E - Device Driver Migration Spec** (plus the `execute_all.sh` orchest
 This is the **only** part of the project that benefits from an AI agent - everyday use
 (running the scripts and installers) does not.
 
+## Continuous integration (CI)
+
+A GitHub Actions workflow ([`.github/workflows/distro-dry-run.yml`](../.github/workflows/distro-dry-run.yml)) guards the "one script set runs unchanged on every distro" promise automatically: on each change it regenerates the installer scripts, then in a clean container for **each** package-manager family (apt / dnf / zypper / pacman) it syntax-checks every script and runs the installer in `--dry-run`. Per-distro regressions surface in CI instead of on a user's machine.
+
+---
+
 ## Caveats
 
 - **Competency is a deliberate rough estimate** for planning, not a benchmark.
 - Ratings reflect the Linux landscape as of **June 2026** and will drift.
+- The Wine **`windowsInstaller`** URLs in the manifest are **version-pinned** to a current release (no vendor offers a stable "latest" link), so they need an occasional bump when the app updates; if a URL ever 404s, the installer falls back to asking you for the file.
 - Display resolution may not be replicable on different hardware.
 - The installer scripts (`execute_all.sh`, `install_*`, `apply_settings.sh`) are
   **generated once** into `Execute on Linux!/` and are **universal** - the same set

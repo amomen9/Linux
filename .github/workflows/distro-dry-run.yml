@@ -1,0 +1,110 @@
+name: Distro matrix (generate + dry-run)
+
+# Verifies the project's core promise -- "one generated script set runs unchanged on
+# every supported distro" -- automatically on every change:
+#   1. generate the "Execute on Linux!" scripts once (via the PowerShell generator), then
+#   2. on a clean container for each package-manager family (apt/dnf/zypper/pacman),
+#      syntax-check every generated script and run the installer in --dry-run (report
+#      only, no changes, no root) so per-distro regressions surface in CI, not on a user.
+
+on:
+  push:
+    paths:
+      - "Migrate to Linux/submodules/**"
+      - "Migrate to Linux/documents/B_applications.json"
+      - ".github/workflows/distro-dry-run.yml"
+  pull_request:
+    paths:
+      - "Migrate to Linux/submodules/**"
+      - "Migrate to Linux/documents/B_applications.json"
+      - ".github/workflows/distro-dry-run.yml"
+  workflow_dispatch:
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest   # GitHub-hosted Ubuntu runners ship PowerShell (pwsh)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate the "Execute on Linux!" scripts
+        shell: pwsh
+        run: |
+          ./"Migrate to Linux"/submodules/D_compile_and_generate_shell_script.ps1
+          if (-not (Test-Path "./Migrate to Linux/Execute on Linux!/execute_all.sh")) {
+            Write-Error "Generator did not produce execute_all.sh"; exit 1
+          }
+
+      - name: Upload generated scripts
+        uses: actions/upload-artifact@v4
+        with:
+          name: execute-on-linux
+          path: "Migrate to Linux/Execute on Linux!/"
+          if-no-files-found: error
+
+  dry-run:
+    needs: generate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: debian/ubuntu (apt)
+            image: ubuntu:24.04
+          - name: fedora (dnf)
+            image: fedora:latest
+          - name: opensuse (zypper)
+            image: opensuse/tumbleweed:latest
+          - name: arch (pacman)
+            image: archlinux:latest
+    container:
+      image: ${{ matrix.image }}
+    steps:
+      # Minimal tools the engine uses (bash, find, awk, coreutils). The actual package
+      # managers are NOT exercised in dry-run -- detect_distro reads /etc/os-release and
+      # install_app prints the plan without running anything.
+      - name: Bootstrap (bash + coreutils + findutils + gawk)
+        run: |
+          set -eu
+          if command -v apt-get >/dev/null 2>&1; then
+            apt-get update && apt-get install -y --no-install-recommends bash coreutils findutils gawk
+          elif command -v dnf >/dev/null 2>&1; then
+            dnf install -y bash coreutils findutils gawk which
+          elif command -v zypper >/dev/null 2>&1; then
+            zypper --non-interactive install bash coreutils findutils gawk which
+          elif command -v pacman >/dev/null 2>&1; then
+            pacman -Sy --noconfirm bash coreutils findutils gawk which
+          fi
+
+      - name: Fetch generated scripts
+        uses: actions/download-artifact@v4
+        with:
+          name: execute-on-linux
+          path: eol
+
+      - name: Syntax-check every generated script (bash -n)
+        run: |
+          set -eu
+          rc=0
+          for f in eol/*.sh eol/submodules/*.sh; do
+            [ -f "$f" ] || continue
+            if bash -n "$f"; then echo "OK   $f"; else echo "FAIL $f"; rc=1; fi
+          done
+          exit $rc
+
+      - name: Dry-run the application installer (report only, no changes)
+        env:
+          MIGRATE_DRY_RUN: "yes"
+          MATRIX_NAME: ${{ matrix.name }}
+        run: |
+          set -eu
+          out="$(bash eol/submodules/install_must_have_software.sh < /dev/null 2>&1)"
+          printf '%s\n' "$out"
+          # The run must complete and produce a plan (proves install_app ran the $PM path).
+          printf '%s\n' "$out" | grep -q "dry-run" || { echo "::error::no dry-run plan produced on $MATRIX_NAME"; exit 1; }
+
+      - name: Dry-run the full orchestrator (report only)
+        env:
+          MIGRATE_DRY_RUN: "yes"
+        run: |
+          set -eu
+          bash eol/execute_all.sh < /dev/null 2>&1 | tail -n 40
