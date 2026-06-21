@@ -46,7 +46,8 @@
     -IncludeSystemComponents) redistributables, runtimes, drivers and SDK fragments.
 
 .PARAMETER OutputPath
-    CSV path. Default: B_installed_windows_software.csv beside this script.
+    CSV path. Default: ../documents/B_installed_windows_software.csv (the project's
+    documents/ subfolder, beside the other detection CSVs).
 .PARAMETER MustIncludeThreshold
     Minimum Alternative Competency (%) for "Must be included on Linux" = yes. Default 70.
 .PARAMETER IncludeSystemComponents
@@ -75,16 +76,32 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# Resolve the output path robustly: default to the parent (Migrate to Linux/) directory
-# rather than the submodules/ folder.
+# Resolve the output path robustly: default to the project's documents/ subfolder
+# (Migrate to Linux/documents/) so it sits beside the other detection CSVs and is read
+# directly by D_compile_and_generate_shell_script.ps1.
 if (-not $OutputPath) {
     $scriptDir = $PSScriptRoot
     if (-not $scriptDir -and $PSCommandPath)            { $scriptDir = Split-Path -Parent $PSCommandPath }
     if (-not $scriptDir -and $MyInvocation.MyCommand.Path) { $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path }
     if (-not $scriptDir)                               { $scriptDir = (Get-Location).Path }
-    # Output to parent of submodules/ so the CSV lands in Migrate to Linux/
-    $parentDir = Split-Path -Parent $scriptDir
-    $OutputPath = Join-Path $parentDir 'B_installed_windows_software.csv'
+    # Output into <project root>/documents/ (parent of submodules/, then documents/).
+    $parentDir   = Split-Path -Parent $scriptDir
+    $documentsDir = Join-Path $parentDir 'documents'
+    if (-not (Test-Path $documentsDir -PathType Container)) {
+        New-Item -ItemType Directory -Path $documentsDir -Force | Out-Null
+    }
+    $OutputPath = Join-Path $documentsDir 'B_installed_windows_software.csv'
+    # Safely migrate a CSV left at the old location (project root) into documents/,
+    # but never clobber an existing file already in the new location.
+    $legacyPath = Join-Path $parentDir 'B_installed_windows_software.csv'
+    if ((Test-Path $legacyPath -PathType Leaf) -and -not (Test-Path $OutputPath -PathType Leaf)) {
+        try {
+            Move-Item -LiteralPath $legacyPath -Destination $OutputPath -Force
+            Write-Host "Moved existing CSV from '$legacyPath' to '$OutputPath'." -ForegroundColor Gray
+        } catch {
+            Write-Warning "Could not move legacy CSV from '$legacyPath': $_"
+        }
+    }
 }
 
 # ---------------------------------------------------------------------------
