@@ -429,6 +429,19 @@ foreach ($app in $apps) {
         $altPaid = -not ([string](Get-Prop $alt 'pricingModel') -match '(?i)free')
         $appLines.Add(('  app_alt ' + $rank + ' ' + (New-InstallCall -Name $name -Alt $altName -Install $install -WinVer $wv -Paid:$altPaid)))
     }
+
+    # Wine (Windows emulator) option: for non-cross-platform Windows desktop apps (a
+    # Win32 app with no native "Available on Linux" build), emit a wine_app call. It
+    # runs only when the user answered yes to the wine prompt (MIGRATE_WINE_NONCROSS).
+    # It auto-downloads the Windows installer when the manifest app provides one (the
+    # optional "windowsInstaller" URL field); otherwise it asks for the path at runtime.
+    $avail = [string](Get-Prop $app 'linuxAvailability')
+    $src   = [string](Get-Prop $app 'sourceType')
+    if (($src -match '(?i)win32') -and ($avail -notmatch '(?i)available on linux')) {
+        $winUrl = [string](Get-Prop $app 'windowsInstaller')
+        $appLines.Add('  wine_app "' + (ConvertTo-BashString $name) + '" "' + (ConvertTo-BashString $winUrl) + '"')
+    }
+
     [void]$emittedNames.Add($name.ToLowerInvariant())
 }
 
