@@ -566,28 +566,49 @@ foreach ($tmplName in $map.Keys) {
 # ---------------------------------------------------------------------------
 # 5. CONFIG FILE  (default answers for execute_all.sh, beside it)
 # ---------------------------------------------------------------------------
-# Written only if absent, so a user's edited answers survive regeneration.
+# An existing file is MERGED, not skipped: the user's saved values are preserved
+# and any keys added in newer versions (e.g. WINE_NONCROSS) are written in with
+# their default, so every question always appears in the config readout.
 $configPath = Join-Path $OutputDir 'migrate.config'
-if (-not (Test-Path $configPath)) {
-    $cfg = @'
-# Migrate to Linux -- saved answers for execute_all.sh
-# Edit these values, or delete this file to be asked each question interactively.
-# Yes/No = y/n ; VERSION_MODE = same|latest ; BEST_ALTERNATIVES = a whole number.
-INSTALL_DRIVERS=y
-INSTALL_APPS=y
-BEST_ALTERNATIVES=1
-VERSION_MODE=same
-UPDATE_EXISTING=y
-INSTALL_SECURITY=n
-FREE_ONLY=n
-WINE_NONCROSS=y
-APPLY_SETTINGS=y
-REBUILD_DOCKER=y
-'@
-    [System.IO.File]::WriteAllText($configPath, (($cfg -replace "`r`n", "`n") + "`n"), $enc)
-    Write-Host "  generated: migrate.config" -ForegroundColor Green
+$cfgHeader = @(
+    '# Migrate to Linux -- saved answers for execute_all.sh'
+    '# Edit these values, or delete this file to be asked each question interactively.'
+    '# Yes/No = y/n ; VERSION_MODE = same|latest ; BEST_ALTERNATIVES = a whole number.'
+)
+# Canonical keys, in display order, each with its default value.
+$cfgKeys = [ordered]@{
+    INSTALL_DRIVERS   = 'y'
+    INSTALL_APPS      = 'y'
+    BEST_ALTERNATIVES = '1'
+    VERSION_MODE      = 'same'
+    UPDATE_EXISTING   = 'y'
+    INSTALL_SECURITY  = 'n'
+    FREE_ONLY         = 'n'
+    WINE_NONCROSS     = 'y'
+    APPLY_SETTINGS    = 'y'
+    REBUILD_DOCKER    = 'y'
+}
+$existingVals = @{}
+$hadConfig = Test-Path $configPath
+if ($hadConfig) {
+    foreach ($line in (Get-Content -Path $configPath)) {
+        if ($line -match '^\s*#' -or $line -notmatch '=') { continue }
+        $kv = $line -split '=', 2
+        $k  = $kv[0].Trim()
+        if ($cfgKeys.Contains($k)) { $existingVals[$k] = ($kv[1] -replace '#.*$', '').Trim() }
+    }
+}
+$cfgLines = New-Object System.Collections.Generic.List[string]
+foreach ($h in $cfgHeader) { $cfgLines.Add($h) }
+foreach ($k in $cfgKeys.Keys) {
+    $val = if ($existingVals.ContainsKey($k) -and $existingVals[$k] -ne '') { $existingVals[$k] } else { $cfgKeys[$k] }
+    $cfgLines.Add("$k=$val")
+}
+[System.IO.File]::WriteAllText($configPath, (($cfgLines -join "`n") + "`n"), $enc)
+if ($hadConfig) {
+    Write-Host "  updated migrate.config (preserved saved answers; added any new keys)" -ForegroundColor Green
 } else {
-    Write-Host "  kept existing migrate.config" -ForegroundColor Gray
+    Write-Host "  generated: migrate.config" -ForegroundColor Green
 }
 
 Write-Host "`nDone. Universal installer written to: $OutputDir" -ForegroundColor Cyan
