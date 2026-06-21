@@ -1039,7 +1039,7 @@ show_config() {  # show_config CONFIG_FILE
       FREE_ONLY)         label="Only install free applications (skip paid)?" ;;
       WINE_NONCROSS)     label="Install the Windows-exclusive applications under the Windows emulator (wine) too?" ;;
       APPLY_SETTINGS)    label="Apply Windows settings?" ;;
-      REBUILD_DOCKER)    label="Rebuild docker components?" ;;
+      REBUILD_DOCKER)    label="Migrate docker components?" ;;
       *) continue ;;
     esac
     info "$label  $v"
@@ -1333,7 +1333,7 @@ main() {
     fi
     ask "(8/10) Apply Windows os-wide settings?"     y && do_settings=1
     if [ -f "$here/submodules/docker_rebuild.sh" ]; then
-      ask "(9/10) Rebuild docker components (If you have installed docker on Windows - images, volumes, containers, networks, etc.)?" y && do_docker=1
+      ask "(9/10) Migrate docker components (If you have installed docker on Windows - images, volumes, containers, networks, etc.)?" y && do_docker=1
     fi
     if [ "$do_apps" -eq 1 ]; then
       if ask "(10/10) Install the Windows-exclusive applications under the Windows emulator (wine) too?" n; then MIGRATE_WINE_NONCROSS=yes; else MIGRATE_WINE_NONCROSS=no; fi

@@ -59,7 +59,7 @@ Docker capture/rebuild flow:
     when Docker is installed on the Windows source (so docker_rebuild.sh only exists
     when the source had Docker).
   - The generated execute_all.sh asks the STAGE questions up front (each shown with
-    its (y/n) option): drivers / apps / settings, plus "Rebuild docker components?"
+    its (y/n) option): drivers / apps / settings, plus "Migrate docker components?"
     (only if a sibling docker_rebuild.sh exists). It runs the chosen stages
     unattended, then the docker rebuild if requested.
   - MANUAL DOWNLOADS run LAST. Apps flagged install.promptFile=true in the manifest
