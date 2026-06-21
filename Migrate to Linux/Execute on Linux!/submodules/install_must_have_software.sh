@@ -1086,7 +1086,7 @@ repo_setup_nodejs() {
   app_alt 1 install_app --name "NordVPN" --alt "NordVPN for Linux" --method manual --note "Install via NordVPN's official script: sh <(curl -sSf https://downloads.nordcdn.com/apps/linux/install.sh)  -- or add their apt/dnf repo. Requires a NordVPN subscription to log in." --paid
   wine_app "NordVPN" ""
   app_alt 1 install_app --name "Notepad++" --alt "Notepadqq" --method native --apt "notepadqq" --note "alt: install 'code' or a GNOME/KDE editor"
-  wine_app "Notepad++" ""
+  wine_app "Notepad++" "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.9.6.4/npp.8.9.6.4.Installer.x64.exe"
   app_alt 1 install_app --name "oCam version 550.0" --alt "OBS Studio" --method flatpak --flatpak "com.obsproject.Studio" --apt "obs-studio"
   wine_app "oCam version 550.0" ""
   app_alt 1 install_app --name "OpenSSH" --alt "OpenSSH (native)" --winver "8.9.1.0" --method native --apt "openssh-client" --dnf "openssh-clients" --zypper "openssh" --pacman "openssh"
@@ -1111,7 +1111,7 @@ repo_setup_nodejs() {
   app_alt 1 install_app --name "Visual Studio Build Tools / Community" --alt ".NET SDK + VS Code" --method flatpak --flatpak "com.visualstudio.code" --note "also install the build toolchain (build-essential / @development-tools) and dotnet-sdk"
   wine_app "Visual Studio Build Tools / Community" ""
   app_alt 1 install_app --name "WinRAR" --alt "p7zip / 7-Zip" --method native --apt "p7zip-full" --dnf "p7zip p7zip-plugins" --zypper "p7zip" --pacman "p7zip" --note "also install 'unrar' for RAR archives"
-  wine_app "WinRAR" ""
+  wine_app "WinRAR" "https://www.rarlab.com/rar/winrar-x64-722.exe"
   app_alt 1 install_app --name "wkhtmltox" --alt "wkhtmltopdf (Linux)" --method native --apt "wkhtmltopdf" --dnf "wkhtmltopdf" --pacman "wkhtmltopdf"
   app_alt 1 install_app --name "Alarms & Clock" --alt "GNOME Clocks" --method flatpak --flatpak "org.gnome.clocks" --apt "gnome-clocks" --dnf "gnome-clocks" --pacman "gnome-clocks"
   app_alt 1 install_app --name "MS Teams" --alt "Teams PWA (Edge/Chrome)" --method webapp --webapp "https://teams.microsoft.com"
