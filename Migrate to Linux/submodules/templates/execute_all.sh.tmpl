@@ -383,12 +383,12 @@ main() {
       if ask "(7/10) Do you want to only install free applications and skip paid alternatives?" n; then MIGRATE_FREE_ONLY=yes; else MIGRATE_FREE_ONLY=no; fi
       export MIGRATE_FREE_ONLY
     fi
-    ask "(8/10) Apply Windows settings?"     y && do_settings=1
+    ask "(8/10) Apply Windows os-wide settings?"     y && do_settings=1
     if [ -f "$here/submodules/docker_rebuild.sh" ]; then
       ask "(9/10) Rebuild docker components (If you have installed docker on Windows - images, volumes, containers, networks, etc.)?" y && do_docker=1
     fi
     if [ "$do_apps" -eq 1 ]; then
-      if ask "(10/10) Install the non-cross-platform Windows applications under the Windows emulator (wine) too?" n; then MIGRATE_WINE_NONCROSS=yes; else MIGRATE_WINE_NONCROSS=no; fi
+      if ask "(10/10) Install the Windows-exclusive applications under the Windows emulator (wine) too?" n; then MIGRATE_WINE_NONCROSS=yes; else MIGRATE_WINE_NONCROSS=no; fi
       export MIGRATE_WINE_NONCROSS
     fi
     # Answered manually -> persist these answers as the new config defaults

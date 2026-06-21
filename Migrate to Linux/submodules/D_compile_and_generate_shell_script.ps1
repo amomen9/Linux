@@ -183,7 +183,8 @@ function New-RepoFunc {
 }
 
 # ---------------------------------------------------------------------------
-# 1. APPLICATION LIST  (from B_applications.json + Additional CSV)
+# 1. APPLICATION LIST  (the UNION of B_installed_windows_software.csv + Additional CSV,
+#    enriched with data from B_applications.json -- the manifest is a data holder only)
 # ---------------------------------------------------------------------------
 Write-Host "Reading manifest: $ManifestPath" -ForegroundColor Gray
 $manifest = Get-Content -Raw -Path $ManifestPath | ConvertFrom-Json
@@ -283,6 +284,11 @@ function Find-ManifestApp([string]$csvName) {
 $verByName = @{}; $edByName = @{}
 $unmatchedLines = New-Object System.Collections.Generic.List[string]
 $unmatchedNames = New-Object System.Collections.Generic.List[string]
+# The install list is DETECTION-driven: only the Windows apps actually present on this
+# machine (B_installed_windows_software.csv), matched to a manifest entry, are emitted.
+# The manifest is a DATA HOLDER for enrichment, NOT the source of the app list.
+$selectedApps = New-Object System.Collections.Generic.List[object]
+$selectedKeys = New-Object System.Collections.Generic.HashSet[string]
 if (Test-Path $SoftwareCsv) {
     Write-Host "Reading detected software: $SoftwareCsv" -ForegroundColor Gray
     foreach ($row in (Import-Csv -Path $SoftwareCsv)) {
@@ -291,6 +297,7 @@ if (Test-Path $SoftwareCsv) {
         $app = Find-ManifestApp $cn
         if (-not $app) { $unmatchedLines.Add('  "' + (ConvertTo-BashString $cn) + '"'); $unmatchedNames.Add($cn); continue }
         $key = ([string](Get-Prop $app 'name')).ToLowerInvariant()
+        if ($selectedKeys.Add($key)) { $selectedApps.Add($app) }
         $ver = [string]$row.Version
         if (-not $ver) { $m = [regex]::Match($cn, '\d[\w.\-]*'); if ($m.Success) { $ver = $m.Value } }
         if ($ver) {
@@ -347,7 +354,9 @@ $manualLines = New-Object System.Collections.Generic.List[string]
 $emittedNames = New-Object System.Collections.Generic.HashSet[string]
 $enriched = 0; $fallback = 0
 
-foreach ($app in $apps) {
+# Emit ONLY the detected apps (the union half coming from B_installed_windows_software.csv,
+# matched to manifest entries above). The Additional CSV adds the other union half below.
+foreach ($app in $selectedApps) {
     # Collect all mustInclude alternatives, ranked best-first by competency.
     $mustAlts = @()
     foreach ($alt in (Get-Prop $app 'alternatives')) {
