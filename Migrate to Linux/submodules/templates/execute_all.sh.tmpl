@@ -260,18 +260,30 @@ install_manual_apps() {
 print_module_summary() {  # print_module_summary "Module name"
   local f="${RESULTS:-/tmp/migrate_to_linux_results.tsv}" m="$1"
   awk -F'\t' -v m="$m" '$2==m{found=1} END{exit !found}' "$f" || return 0
-  local nok nskip nman nfail
+  local nok nskip nman nfail nunver nplan
   nok=$(awk   -F'\t' -v m="$m" '$2==m{g=$3;gsub(/ /,"",g); if(g=="OK")c++}     END{print c+0}' "$f")
   nskip=$(awk -F'\t' -v m="$m" '$2==m{g=$3;gsub(/ /,"",g); if(g=="SKIP")c++}   END{print c+0}' "$f")
   nman=$(awk  -F'\t' -v m="$m" '$2==m{g=$3;gsub(/ /,"",g); if(g=="MANUAL")c++} END{print c+0}' "$f")
   nfail=$(awk -F'\t' -v m="$m" '$2==m{g=$3;gsub(/ /,"",g); if(g=="FAIL")c++}   END{print c+0}' "$f")
+  nunver=$(awk -F'\t' -v m="$m" '$2==m{g=$3;gsub(/ /,"",g); if(g=="UNVER")c++} END{print c+0}' "$f")
+  nplan=$(awk  -F'\t' -v m="$m" '$2==m{g=$3;gsub(/ /,"",g); if(g=="PLAN")c++}  END{print c+0}' "$f")
   printf '\n'
   # purple, extra-indented section title
   printf '        \033[1;35m===== %s summary =====\033[0m\n' "$m" >&3
+  [ "$nplan" -gt 0 ] && info "          Planned   : $nplan (dry-run)"
   ok   "          Succeeded : $nok"
   info "          Skipped   : $nskip"
   warn "          Manual    : $nman"
+  warn "          Unverified: $nunver"
   err  "          Failed    : $nfail"
+  if [ "$nunver" -gt 0 ]; then
+    warn "          Installed but UNVERIFIED:"
+    awk -F'\t' -v m="$m" '{g=$3;gsub(/ /,"",g)} $2==m && g=="UNVER"{printf "            - %s: %s\n",$4,$5}' "$f" >&3
+  fi
+  if [ "$nplan" -gt 0 ]; then
+    info "          Planned installs (dry-run):"
+    awk -F'\t' -v m="$m" '{g=$3;gsub(/ /,"",g)} $2==m && g=="PLAN"{printf "            - %s: %s\n",$4,$5}' "$f" >&3
+  fi
   if [ "$nfail" -gt 0 ]; then
     err "          Failures (1-line reason each):"
     awk -F'\t' -v m="$m" '{g=$3;gsub(/ /,"",g)} $2==m && g=="FAIL"{printf "            - %s: %s\n",$4,$5}' "$f" >&3
@@ -302,13 +314,21 @@ print_combined_summary() {
   print_module_summary "Config settings"
   print_module_summary "Applications"
   print_launched_containers
+  write_uninstall_script
   printf '\n'
   info "Full log: $f"
 }
 
 main() {
   clear 2>/dev/null || printf '\033[2J\033[3J\033[H'
-  require_root
+  # Report-only mode: --dry-run / --report-only / -n (or MIGRATE_DRY_RUN=yes) prints the
+  # plan and makes no changes; it does not need root.
+  local arg
+  for arg in "$@"; do
+    case "$arg" in --dry-run|--report-only|-n) MIGRATE_DRY_RUN=yes ;; esac
+  done
+  export MIGRATE_DRY_RUN="${MIGRATE_DRY_RUN:-no}"
+  if is_dry_run; then log "DRY-RUN (report only): showing the plan; no changes will be made."; else require_root; fi
   detect_distro
   detect_arch
   here="$(cd "$(dirname "$0")" && pwd)"
@@ -319,6 +339,9 @@ main() {
   # Shared log of containers launched by the docker install method (req28).
   export DOCKER_LAUNCHED="${DOCKER_LAUNCHED:-/tmp/migrate_to_linux_launched.tsv}"
   : > "$DOCKER_LAUNCHED" 2>/dev/null || true
+  # Shared install ledger -> the uninstall script written at the end of the run.
+  export LEDGER="${LEDGER:-/tmp/migrate_to_linux_ledger.tsv}"
+  : > "$LEDGER" 2>/dev/null || true
   export MIGRATE_KEEP_RESULTS=1
 
   log "Migrate to Linux  --  Run All"
@@ -368,22 +391,29 @@ main() {
       if ask "(10/10) Install the non-cross-platform Windows applications under the Windows emulator (wine) too?" n; then MIGRATE_WINE_NONCROSS=yes; else MIGRATE_WINE_NONCROSS=no; fi
       export MIGRATE_WINE_NONCROSS
     fi
-    # Answered manually -> persist these answers as the new config defaults.
-    save_config "$cfg"
+    # Answered manually -> persist these answers as the new config defaults
+    # (skipped in dry-run so the report-only mode changes nothing on disk).
+    is_dry_run || save_config "$cfg"
   fi
 
-  # ---- Run the selected stages, unattended.  Order: drivers -> settings -> apps ----
-  [ "$do_drivers"  -eq 1 ] && run_stage install_device_drivers.sh
-  [ "$do_settings" -eq 1 ] && run_stage apply_settings.sh
-  [ "$do_apps"     -eq 1 ] && run_stage install_must_have_software.sh
-
-  # ---- Manual downloads (part of the apps stage) ----
-  [ "$do_apps" -eq 1 ] && install_manual_apps
-
-  # ---- Docker rebuild last (needs Docker, which the apps stage installs) ----
-  if [ "$do_docker" -eq 1 ]; then
-    log "=== Running docker_rebuild.sh ==="
-    bash "$here/submodules/docker_rebuild.sh" || warn "docker_rebuild.sh reported errors"
+  # ---- Run the selected stages.  In dry-run only the apps plan is simulated (the
+  #      driver, settings and docker stages make system changes, so they are skipped). ----
+  if is_dry_run; then
+    [ "$do_apps" -eq 1 ] && run_stage install_must_have_software.sh
+    [ "$do_apps" -eq 1 ] && install_manual_apps
+    info "Dry-run: device-driver, settings and docker stages are not simulated."
+  else
+    # Order: drivers -> settings -> apps
+    [ "$do_drivers"  -eq 1 ] && run_stage install_device_drivers.sh
+    [ "$do_settings" -eq 1 ] && run_stage apply_settings.sh
+    [ "$do_apps"     -eq 1 ] && run_stage install_must_have_software.sh
+    # ---- Manual downloads (part of the apps stage) ----
+    [ "$do_apps" -eq 1 ] && install_manual_apps
+    # ---- Docker rebuild last (needs Docker, which the apps stage installs) ----
+    if [ "$do_docker" -eq 1 ]; then
+      log "=== Running docker_rebuild.sh ==="
+      bash "$here/submodules/docker_rebuild.sh" || warn "docker_rebuild.sh reported errors"
+    fi
   fi
 
   print_combined_summary
