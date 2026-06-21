@@ -187,7 +187,7 @@ function New-RepoFunc {
 #    enriched with data from B_applications.json -- the manifest is a data holder only)
 # ---------------------------------------------------------------------------
 Write-Host "Reading manifest: $ManifestPath" -ForegroundColor Gray
-$manifest = Get-Content -Raw -Path $ManifestPath | ConvertFrom-Json
+$manifest = Get-Content -Raw -Path $ManifestPath -Encoding UTF8 | ConvertFrom-Json
 $apps = $manifest.applications
 
 # All manifest app names (lowercased) for the "not in manifest" check below.
