@@ -88,7 +88,7 @@ capture() {
 # MODULE tags which big module (Drivers / Config settings / Applications) each result
 # belongs to, so execute_all can print a per-module classified summary at the end.
 MODULE="${MODULE:-General}"
-record_line() { printf '%s\t%s\t%-6s\t%s\t%s\t%s\n' "$(date '+%F %T')" "${MODULE:-General}" "$1" "$2" "${3:-}" "${4:-}" >> "$RESULTS"; }
+record_line() { printf '%s\t%s\t%-6s\t%s\t%s\t%s\t%s\n' "$(date '+%F %T')" "${MODULE:-General}" "$1" "$2" "${3:-}" "${4:-}" "${5:-}" >> "$RESULTS"; }
 # One-line "how to open this app" hint, derived from how it was installed. Used by the
 # end-of-run summary to tell the user how to launch each app that now exists.
 launch_hint_from_detail() {  # launch_hint_from_detail NAME DETAIL
@@ -103,8 +103,11 @@ launch_hint_from_detail() {  # launch_hint_from_detail NAME DETAIL
     *)                   printf 'Search "%s" in the start menu, or run "%s" in a terminal' "$nm" "$nm" ;;
   esac
 }
-mark_ok()     { OK_LIST+=("$1"); local _h=""; [ "${MODULE:-}" = "Applications" ] && _h="$(launch_hint_from_detail "$1" "${2:-}")"; record_line OK "$1" "${2:-}" "$_h"; ok "installed: $1${2:+  ->  $2}"; }
-mark_skip()   { SKIP_LIST+=("$1");   record_line SKIP   "$1" "${2:-}" "${3:-}"; info "skipped: $1 (${2:-already present})"; }
+# mark_ok WIN_NAME [DETAIL] [ALT_NAME] [LAUNCH_OVERRIDE]. The summary shows the app as
+# "<alt> (<win>): <launch hint>"; the hint is the manifest launch override if given,
+# else derived from how it was installed using the ALTERNATIVE name (what to search for).
+mark_ok()     { OK_LIST+=("$1"); local _alt="${3:-}" _h=""; if [ "${MODULE:-}" = "Applications" ]; then if [ -n "${4:-}" ]; then _h="$4"; else _h="$(launch_hint_from_detail "${_alt:-$1}" "${2:-}")"; fi; fi; record_line OK "$1" "${2:-}" "$_h" "$_alt"; ok "installed: $1${2:+  ->  $2}"; }
+mark_skip()   { SKIP_LIST+=("$1");   record_line SKIP   "$1" "${2:-}" "${3:-}" "${4:-}"; info "skipped: $1 (${2:-already present})"; }
 mark_fail()   { FAIL_LIST+=("$1"); FAIL_REASON+=("${2:-unknown error}"); record_line FAIL "$1" "${2:-}"; err "failed: $1 ${2:+- $2}"; }
 mark_manual() { MANUAL_LIST+=("$1"); record_line MANUAL "$1" "${2:-}"; warn "manual step required: $1 ${2:+- $2}"; }
 mark_plan()      { PLAN_LIST+=("$1");       record_line PLAN  "$1" "${2:-}"; info "[dry-run] would install: $1 ${2:+- $2}"; }
@@ -126,10 +129,10 @@ verify_present() {  # verify_present METHOD ID  -> 0 if present
 
 # Record a successful install: verify it is really present, ledger it for uninstall, and
 # mark OK -- or mark it UNVERIFIED if the post-install check cannot confirm it.
-finish_install() {  # finish_install NAME METHOD ID DETAIL
-  local name="$1" method="$2" id="$3" detail="$4"
+finish_install() {  # finish_install NAME ALT METHOD ID DETAIL [LAUNCH]
+  local name="$1" alt="$2" method="$3" id="$4" detail="$5" launch="${6:-}"
   if verify_present "$method" "$id"; then
-    ledger_add "$method" "$id"; mark_ok "$name" "$detail"
+    ledger_add "$method" "$id"; mark_ok "$name" "$detail" "$alt" "$launch"
   else
     mark_unverified "$name" "$detail (could not confirm it is installed)"
   fi
@@ -191,7 +194,7 @@ print_summary() {
   # with a one-line how-to-open note (field 6 of the results log).
   if awk -F'\t' '$6!=""{f=1} END{exit !f}' "$RESULTS" 2>/dev/null; then
     log "Applications on this machine - how to open each"
-    awk -F'\t' '$6!=""{printf "  %s: %s\n",$4,$6}' "$RESULTS" | sort -u | while IFS= read -r l; do info "$l"; done
+    awk -F'\t' '$6!=""{n=($7!="" && $7!=$4 ? $7" ("$4")" : $4); printf "  %s: %s\n",n,$6}' "$RESULTS" | sort -u | while IFS= read -r l; do info "$l"; done
   fi
   print_launched_containers
   write_uninstall_script
@@ -364,8 +367,8 @@ open_url() {  # open_url URL
   fi
 }
 
-webapp_desktop() {  # webapp_desktop "Name" "URL"
-  local name="$1" url="$2" browser appdir desktop slug
+webapp_desktop() {  # webapp_desktop "Name" "URL" [ALT] [LAUNCH]
+  local name="$1" url="$2" alt="${3:-}" launch="${4:-}" browser appdir desktop slug
   browser="$(detect_browser)" || { mark_manual "$name" "no browser found for web-app shortcut ($url)"; return 1; }
   slug="$(printf '%s' "$name" | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9-')"
   appdir="$TARGET_HOME/.local/share/applications"
@@ -380,7 +383,7 @@ webapp_desktop() {  # webapp_desktop "Name" "URL"
   } > "$desktop"
   chown "$TARGET_USER":"$TARGET_USER" "$desktop" 2>/dev/null || true
   chmod +x "$desktop" 2>/dev/null || true
-  mark_ok "$name" "web-app shortcut -> $url"
+  mark_ok "$name" "web-app shortcut -> $url" "$alt" "$launch"
 }
 
 # =============================================================================
@@ -434,12 +437,13 @@ install_native_version() {  # install_native_version PKG WINVER
 # =============================================================================
 install_app() {
   local name="" alt="" method="" flatpak="" snap_pkg="" arch_list="" winver="" is_security=0 is_paid=0
-  local apt="" dnf="" zypper="" pacman=""
+  local apt="" dnf="" zypper="" pacman="" launch=""
   local url_x86="" url_arm="" url_deb="" url_rpm="" webapp_url="" docker_image="" github_repo="" note=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --name)    name="$2"; shift 2 ;;
       --alt)     alt="$2"; shift 2 ;;
+      --launch)  launch="$2"; shift 2 ;;
       --method)  method="$2"; shift 2 ;;
       --flatpak) flatpak="$2"; shift 2 ;;
       --snap)    snap_pkg="$2"; shift 2 ;;
@@ -529,7 +533,7 @@ install_app() {
   # ---- single-path methods ----
   case "$method" in
     webapp)
-      webapp_desktop "$name" "$webapp_url"; return 0 ;;
+      webapp_desktop "$name" "$webapp_url" "$alt" "$launch"; return 0 ;;
     docker)
       docker_launch_app "$name" "$docker_image" "$note"; return 0 ;;
     wine-bottles)
@@ -541,7 +545,7 @@ install_app() {
       local mdir="${MIGRATE_MANUAL_DIR:-$DOWNLOAD_DIR/manual}/$slug" mf got=0
       if [ -d "$mdir" ] && [ -n "$(ls -A "$mdir" 2>/dev/null)" ]; then
         for mf in "$mdir"/*; do [ -f "$mf" ] && install_by_ext "$mf" && got=1; done
-        if [ "$got" -eq 1 ]; then ledger_add file "$mdir"; mark_ok "$name" "installed from staged file"
+        if [ "$got" -eq 1 ]; then ledger_add file "$mdir"; mark_ok "$name" "installed from staged file" "$alt" "$launch"
         else mark_fail "$name" "${LAST_ERR:-staged file could not be installed}"; fi
       else
         mark_manual "$name" "${note:-manual install}"
@@ -561,7 +565,7 @@ install_app() {
       if   [ -n "$flatpak" ] && have_cmd flatpak && flatpak_installed "$flatpak"; then _d="flatpak $flatpak"
       elif [ -n "$native_pkg" ] && pm_installed "${native_pkg%% *}"; then _d="native $native_pkg"
       elif [ -n "$snap_pkg" ]; then _d="snap $snap_pkg"; fi
-      mark_skip "$name" "already installed" "$(launch_hint_from_detail "$name" "$_d")"
+      mark_skip "$name" "already installed" "${launch:-$(launch_hint_from_detail "${alt:-$name}" "$_d")}" "$alt"
       return 0
     fi
   fi
@@ -585,7 +589,7 @@ install_app() {
       flatpak)
         [ -n "$flatpak" ] || continue
         ensure_flatpak || continue
-        if capture install_flatpak "$flatpak"; then finish_install "$name" flatpak "$flatpak" "flatpak $flatpak"; return 0; fi ;;
+        if capture install_flatpak "$flatpak"; then finish_install "$name" "$alt" flatpak "$flatpak" "flatpak $flatpak" "$launch"; return 0; fi ;;
       native)
         [ -n "$native_pkg" ] || continue
         # vendor's own repo first, for the latest upstream build (if defined).
@@ -598,18 +602,18 @@ install_app() {
         # Skip if present, UNLESS the user asked to update existing apps (then
         # pm_install upgrades it to the latest available).
         if pm_installed "${native_pkg%% *}" && [ "${MIGRATE_UPDATE_EXISTING:-no}" != "yes" ]; then
-          mark_skip "$name" "already installed" "$(launch_hint_from_detail "$name" "native $native_pkg")"; return 0
+          mark_skip "$name" "already installed" "${launch:-$(launch_hint_from_detail "${alt:-$name}" "native $native_pkg")}" "$alt"; return 0
         fi
         # match the Windows version when the user chose "same version".
         if [ "${MIGRATE_VERSION_MODE:-latest}" = "same" ] && [ -n "$winver" ]; then
-          if install_native_version "$native_pkg" "$winver"; then finish_install "$name" native "$native_pkg" "native $native_pkg (matched Windows $winver)"; return 0; fi
+          if install_native_version "$native_pkg" "$winver"; then finish_install "$name" "$alt" native "$native_pkg" "native $native_pkg (matched Windows $winver)" "$launch"; return 0; fi
           warn "could not match Windows version $winver; installing latest"
         fi
-        if capture pm_install $native_pkg; then finish_install "$name" native "$native_pkg" "native $native_pkg"; return 0; fi ;;
+        if capture pm_install $native_pkg; then finish_install "$name" "$alt" native "$native_pkg" "native $native_pkg" "$launch"; return 0; fi ;;
       snap)
         [ -n "$snap_pkg" ] || continue
         ensure_snap || continue
-        if capture snap install $snap_pkg; then finish_install "$name" snap "$snap_pkg" "snap $snap_pkg"; return 0; fi ;;
+        if capture snap install $snap_pkg; then finish_install "$name" "$alt" snap "$snap_pkg" "snap $snap_pkg" "$launch"; return 0; fi ;;
       deburl)
         [ -n "$url_x86$url_arm$url_deb$url_rpm" ] || continue
         # Prefer the package format matching the distro family (.deb on apt, .rpm on
@@ -619,7 +623,7 @@ install_app() {
         [ -n "$url" ] || { url="$url_x86"; [ "$ARCH" = "aarch64" ] && [ -n "$url_arm" ] && url="$url_arm"; }
         [ -n "$url" ] || continue
         f="$DOWNLOAD_DIR/${name// /_}.pkg"
-        if capture download_file "$url" "$f" && capture install_local_package "$f"; then finish_install "$name" file "$f" "downloaded package"; return 0; fi ;;
+        if capture download_file "$url" "$f" && capture install_local_package "$f"; then finish_install "$name" "$alt" file "$f" "downloaded package" "$launch"; return 0; fi ;;
     esac
   done
 
@@ -630,7 +634,7 @@ install_app() {
     mark_fail "$name" "$LAST_ERR"
   else
     err "no available package manager could install it"
-    manual_fallback "$name" "$alt" "$note" "$webapp_url$url_x86$github_repo"
+    manual_fallback "$name" "$alt" "$note" "$webapp_url$url_x86$github_repo" "$launch"
   fi
 }
 
@@ -666,9 +670,21 @@ run_wine() {  # run_wine CMD [ARGS...]
   fi
 }
 
-# Ensure wine (the Windows emulator) is installed via the native package manager.
+# Ensure wine (the Windows emulator) is installed -- and, if the user opted to update
+# existing apps, up to date. Only ever called when a wine install is actually needed
+# (from wine_app), and it does its package work at most once per run.
 ensure_wine() {
-  have_cmd wine && return 0
+  [ "${_WINE_READY:-0}" = "1" ] && return 0
+  if have_cmd wine; then
+    if [ "${MIGRATE_UPDATE_EXISTING:-no}" = "yes" ]; then
+      info "updating wine (Windows emulator) ..."
+      case "$PM" in
+        apt) capture pm_install wine64 wine32 || capture pm_install wine || true ;;
+        *)   capture pm_install wine || true ;;
+      esac
+    fi
+    _WINE_READY=1; return 0
+  fi
   info "installing wine (Windows emulator) ..."
   case "$PM" in
     apt)    dpkg --add-architecture i386 2>/dev/null || true; pm_refresh; capture pm_install wine64 wine32 || capture pm_install wine ;;
@@ -676,7 +692,33 @@ ensure_wine() {
     zypper) capture pm_install wine ;;
     pacman) capture pm_install wine ;;
   esac
-  have_cmd wine
+  if have_cmd wine; then _WINE_READY=1; return 0; else return 1; fi
+}
+
+# Ensure 32-bit (i386 / WoW64) wine support, required to run 32-bit Windows installers.
+# A 64-bit-only wine cannot load syswow64\ntdll.dll (error c0000135). Done at most once.
+ensure_wine_i386() {
+  [ "${_WINE_I386_READY:-0}" = "1" ] && return 0
+  info "ensuring 32-bit (i386) wine (Windows emulator) support ..."
+  case "$PM" in
+    apt)    dpkg --add-architecture i386 2>/dev/null || true; pm_refresh
+            capture pm_install wine32:i386 || capture pm_install wine32 || capture pm_install libwine:i386 || true ;;
+    dnf)    capture pm_install wine.i686 || capture pm_install wine || true ;;
+    zypper) capture pm_install wine-32bit || capture pm_install wine || true ;;
+    pacman) capture pm_install lib32-wine || warn "enable the [multilib] repo for 32-bit wine on Arch" ;;
+  esac
+  _WINE_I386_READY=1
+}
+
+# True if FILE is a 32-bit (i386) Windows executable (so it needs WoW64 / wine32).
+is_32bit_pe() {  # is_32bit_pe FILE
+  have_cmd file || return 1
+  local t; t="$(file -bL "$1" 2>/dev/null)"
+  case "$t" in
+    *x86-64*|*x86_64*|*PE32+*|*aarch64*|*ARM*) return 1 ;;
+    *80386*|*"Intel i386"*)                    return 0 ;;
+    *)                                         return 1 ;;
+  esac
 }
 
 # Best-effort install of winetricks (helper for wine fonts/runtime verbs).
@@ -722,8 +764,8 @@ EOF
 # Asks the user to download the installer and type its path (full, or relative to the
 # logged-in user's Downloads folder) in single quotes; installs it by extension; loops
 # until a valid path is given or the user skips. Marks the result.
-manual_fallback() {  # manual_fallback NAME [ALT] [NOTE] [URL]
-  local name="$1" alt="$2" mnote="$3" murl="$4"
+manual_fallback() {  # manual_fallback NAME [ALT] [NOTE] [URL] [LAUNCH]
+  local name="$1" alt="$2" mnote="$3" murl="$4" mlaunch="${5:-}"
   # "skip all" chosen earlier: skip this and every remaining manual app without prompting.
   if [ "${MANUAL_FALLBACK_SKIP_ALL:-0}" = "1" ]; then mark_skip "$name" "user skipped (skip all)"; return 0; fi
   if is_dry_run; then mark_plan "$name" "manual installer (you would provide its path)"; return 0; fi
@@ -747,7 +789,7 @@ manual_fallback() {  # manual_fallback NAME [ALT] [NOTE] [URL]
           printf "\033[1;31m  No readable file at that path -- type the path in single quotes (e.g. '%s/Downloads/app.deb'), or skip.\033[0m\n" "$TARGET_HOME" > /dev/tty; continue
         fi
         LAST_ERR=""
-        if install_by_ext "$f"; then ledger_add file "$f"; mark_ok "$name" "installed from $f"; return 0
+        if install_by_ext "$f"; then ledger_add file "$f"; mark_ok "$name" "installed from $f" "$alt" "$mlaunch"; return 0
         else printf "\033[1;31m  %s -- fix the file and re-enter its path, or skip.\033[0m\n" "${LAST_ERR:-could not handle the file}" > /dev/tty; fi
         ;;
     esac
@@ -759,23 +801,21 @@ manual_fallback() {  # manual_fallback NAME [ALT] [NOTE] [URL]
 # installer URL first; on failure (or none) asks for the installer path in single
 # quotes. After installing, scales the wine font/DPI to 2.5x (LogPixels 240) so the
 # app is readable. Marks the result.
-wine_app() {  # wine_app NAME [WINDOWS_INSTALLER_URL]
+wine_app() {  # wine_app NAME [WINDOWS_INSTALLER_URL] [NOT_RECOMMENDED_REASON] [RECOMMENDED_ACTION]
   [ "${MIGRATE_WINE_NONCROSS:-no}" = "yes" ] || return 0
-  local name="$1" winurl="${2:-}" ans f winpath="" slug dir rc prefix
+  local name="$1" winurl="${2:-}" nrreason="${3:-}" nraction="${4:-}" ans f winpath="" slug dir rc prefix
   if [ "${WINE_SKIP_ALL:-0}" = "1" ]; then mark_skip "$name (wine - Windows emulator)" "user skipped (skip all)"; return 0; fi
-  if is_dry_run; then mark_plan "$name (wine - Windows emulator)" "${winurl:+auto-download + }run under wine in a per-app prefix; font 2.5x"; return 0; fi
+  if is_dry_run; then mark_plan "$name (wine - Windows emulator)" "${nrreason:+NOT RECOMMENDED; }${winurl:+auto-download + }run under wine in a per-app prefix; font 2.5x"; return 0; fi
   printf '\n\n\033[1;34m==> Install under wine (Windows emulator): %s\033[0m\n' "$name" >&3
   if ! ensure_wine; then mark_fail "$name (wine - Windows emulator)" "${LAST_ERR:-could not install wine}"; return 0; fi
   slug="$(slugify "$name")"
   # Per-app wine prefix (isolated, so one Windows app cannot break another).
   prefix="$TARGET_HOME/.local/share/wineprefixes/$slug"; WINE_PREFIX_DIR="$prefix"
   mkdir -p "$prefix" && chown -R "$TARGET_USER":"$TARGET_USER" "$TARGET_HOME/.local/share/wineprefixes" 2>/dev/null || true
-  run_wine wineboot -u >/dev/null 2>&1 || true
-  # winetricks font baseline for better rendering/compatibility (best-effort).
-  if ensure_winetricks; then run_wine winetricks -q corefonts >/dev/null 2>&1 || true; fi
   dir="${MIGRATE_MANUAL_DIR:-$DOWNLOAD_DIR/manual}/wine-$slug"; mkdir -p "$dir"
-  # 1) auto-download the Windows installer if the manifest provided a URL.
-  if [ -n "$winurl" ]; then
+  # 1) auto-download the Windows installer if the manifest provided a URL (recommended
+  #    apps only -- "not recommended" apps always go to the prompt so the warning shows).
+  if [ -n "$winurl" ] && [ -z "$nrreason" ]; then
     f="$dir/${slug}-setup.exe"
     info "Downloading the Windows installer for $name (to run under wine - Windows emulator) ..."
     if capture download_file "$winurl" "$f"; then winpath="$f"
@@ -788,6 +828,7 @@ wine_app() {  # wine_app NAME [WINDOWS_INSTALLER_URL]
     info "Download the Windows installer for $name (unzip it first if it is zipped)."
     info "Then type its path in single quotes -- either a full path, or one relative to ${TARGET_HOME}/Downloads."
     info "Any valid installer extension works (.exe, .msi, .bat, etc.); 'skip' to skip this app, or 'skip all' to skip every remaining wine (Windows emulator) install."
+    [ -n "$nrreason" ] && warn "Not recommended: ${nrreason}${nraction:+  Recommended: ${nraction}}"
     while :; do
       printf "  %s ('installer path'/skip/skip all): " "$name" > /dev/tty
       read -r ans < /dev/tty || ans="skip"
@@ -802,6 +843,12 @@ wine_app() {  # wine_app NAME [WINDOWS_INSTALLER_URL]
       esac
     done
   fi
+  # 2b) if the installer is 32-bit (i386), make sure wine has WoW64 support BEFORE the
+  #     prefix is initialised (a 64-bit-only wine fails with c0000135 on 32-bit apps).
+  is_32bit_pe "$winpath" && { info "installer is 32-bit (i386) -- enabling 32-bit wine (Windows emulator) support ..."; ensure_wine_i386; }
+  run_wine wineboot -u >/dev/null 2>&1 || true
+  # winetricks font baseline for better rendering/compatibility (best-effort).
+  if ensure_winetricks; then run_wine winetricks -q corefonts >/dev/null 2>&1 || true; fi
   # 3) run the installer under wine (best-effort silent), then scale the font/DPI 2.5x.
   #    Capture wine's full output so a meaningful failure reason can be reported.
   info "installing $name under wine (Windows emulator) ..."

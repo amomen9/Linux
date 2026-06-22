@@ -91,11 +91,12 @@ function Add-Flag {
 
 # Build one `install_app ...` line from an install descriptor object + name.
 function New-InstallCall {
-    param([string] $Name, [string] $Alt, $Install, [string] $WinVer, [switch] $Paid)
+    param([string] $Name, [string] $Alt, $Install, [string] $WinVer, [switch] $Paid, [string] $Launch)
     $parts = New-Object System.Collections.Generic.List[string]
     $parts.Add('install_app')
     Add-Flag $parts '--name' $Name
     Add-Flag $parts '--alt' $Alt
+    Add-Flag $parts '--launch' $Launch
     Add-Flag $parts '--winver' $WinVer
 
     $method = Get-Prop $Install 'method'
@@ -436,7 +437,7 @@ foreach ($app in $selectedApps) {
         # Only the rank-1 (best) alt is the "exact equivalent" carrying the Windows version.
         $wv = if ($rank -eq 1) { $winver } else { '' }
         $altPaid = -not ([string](Get-Prop $alt 'pricingModel') -match '(?i)free')
-        $appLines.Add(('  app_alt ' + $rank + ' ' + (New-InstallCall -Name $name -Alt $altName -Install $install -WinVer $wv -Paid:$altPaid)))
+        $appLines.Add(('  app_alt ' + $rank + ' ' + (New-InstallCall -Name $name -Alt $altName -Install $install -WinVer $wv -Paid:$altPaid -Launch ([string](Get-Prop $alt 'launch')))))
     }
 
     # Wine (Windows emulator) option: for non-cross-platform Windows desktop apps (a
@@ -448,7 +449,14 @@ foreach ($app in $selectedApps) {
     $src   = [string](Get-Prop $app 'sourceType')
     if (($src -match '(?i)win32') -and ($avail -notmatch '(?i)available on linux')) {
         $winUrl = [string](Get-Prop $app 'windowsInstaller')
-        $appLines.Add('  wine_app "' + (ConvertTo-BashString $name) + '" "' + (ConvertTo-BashString $winUrl) + '"')
+        # "Not recommended" apps carry a short reason + recommended action, shown as a
+        # yellow one-line warning before the wine install prompt.
+        $nrReason = ''; $nrAction = ''
+        if ([string](Get-Prop $app 'notRecommended') -match '^(?i)(yes|true|1)$') {
+            $nrReason = [string](Get-Prop $app 'notRecommendedReason')
+            $nrAction = [string](Get-Prop $app 'recommendedAction')
+        }
+        $appLines.Add('  wine_app "' + (ConvertTo-BashString $name) + '" "' + (ConvertTo-BashString $winUrl) + '" "' + (ConvertTo-BashString $nrReason) + '" "' + (ConvertTo-BashString $nrAction) + '"')
     }
 
     [void]$emittedNames.Add($name.ToLowerInvariant())

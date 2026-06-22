@@ -3748,6 +3748,7 @@
                              "alternatives":  [
                                                   {
                                                       "name":  "uGet",
+                                                      "launch":  "Search \u0027uGet\u0027 in the start menu (or run \u0027uget-gtk\u0027 in a terminal).",
                                                       "competency":  "90",
                                                       "pricingModel":  "Free (FOSS)",
                                                       "mustInclude":  "yes",
@@ -7281,6 +7282,7 @@
                              "alternatives":  [
                                                   {
                                                       "name":  "proxychains-ng",
+                                                      "launch":  "Command-line tool (no menu entry): run \u0027proxychains4 \u003cprogram\u003e\u0027 in a terminal.",
                                                       "competency":  "75",
                                                       "pricingModel":  "Free (FOSS)",
                                                       "mustInclude":  "yes",
@@ -10139,6 +10141,9 @@
                          },
                          {
                              "name":  "µTorrent",
+                             "notRecommended":  "yes",
+                             "notRecommendedReason":  "uTorrent-under-Wine is fragile and its Windows installer bundles adware.",
+                             "recommendedAction":  "Install the native qBittorrent alternative instead.",
                              "version":  "3.6.0.47228",
                              "publisher":  "BitTorrent Limited",
                              "sourceType":  "Win32",
