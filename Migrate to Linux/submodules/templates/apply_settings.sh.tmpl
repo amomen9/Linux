@@ -34,9 +34,14 @@ run_as_user() {
     DISPLAY="${DISPLAY:-:0}" "$@"
 }
 
+# Record a successfully-applied setting so it appears in the end-of-run summary.
+# (The bare ok()/info()/log() helpers only print to the screen; they do NOT record,
+# which is why applied settings were previously missing from the summary.)
+mark_set() { OK_LIST+=("$1"); record_line OK "$1" "${2:-}"; ok "applied: $1"; }
+
 gset() {  # gset SCHEMA KEY VALUE  (GNOME/Cinnamon share most schemas)
   if capture run_as_user gsettings set "$1" "$2" "$3"; then
-    ok "$1 $2 = $3"
+    mark_set "$1 $2 = $3"
   else
     mark_fail "config: $1 $2" "${LAST_ERR:-could not set (schema may not exist on $DE)}"
   fi
@@ -84,7 +89,7 @@ apply_keyboard_layout() {
       [ "$layouts" = "us,ir" ] && srcs="[('xkb', 'us'), ('xkb', 'ir')]"
       gset org.gnome.desktop.input-sources sources "$srcs" ;;
     *) if have_cmd localectl; then
-         if capture localectl set-x11-keymap "$layouts"; then ok "x11 keymap = $layouts"
+         if capture localectl set-x11-keymap "$layouts"; then mark_set "x11 keymap = $layouts"
          else mark_fail "keyboard layout" "${LAST_ERR:-localectl set-x11-keymap failed}"; fi
        fi ;;
   esac
@@ -93,7 +98,7 @@ apply_keyboard_layout() {
 disable_telemetry_location() {
   log "Privacy: disable telemetry / location"
   if [ "${CFG_location:-}" = "enabled" ] || [ -n "${CFG_telemetry:-}" ]; then
-    systemctl disable --now geoclue.service 2>/dev/null && ok "disabled geoclue (location)" \
+    systemctl disable --now geoclue.service 2>/dev/null && mark_set "telemetry/location: disabled geoclue" \
       || info "geoclue not active"
     case "$DE" in
       gnome|cinnamon)
@@ -109,12 +114,12 @@ apply_lid_behavior() {
   [ -f "$conf" ] || { info "no logind.conf"; return 0; }
   if ! grep -q '^HandleLidSwitch=' "$conf"; then
     if printf 'HandleLidSwitch=suspend\nHandleLidSwitchExternalPower=suspend\n' >> "$conf" 2>/dev/null; then
-      ok "configured lid -> suspend (restart systemd-logind to apply)"
+      mark_set "lid -> suspend (restart systemd-logind to apply)"
     else
       mark_fail "lid behavior" "could not write $conf"
     fi
   else
-    info "lid behavior already configured"
+    mark_skip "lid behavior" "already configured"
   fi
 }
 

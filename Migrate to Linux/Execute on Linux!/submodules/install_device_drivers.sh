@@ -89,9 +89,23 @@ capture() {
 # MODULE tags which big module (Drivers / Config settings / Applications) each result
 # belongs to, so execute_all can print a per-module classified summary at the end.
 MODULE="${MODULE:-General}"
-record_line() { printf '%s\t%s\t%-6s\t%s\t%s\n' "$(date '+%F %T')" "${MODULE:-General}" "$1" "$2" "${3:-}" >> "$RESULTS"; }
-mark_ok()     { OK_LIST+=("$1");     record_line OK     "$1" "${2:-}"; ok "installed: $1"; }
-mark_skip()   { SKIP_LIST+=("$1");   record_line SKIP   "$1" "${2:-}"; info "skipped: $1 (${2:-already present})"; }
+record_line() { printf '%s\t%s\t%-6s\t%s\t%s\t%s\n' "$(date '+%F %T')" "${MODULE:-General}" "$1" "$2" "${3:-}" "${4:-}" >> "$RESULTS"; }
+# One-line "how to open this app" hint, derived from how it was installed. Used by the
+# end-of-run summary to tell the user how to launch each app that now exists.
+launch_hint_from_detail() {  # launch_hint_from_detail NAME DETAIL
+  local nm="$1" d="$2" id
+  case "$d" in
+    flatpak\ *) id="${d#flatpak }"; id="${id%% *}"; printf 'Search "%s" in the start menu, or run "flatpak run %s" in a terminal' "$nm" "$id" ;;
+    native\ *)  id="${d#native }";  id="${id%% *}"; printf 'Search "%s" in the start menu, or run "%s" in a terminal' "$nm" "$id" ;;
+    snap\ *)    id="${d#snap }";    id="${id%% *}"; printf 'Search "%s" in the start menu, or run "%s" in a terminal' "$nm" "$id" ;;
+    web-app*)            printf 'Search "%s" in the start menu (web-app shortcut)' "$nm" ;;
+    *wine*)              printf 'Search "%s" in the start menu (wine - Windows emulator launcher)' "$nm" ;;
+    *docker*|*ontainer*) printf '"%s" runs as a Docker container - open its web UI or manage it with docker' "$nm" ;;
+    *)                   printf 'Search "%s" in the start menu, or run "%s" in a terminal' "$nm" "$nm" ;;
+  esac
+}
+mark_ok()     { OK_LIST+=("$1"); local _h=""; [ "${MODULE:-}" = "Applications" ] && _h="$(launch_hint_from_detail "$1" "${2:-}")"; record_line OK "$1" "${2:-}" "$_h"; ok "installed: $1${2:+  ->  $2}"; }
+mark_skip()   { SKIP_LIST+=("$1");   record_line SKIP   "$1" "${2:-}" "${3:-}"; info "skipped: $1 (${2:-already present})"; }
 mark_fail()   { FAIL_LIST+=("$1"); FAIL_REASON+=("${2:-unknown error}"); record_line FAIL "$1" "${2:-}"; err "failed: $1 ${2:+- $2}"; }
 mark_manual() { MANUAL_LIST+=("$1"); record_line MANUAL "$1" "${2:-}"; warn "manual step required: $1 ${2:+- $2}"; }
 mark_plan()      { PLAN_LIST+=("$1");       record_line PLAN  "$1" "${2:-}"; info "[dry-run] would install: $1 ${2:+- $2}"; }
@@ -173,6 +187,12 @@ print_summary() {
   fi
   if [ "${#MANUAL_LIST[@]}" -gt 0 ]; then
     warn "Need a manual step:"; for i in "${MANUAL_LIST[@]}"; do info "  - $i"; done
+  fi
+  # Apps that now exist on the machine (installed this run or already present), each
+  # with a one-line how-to-open note (field 6 of the results log).
+  if awk -F'\t' '$6!=""{f=1} END{exit !f}' "$RESULTS" 2>/dev/null; then
+    log "Applications on this machine - how to open each"
+    awk -F'\t' '$6!=""{printf "  %s: %s\n",$4,$6}' "$RESULTS" | sort -u | while IFS= read -r l; do info "$l"; done
   fi
   print_launched_containers
   write_uninstall_script
@@ -328,6 +348,21 @@ detect_browser() {
   if flatpak_installed org.chromium.Chromium; then printf 'flatpak run org.chromium.Chromium'; return 0; fi
   if flatpak_installed com.microsoft.Edge; then printf 'flatpak run com.microsoft.Edge'; return 0; fi
   return 1
+}
+
+# Open a URL in the desktop user's default browser (best-effort, non-blocking). Used by
+# every manual / download-by-user prompt so the download page opens automatically.
+open_url() {  # open_url URL
+  local u="$1"; [ -n "$u" ] || return 0
+  is_dry_run && return 0
+  local uid; uid="$(id -u "$TARGET_USER" 2>/dev/null)"
+  if have_cmd xdg-open; then
+    sudo -u "$TARGET_USER" DISPLAY="${DISPLAY:-:0}" \
+      DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/${uid}/bus" \
+      xdg-open "$u" >/dev/null 2>&1 &
+  elif have_cmd gio; then
+    sudo -u "$TARGET_USER" DISPLAY="${DISPLAY:-:0}" gio open "$u" >/dev/null 2>&1 &
+  fi
 }
 
 webapp_desktop() {  # webapp_desktop "Name" "URL"
@@ -523,7 +558,11 @@ install_app() {
     if { [ -n "$native_pkg" ] && pm_installed "${native_pkg%% *}"; } \
        || { [ -n "$flatpak" ] && have_cmd flatpak && flatpak_installed "$flatpak"; } \
        || { [ -n "$snap_pkg" ] && have_cmd snap && snap list "${snap_pkg%% *}" >/dev/null 2>&1; }; then
-      mark_skip "$name" "already installed"
+      local _d=""
+      if   [ -n "$flatpak" ] && have_cmd flatpak && flatpak_installed "$flatpak"; then _d="flatpak $flatpak"
+      elif [ -n "$native_pkg" ] && pm_installed "${native_pkg%% *}"; then _d="native $native_pkg"
+      elif [ -n "$snap_pkg" ]; then _d="snap $snap_pkg"; fi
+      mark_skip "$name" "already installed" "$(launch_hint_from_detail "$name" "$_d")"
       return 0
     fi
   fi
@@ -560,7 +599,7 @@ install_app() {
         # Skip if present, UNLESS the user asked to update existing apps (then
         # pm_install upgrades it to the latest available).
         if pm_installed "${native_pkg%% *}" && [ "${MIGRATE_UPDATE_EXISTING:-no}" != "yes" ]; then
-          mark_skip "$name" "already installed"; return 0
+          mark_skip "$name" "already installed" "$(launch_hint_from_detail "$name" "native $native_pkg")"; return 0
         fi
         # match the Windows version when the user chose "same version".
         if [ "${MIGRATE_VERSION_MODE:-latest}" = "same" ] && [ -n "$winver" ]; then
@@ -691,7 +730,7 @@ manual_fallback() {  # manual_fallback NAME [ALT] [NOTE] [URL]
   if is_dry_run; then mark_plan "$name" "manual installer (you would provide its path)"; return 0; fi
   local ans f disp="${alt:-$name}"
   [ -n "$mnote" ] && info "$mnote"
-  [ -n "$murl" ] && info "More info / download: $murl"
+  if [ -n "$murl" ]; then info "Download page: $murl"; info "(opening it in your default browser ...)"; open_url "$murl"; fi
   info "Download the installer yourself (unzip it first if it is zipped)."
   info "Then type its path in single quotes -- either a full path, or one relative to ${TARGET_HOME}/Downloads."
   info "Any valid installer extension works (.deb/.rpm/.sh/.run/.bin/.bundle/.AppImage/.tar.gz/.zip/...); 'skip' to skip this app, or 'skip all' to skip this and every remaining manual app."
@@ -746,6 +785,7 @@ wine_app() {  # wine_app NAME [WINDOWS_INSTALLER_URL]
   # 2) manual fallback: ask for the installer path in single quotes.
   if [ -z "$winpath" ]; then
     if [ ! -r /dev/tty ]; then mark_manual "$name (wine - Windows emulator)" "provide a Windows installer to run under wine"; return 0; fi
+    if [ -n "$winurl" ]; then info "Download page: $winurl"; info "(opening it in your default browser ...)"; open_url "$winurl"; fi
     info "Download the Windows installer for $name (unzip it first if it is zipped)."
     info "Then type its path in single quotes -- either a full path, or one relative to ${TARGET_HOME}/Downloads."
     info "Any valid installer extension works (.exe, .msi, .bat, etc.); 'skip' to skip this app, or 'skip all' to skip every remaining wine (Windows emulator) install."
@@ -764,20 +804,36 @@ wine_app() {  # wine_app NAME [WINDOWS_INSTALLER_URL]
     done
   fi
   # 3) run the installer under wine (best-effort silent), then scale the font/DPI 2.5x.
+  #    Capture wine's full output so a meaningful failure reason can be reported.
   info "installing $name under wine (Windows emulator) ..."
+  local wlog; wlog="$(mktemp 2>/dev/null || echo /tmp/mtl_wine.$$)"
   case "$winpath" in
-    *.msi|*.MSI)             capture run_wine wine msiexec /i "$winpath" /qn ;;
-    *.bat|*.BAT|*.cmd|*.CMD) capture run_wine wine cmd /c "$winpath" ;;
-    *)                       capture run_wine wine "$winpath" /S ;;
+    *.msi|*.MSI)             run_wine wine msiexec /i "$winpath" /qn 2>&1 | tee "$wlog" >&3 ;;
+    *.bat|*.BAT|*.cmd|*.CMD) run_wine wine cmd /c "$winpath" 2>&1 | tee "$wlog" >&3 ;;
+    *)                       run_wine wine "$winpath" /S 2>&1 | tee "$wlog" >&3 ;;
   esac
-  rc=$?
+  rc=${PIPESTATUS[0]}
   # font size 2.5x: default wine DPI 96 -> 240 (LogPixels 0xF0), applied right after install.
   run_wine wine reg add 'HKEY_CURRENT_USER\Control Panel\Desktop' /v LogPixels /t REG_DWORD /d 0x000000F0 /f >/dev/null 2>&1 || true
   if [ "$rc" -eq 0 ]; then
     ledger_add wine "$prefix"
     wine_make_launchers "$name" "$prefix" "$slug"
     mark_ok "$name (wine - Windows emulator)" "installed under wine (per-app prefix); font/DPI 2.5x (240)"
-  else mark_fail "$name (wine - Windows emulator)" "${LAST_ERR:-wine install failed}"; fi
+  else
+    # Surface the most informative line from wine's output (skip fixme/diag noise),
+    # then explain likely causes and the exact command to reproduce it interactively.
+    local wreason ftype=""
+    # Prefer a specific, human-meaningful cause (missing DLL/dependency/file, exception)...
+    wreason="$(grep -iE 'import_dll|Library .* not found|cannot (find|open|execute)|No such file|Unhandled exception|needs.*(mono|gecko)|vcrun|msvc|\.NET' "$wlog" 2>/dev/null | grep -viE 'fixme:' | tail -n1 | sed 's/^[[:space:]]*//')"
+    # ...otherwise any other err:/wine: line, ...
+    [ -z "$wreason" ] && wreason="$(grep -iE 'err:|wine:|0x[0-9A-Fa-f]{6,}' "$wlog" 2>/dev/null | grep -viE 'fixme:|err:winediag' | tail -n1 | sed 's/^[[:space:]]*//')"
+    # ...otherwise the last non-empty line.
+    [ -z "$wreason" ] && wreason="$(grep -v '^[[:space:]]*$' "$wlog" 2>/dev/null | tail -n1 | sed 's/^[[:space:]]*//')"
+    [ -z "$wreason" ] && wreason="exit code $rc"
+    have_cmd file && ftype="$(file -bL "$winpath" 2>/dev/null)"
+    mark_fail "$name (wine - Windows emulator)" "$wreason${ftype:+ | file is: $ftype} | likely a missing dependency, a wrong/partial download, or no silent-install support -- reproduce + see the full error with:  WINEPREFIX='$prefix' wine '$winpath'"
+  fi
+  rm -f "$wlog" 2>/dev/null || true
 }
 
 # Install the Nth-best alternative of an app only if the user asked for at least
