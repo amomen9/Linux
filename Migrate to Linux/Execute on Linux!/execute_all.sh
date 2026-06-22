@@ -1296,7 +1296,8 @@ print_module_summary() {  # print_module_summary "Module name"
   # with a one-line how-to-open note (field 6 of the results log).
   if awk -F'\t' -v m="$m" '$2==m && $6!=""{f=1} END{exit !f}' "$f"; then
     printf '                 \033[1;32mApplications on this machine - how to open each:\033[0m\n' >&3
-    awk -F'\t' -v m="$m" '$2==m && $6!=""{printf "            - %s: %s\n",$4,$6}' "$f" | sort -u >&3
+    local _bl=$'\033[1;34m' _rs=$'\033[0m'
+    awk -F'\t' -v m="$m" -v bl="$_bl" -v rs="$_rs" '$2==m && $6!=""{printf "            - %s%s%s: %s\n",bl,$4,rs,$6}' "$f" | sort -u >&3
   fi
 }
 
