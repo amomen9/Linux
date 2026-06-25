@@ -267,11 +267,30 @@ arch_supported() {
 # =============================================================================
 #  PACKAGE-MANAGER ABSTRACTION
 # =============================================================================
+# Quarantine malformed apt source files so a single bad entry can't wedge the
+# whole package manager. apt aborts every update/install if any file in
+# sources.list.d has a bare "deb"/"deb-src" line with no URI -- which is exactly
+# what a third-party installer (e.g. NordVPN) leaves behind when interrupted
+# mid-write (Ctrl+C). We only touch clearly-broken files, and we rename rather
+# than delete (.broken) so the change is reversible.
+apt_repair_sources() {
+  [ -d /etc/apt/sources.list.d ] || return 0
+  for f in /etc/apt/sources.list.d/*.list; do
+    [ -f "$f" ] || continue   # no matches -> literal glob, skip
+    # A line that is just "deb"/"deb-src" (optionally with [opts]) and nothing
+    # after it -- no URI, no suite -- is malformed and fatal to apt.
+    if grep -qE '^[[:space:]]*deb(-src)?([[:space:]]+\[[^]]*\])?[[:space:]]*$' "$f"; then
+      warn "Malformed apt source quarantined: $f -> $f.broken"
+      is_dry_run || mv -f "$f" "$f.broken"
+    fi
+  done
+}
+
 _PM_REFRESHED=0
 pm_refresh() {
   [ "$_PM_REFRESHED" = "1" ] && return 0
   case "$PM" in
-    apt)    DEBIAN_FRONTEND=noninteractive apt-get update -y ;;
+    apt)    apt_repair_sources; DEBIAN_FRONTEND=noninteractive apt-get update -y ;;
     dnf)    dnf -y makecache ;;
     zypper) zypper --non-interactive refresh ;;
     pacman) pacman -Sy --noconfirm ;;
@@ -1177,7 +1196,7 @@ repo_setup_nodejs() {
   app_alt 1 install_app --name "Microsoft Edge" --alt "Microsoft Edge (Linux)" --method native --flatpak "com.microsoft.Edge" --apt "microsoft-edge-stable" --dnf "microsoft-edge-stable"
   app_alt 1 install_app --name "Microsoft OneDrive" --alt "onedrive (abraunegg)" --method native --apt "onedrive" --dnf "onedrive" --pacman "onedrive"
   wine_app "Microsoft OneDrive" "" "" ""
-  app_alt 1 install_app --name "Visual Studio Code" --alt "Visual Studio Code (Linux)" --winver "1.125.1" --method native --flatpak "com.visualstudio.code" --apt "code" --dnf "code"
+  app_alt 1 install_app --name "Visual Studio Code" --alt "Visual Studio Code (Linux)" --winver "1.126.0" --method native --flatpak "com.visualstudio.code" --apt "code" --dnf "code"
   app_alt 1 install_app --name "MiKTeX" --alt "TeX Live" --method native --apt "texlive" --dnf "texlive-scheme-basic" --zypper "texlive" --pacman "texlive-core" --note "install the -full variants for everything"
   app_alt 1 install_app --name "Miniconda3" --alt "Miniconda (Linux)" --method manual --url-x86 "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh" --url-arm "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-aarch64.sh" --note "Download the Miniconda installer for your architecture and run: bash Miniconda3-latest-Linux-*.sh"
   wine_app "Miniconda3" "" "" ""

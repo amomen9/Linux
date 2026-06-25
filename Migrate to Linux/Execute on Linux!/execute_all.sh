@@ -269,11 +269,30 @@ arch_supported() {
 # =============================================================================
 #  PACKAGE-MANAGER ABSTRACTION
 # =============================================================================
+# Quarantine malformed apt source files so a single bad entry can't wedge the
+# whole package manager. apt aborts every update/install if any file in
+# sources.list.d has a bare "deb"/"deb-src" line with no URI -- which is exactly
+# what a third-party installer (e.g. NordVPN) leaves behind when interrupted
+# mid-write (Ctrl+C). We only touch clearly-broken files, and we rename rather
+# than delete (.broken) so the change is reversible.
+apt_repair_sources() {
+  [ -d /etc/apt/sources.list.d ] || return 0
+  for f in /etc/apt/sources.list.d/*.list; do
+    [ -f "$f" ] || continue   # no matches -> literal glob, skip
+    # A line that is just "deb"/"deb-src" (optionally with [opts]) and nothing
+    # after it -- no URI, no suite -- is malformed and fatal to apt.
+    if grep -qE '^[[:space:]]*deb(-src)?([[:space:]]+\[[^]]*\])?[[:space:]]*$' "$f"; then
+      warn "Malformed apt source quarantined: $f -> $f.broken"
+      is_dry_run || mv -f "$f" "$f.broken"
+    fi
+  done
+}
+
 _PM_REFRESHED=0
 pm_refresh() {
   [ "$_PM_REFRESHED" = "1" ] && return 0
   case "$PM" in
-    apt)    DEBIAN_FRONTEND=noninteractive apt-get update -y ;;
+    apt)    apt_repair_sources; DEBIAN_FRONTEND=noninteractive apt-get update -y ;;
     dnf)    dnf -y makecache ;;
     zypper) zypper --non-interactive refresh ;;
     pacman) pacman -Sy --noconfirm ;;
