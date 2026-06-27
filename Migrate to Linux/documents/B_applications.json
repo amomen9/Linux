@@ -8425,6 +8425,44 @@
                              "installedEdition":  ""
                          },
                          {
+                             "name":  "Microsoft SQL Server",
+                             "version":  "N/A (popular conventional Windows software)",
+                             "publisher":  "Microsoft Corporation",
+                             "sourceType":  "Win32",
+                             "linuxAvailability":  "Available on Linux; Linux Docker",
+                             "destType":  "Native",
+                             "review":  true,
+                             "alternatives":  {
+                                                  "name":  "Microsoft SQL Server (Linux)",
+                                                  "competency":  "100",
+                                                  "pricingModel":  "Free (Developer/Express); Paid (Standard/Enterprise)",
+                                                  "mustInclude":  "yes",
+                                                  "canSync":  "No, manual transfer",
+                                                  "notes":  "Microsoft\u0027s OWN native SQL Server database engine for Linux (mssql-server). Same engine and on-disk format as Windows; migrate databases by restoring your .bak backups (RESTORE DATABASE). x86_64 only; officially packaged for Ubuntu (apt), RHEL (dnf) and SLES (zypper) - not for Arch. If on Windows it ran inside a Docker CONTAINER instead of on the host, it is migrated as a container by the Docker rebuild step, not by this native install.",
+                                                  "installMethod":  "apt",
+                                                  "appType":  "Native (APT package)",
+                                                  "downloadUrl":  "https://learn.microsoft.com/en-us/sql/linux/sql-server-linux-setup",
+                                                  "install":  {
+                                                                  "method":  "native",
+                                                                  "dockerImage":  "mcr.microsoft.com/mssql/server:2022-latest",
+                                                                  "arch":  "x86_64",
+                                                                  "native":  {
+                                                                                 "apt":  "mssql-server",
+                                                                                 "dnf":  "mssql-server",
+                                                                                 "zypper":  "mssql-server"
+                                                                             },
+                                                                  "repo":  {
+                                                                               "apt":  "curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --batch --yes --dearmor -o /etc/apt/trusted.gpg.d/microsoft.gpg\n. /etc/os-release; ver=\"${VERSION_ID:-22.04}\"\ncurl -fsSL \"https://packages.microsoft.com/config/ubuntu/${ver}/mssql-server-2022.list\" -o /etc/apt/sources.list.d/mssql-server-2022.list || curl -fsSL https://packages.microsoft.com/config/ubuntu/22.04/mssql-server-2022.list -o /etc/apt/sources.list.d/mssql-server-2022.list",
+                                                                               "dnf":  ". /etc/os-release; ver=\"${VERSION_ID%%.*}\"; case \"$ver\" in 8|9|10) : ;; *) ver=9 ;; esac\ncurl -fsSL \"https://packages.microsoft.com/config/rhel/${ver}/mssql-server-2022.repo\" -o /etc/yum.repos.d/mssql-server-2022.repo",
+                                                                               "zypper":  "zypper --non-interactive addrepo -fc https://packages.microsoft.com/config/sles/15/mssql-server-2022.repo\nzypper --non-interactive --gpg-auto-import-keys refresh"
+                                                                           },
+                                                                  "note":  "Official Microsoft SQL Server engine for Linux (x86_64 only; Ubuntu/RHEL/SLES - not on Arch). After the package installs, finish setup as root:  sudo ACCEPT_EULA=Y MSSQL_PID=Developer MSSQL_SA_PASSWORD=\u0027YourStrong!Passw0rd\u0027 /opt/mssql/bin/mssql-conf -n setup  then  sudo systemctl enable --now mssql-server . Restore your databases from their .bak backups. A containerised SQL Server on Windows is migrated by the Docker rebuild step instead."
+                                                              }
+                                              },
+                             "installedVersion":  "16.0",
+                             "installedEdition":  ""
+                         },
+                         {
                              "name":  "Stata",
                              "version":  "N/A (popular conventional Windows software)",
                              "publisher":  "StataCorp",
