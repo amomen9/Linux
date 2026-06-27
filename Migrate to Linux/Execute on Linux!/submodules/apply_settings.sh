@@ -1276,6 +1276,8 @@ CFG_lock_timeout="10 min"
 CFG_mouse_size="48"
 CFG_mouse_speed="0.8"
 CFG_mouse_accel="default"
+CFG_mouse_swap="false"
+CFG_mouse_dblclick="500"
 CFG_a11y_stickykeys="false"
 CFG_a11y_slowkeys="false"
 CFG_a11y_mousekeys="false"
@@ -1286,6 +1288,19 @@ CFG_key_repeat_rate="33"
 CFG_numlock="true"
 CFG_timezone="Europe/Berlin"
 CFG_ntp_server="pool.ntp.org"
+CFG_color_scheme="default"
+CFG_accent="blue"
+CFG_locale="en_US.UTF-8"
+CFG_proxy_mode="none"
+CFG_proxy_host=""
+CFG_proxy_port=""
+CFG_proxy_autoconfig=""
+CFG_touchpad_tap="true"
+CFG_touchpad_natural="false"
+CFG_sleep_ac="0"
+CFG_sleep_dc="0"
+CFG_night_light="false"
+CFG_default_browser="edge"
 
 # WiFi profiles, one per line:  ssid<TAB>auth<TAB>secret<TAB>sectype
 #   sectype = enc (secret is an OpenSSL-encrypted, base64 key) | plain | none
@@ -1293,24 +1308,24 @@ CFG_ntp_server="pool.ntp.org"
 WIFI_DATA="$(cat <<'__WIFI_EOF__'
 eduroam	wpa		none
 somenet	open		none
-V.momen	wpa	U2FsdGVkX19m/pW7H3yj3Cx8lOu77JjJ742r5aX7j5c=	enc
+V.momen	wpa	U2FsdGVkX1/cKdXuTmYVCUSkuikGrfD0Xb7+KkGT0W0=	enc
 Tbilisi Loves You	open		none
 Tbilisi Airport Free	open		none
 Simorgh-WiFi	open		none
-Shatel	wpa	U2FsdGVkX1+tgtfmpXcMBu5DVYU4vOdSbbgsrFD2WEw=	enc
-SHAW-48EE	wpa	U2FsdGVkX19oZuE7KvRSGFz6qdx+w5C/J+6Sl3b3eGk=	enc
-Redmi Note 10 Pro Max	wpa	U2FsdGVkX1/lrci/Ep47yZYO+mkWRyYMnFpvi5vMx6w=	enc
-Parsway	wpa	U2FsdGVkX19pKHpM8P1w6alqhM7VhKeQVVyArp+I1Aw=	enc
-NZT9930134C	wpa	U2FsdGVkX19fuOwLG+gWRiFPQ63Tdiw4lVseSTpMu08=	enc
+Shatel	wpa	U2FsdGVkX1+ehU50Be3pyugX9Gq9c/EtRwX+/4NysgM=	enc
+SHAW-48EE	wpa	U2FsdGVkX1+x5XKd58616xz5QIgjNW4WXHAMNqEvzm4=	enc
+Redmi Note 10 Pro Max	wpa	U2FsdGVkX19rBP7EWSQ15XjK+bM9Cz9UHetsZhp88go=	enc
+Parsway	wpa	U2FsdGVkX18+Qdl+CyOVV1RWGQ1DlHiD6cL1WYa43Dc=	enc
+NZT9930134C	wpa	U2FsdGVkX1+D6wkHJXIf02NnJC7JmLBosJCd2yXUNAw=	enc
 Mofid-GoHyper!	open		none
-Jobvision-WiFi	wpa	U2FsdGVkX19XA3IQyE7uPpuH1PSqYjgrhFr1ohm+spk=	enc
-JobVision_DLink	wpa	U2FsdGVkX1+GGwVL6Hl4ZCrM8nyBwWpe3gCTjKV8UGc=	enc
-JobVision-3rd	wpa	U2FsdGVkX1+ng/YrXZvc51LlYyeXHL0HFK8yAklwjeI=	enc
-JobVision	wpa	U2FsdGVkX1+UBlUr0T6S5LZKtV6HuCi/o5GhjtiZXC8=	enc
-Galaxy A51	wpa	U2FsdGVkX1/2Osc9PnSiQNirN0KVzVND3i6NiKMPLTs=	enc
-Fatemeh's Galaxy A71	wpa	U2FsdGVkX18rqDsRv1sPKdE2/zamY2JYwoAUU6osdB8=	enc
-AndroidAPA50	wpa	U2FsdGVkX187DcrCTajjca2by5F+Z5NFWOuIk4Fh95o=	enc
-DivorceHousing	wpa	U2FsdGVkX1/oYcPjYeTUZxO/3doBLYm4iQDLa7+7Rz14aeAY+GuLkQmlkr+u7JNs	enc
+Jobvision-WiFi	wpa	U2FsdGVkX19aXkrQZeq/u5U3iUEs2qalgdO/6laX8Dk=	enc
+JobVision_DLink	wpa	U2FsdGVkX1+IHrU/Vi3yL0nVwYx10zw2PQ/2QuWehZo=	enc
+JobVision-3rd	wpa	U2FsdGVkX1+REHcqgFUNdGCmFHxZUWMxw77v2rlkh/4=	enc
+JobVision	wpa	U2FsdGVkX190dEXDrbOvaGwyXEdcwOydq+tKQ+eTJmQ=	enc
+Galaxy A51	wpa	U2FsdGVkX19X4+bvzN/YBxj74JQzVt++xM2x/F+Ruy4=	enc
+Fatemeh's Galaxy A71	wpa	U2FsdGVkX19Ou9VdPdbedC+6TKV7lSZZFnAYw0fpEOI=	enc
+AndroidAPA50	wpa	U2FsdGVkX18H0ElmuTcOLKib+LqIpFzydILSOo1u3tY=	enc
+DivorceHousing	wpa	U2FsdGVkX1966jwCuGV1NglOTnNs6BVcn7qmVj0ZUgDfkNefp/zWhHarHlxc5C0n	enc
 __WIFI_EOF__
 )"
 
@@ -2339,6 +2354,37 @@ SoftLandingDeferralTask-{b2c0abde-7201-4e71-821c-1f9ede688522}	User	daily,12,32
 __TK_EOF__
 )"
 
+# Custom /etc/hosts lines (verbatim), one per line:
+HOSTS_DATA="$(cat <<'__HO_EOF__'
+0.0.0.0	asc.iobit.com
+0.0.0.0	93.184.220.29:80
+0.0.0.0	www.asc55.iobit.com
+0.0.0.0	idb.iobit.com
+0.0.0.0	is360.iobit.com
+0.0.0.0	pf.iobit.com
+0.0.0.0	98.129.229.186
+0.0.0.0	www.iana.org
+__HO_EOF__
+)"
+
+# Network printers, one per line:  name<TAB>host
+PRINTERS_DATA="$(cat <<'__PR_EOF__'
+LU-card-printer	http://127.0.0.1:9177/ipp/webprint.leidenuniv.nl_9164/4c552d636172642d7072696e746572/printers/LU-card-printer
+__PR_EOF__
+)"
+
+# Static IP / DNS (reported as a manual note), one per line:  iface<TAB>ip<TAB>gw<TAB>dns
+NETCFG_DATA="$(cat <<'__NE_EOF__'
+VMware Network Adapter VMnet1	192.168.88.1		
+VMware Network Adapter VMnet11	192.168.171.1		
+VMware Network Adapter VMnet12	172.23.124.1		
+vEthernet (Default Switch)	172.26.0.1		
+vEthernet (WSL (Hyper-V firewall))	172.18.80.1		
+NordLynx	10.5.0.2	10.5.0.1	103.86.96.100,103.86.99.100
+Wi-Fi 2		10.112.63.254 1.1.1.1	10.112.10.254,10.112.11.254
+__NE_EOF__
+)"
+
 DE="unknown"
 detect_de() {
   local d="${XDG_CURRENT_DESKTOP:-${DESKTOP_SESSION:-}}"
@@ -2508,15 +2554,143 @@ apply_resolution() {
 }
 
 apply_mouse() {
-  [ -z "${CFG_mouse_size:-}${CFG_mouse_speed:-}${CFG_mouse_accel:-}" ] && return 0
-  log "Mouse: pointer size / speed / acceleration"
+  [ -z "${CFG_mouse_size:-}${CFG_mouse_speed:-}${CFG_mouse_accel:-}${CFG_mouse_swap:-}${CFG_mouse_dblclick:-}" ] && return 0
+  log "Mouse: pointer size / speed / acceleration / buttons"
   case "$DE" in
     gnome|cinnamon)
       [ -n "${CFG_mouse_size:-}" ]  && gset org.gnome.desktop.interface cursor-size "$CFG_mouse_size"
       [ -n "${CFG_mouse_speed:-}" ] && gset org.gnome.desktop.peripherals.mouse speed "$CFG_mouse_speed"
-      [ -n "${CFG_mouse_accel:-}" ] && gset org.gnome.desktop.peripherals.mouse accel-profile "'$CFG_mouse_accel'" ;;
+      [ -n "${CFG_mouse_accel:-}" ] && gset org.gnome.desktop.peripherals.mouse accel-profile "'$CFG_mouse_accel'"
+      [ -n "${CFG_mouse_swap:-}" ]  && gset org.gnome.desktop.peripherals.mouse left-handed "$CFG_mouse_swap"
+      [ -n "${CFG_mouse_dblclick:-}" ] && gset org.gnome.desktop.peripherals.mouse double-click "$CFG_mouse_dblclick" ;;
     *) mark_manual "mouse settings" "set pointer size/speed in your DE settings" ;;
   esac
+}
+
+apply_appearance() {
+  [ -z "${CFG_color_scheme:-}${CFG_accent:-}${CFG_night_light:-}" ] && return 0
+  log "Appearance: theme / accent / night light"
+  case "$DE" in
+    gnome|cinnamon)
+      [ -n "${CFG_color_scheme:-}" ] && gset org.gnome.desktop.interface color-scheme "'$CFG_color_scheme'"
+      # GTK theme dark variant follows the color-scheme on most modern desktops.
+      [ "${CFG_color_scheme:-}" = "prefer-dark" ] && gset org.gnome.desktop.interface gtk-theme "'Adwaita-dark'"
+      [ -n "${CFG_accent:-}" ] && gset org.gnome.desktop.interface accent-color "'$CFG_accent'"
+      [ -n "${CFG_night_light:-}" ] && gset org.gnome.settings-daemon.plugins.color night-light-enabled "$CFG_night_light" ;;
+    *) mark_manual "appearance" "set theme/accent in your DE settings" ;;
+  esac
+}
+
+apply_touchpad() {
+  [ -z "${CFG_touchpad_tap:-}${CFG_touchpad_natural:-}" ] && return 0
+  log "Touchpad: tap-to-click / natural scroll"
+  case "$DE" in
+    gnome|cinnamon)
+      [ -n "${CFG_touchpad_tap:-}" ]     && gset org.gnome.desktop.peripherals.touchpad tap-to-click "$CFG_touchpad_tap"
+      [ -n "${CFG_touchpad_natural:-}" ] && gset org.gnome.desktop.peripherals.touchpad natural-scroll "$CFG_touchpad_natural" ;;
+    *) mark_manual "touchpad" "set tap-to-click / natural scroll in your DE settings" ;;
+  esac
+}
+
+apply_power_timeouts() {
+  [ -z "${CFG_sleep_ac:-}${CFG_sleep_dc:-}" ] && return 0
+  log "Power: sleep timeouts"
+  case "$DE" in
+    gnome|cinnamon)
+      [ -n "${CFG_sleep_ac:-}" ] && gset org.gnome.settings-daemon.plugins.power sleep-inactive-ac-timeout "$CFG_sleep_ac"
+      [ -n "${CFG_sleep_dc:-}" ] && gset org.gnome.settings-daemon.plugins.power sleep-inactive-battery-timeout "$CFG_sleep_dc" ;;
+    *) mark_manual "power timeouts" "set sleep timeouts in your DE settings" ;;
+  esac
+}
+
+apply_locale() {
+  [ -z "${CFG_locale:-}" ] && return 0
+  log "Locale: ${CFG_locale}"
+  have_cmd localectl || { mark_manual "locale" "set LANG=${CFG_locale} (no localectl)"; return 0; }
+  local cur; cur="$(localectl status 2>/dev/null | sed -n 's/.*LANG=//p' | head -n1)"
+  if [ "$cur" = "$CFG_locale" ]; then mark_skip "locale" "already $CFG_locale"
+  elif capture localectl set-locale "LANG=$CFG_locale"; then mark_set "locale = $CFG_locale"
+  else mark_fail "locale" "${LAST_ERR:-localectl set-locale failed (locale may need generating)}"; fi
+}
+
+apply_proxy() {
+  case "${CFG_proxy_mode:-}" in
+    '') return 0 ;;
+    none) case "$DE" in gnome|cinnamon) gset org.gnome.system.proxy mode "'none'" ;; esac; return 0 ;;
+  esac
+  log "Proxy: ${CFG_proxy_mode}"
+  case "$DE" in
+    gnome|cinnamon)
+      case "$CFG_proxy_mode" in
+        manual)
+          gset org.gnome.system.proxy mode "'manual'"
+          if [ -n "${CFG_proxy_host:-}" ]; then
+            gset org.gnome.system.proxy.http host "'$CFG_proxy_host'"
+            gset org.gnome.system.proxy.https host "'$CFG_proxy_host'"
+            [ -n "${CFG_proxy_port:-}" ] && { gset org.gnome.system.proxy.http port "$CFG_proxy_port"; gset org.gnome.system.proxy.https port "$CFG_proxy_port"; }
+          fi ;;
+        auto)
+          gset org.gnome.system.proxy mode "'auto'"
+          [ -n "${CFG_proxy_autoconfig:-}" ] && gset org.gnome.system.proxy autoconfig-url "'$CFG_proxy_autoconfig'" ;;
+      esac ;;
+    *) mark_manual "proxy" "set the proxy in your DE settings" ;;
+  esac
+  # Also export to /etc/environment for CLI tools (manual mode only).
+  if [ "$CFG_proxy_mode" = "manual" ] && [ -n "${CFG_proxy_host:-}" ] && [ -n "${CFG_proxy_port:-}" ]; then
+    local url="http://${CFG_proxy_host}:${CFG_proxy_port}"
+    if [ -f /etc/environment ] && grep -qiE "^http_proxy=.*${CFG_proxy_host}:${CFG_proxy_port}" /etc/environment; then
+      mark_skip "proxy env" "already in /etc/environment"
+    else
+      { printf 'http_proxy=%s\nhttps_proxy=%s\nHTTP_PROXY=%s\nHTTPS_PROXY=%s\n' "$url" "$url" "$url" "$url" >> /etc/environment; } 2>/dev/null \
+        && mark_set "proxy env -> /etc/environment ($url)" || mark_fail "proxy env" "could not write /etc/environment"
+    fi
+  fi
+}
+
+apply_hosts() {
+  [ -z "$(printf '%s' "$HOSTS_DATA" | tr -d '[:space:]')" ] && return 0
+  log "Hosts file: custom entries -> /etc/hosts"
+  local line added=0
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    if grep -qF "$line" /etc/hosts 2>/dev/null; then mark_skip "hosts: $line" "already present"; continue; fi
+    if printf '%s\n' "$line" >> /etc/hosts 2>/dev/null; then mark_set "hosts: $line"; added=$((added+1))
+    else mark_fail "hosts: $line" "could not append to /etc/hosts"; fi
+  done <<EOF
+$(printf '%s\n' "$HOSTS_DATA")
+EOF
+  [ "$added" -gt 0 ] && info "added $added custom hosts entr(ies)"
+}
+
+apply_printers() {
+  [ -z "$(printf '%s' "$PRINTERS_DATA" | tr -d '[:space:]')" ] && return 0
+  log "Network printers -> CUPS"
+  if ! have_cmd lpadmin; then
+    ask_install_addition "network printers" "cups" "add the migrated network printers" || { mark_manual "printers" "install CUPS, then add the printers"; return 0; }
+  fi
+  local name host uri
+  while IFS="$(printf '\t')" read -r name host; do
+    [ -z "$name" ] && continue
+    if lpstat -p "$name" >/dev/null 2>&1; then mark_skip "printer: $name" "already configured"; continue; fi
+    case "$host" in http://*|https://*|ipp://*) uri="$host" ;; *) uri="ipp://${host}/ipp/print" ;; esac
+    if capture lpadmin -p "$(printf '%s' "$name" | tr ' ' '_')" -E -v "$uri" -m everywhere; then
+      mark_set "printer: $name -> $uri"
+    else mark_manual "printer: $name" "add it manually (tried $uri)"; fi
+  done <<EOF
+$(printf '%s\n' "$PRINTERS_DATA")
+EOF
+}
+
+apply_netcfg() {
+  [ -z "$(printf '%s' "$NETCFG_DATA" | tr -d '[:space:]')" ] && return 0
+  log "Static IP / DNS (manual - not auto-applied so networking can't break)"
+  local iface ip gw dns
+  while IFS="$(printf '\t')" read -r iface ip gw dns; do
+    [ -z "$iface$ip$dns" ] && continue
+    mark_manual "network: $iface" "set via NetworkManager if wanted: ip=${ip:-?} gateway=${gw:-?} dns=${dns:-?}  (e.g. nmcli con mod <name> ipv4.addresses ${ip} ipv4.gateway ${gw} ipv4.dns '${dns}' ipv4.method manual)"
+  done <<EOF
+$(printf '%s\n' "$NETCFG_DATA")
+EOF
 }
 
 apply_accessibility() {
@@ -2913,14 +3087,14 @@ unpack_stage() {
     [ -d "$MIGRATE_STAGE" ] && [ -n "$(ls -A "$MIGRATE_STAGE" 2>/dev/null)" ] && STAGE_DIR="$MIGRATE_STAGE"
     return 0
   fi
-  if ! have_cmd openssl; then ask_install_addition "personal data" "openssl" "decrypt your transferred SSH keys and Contacts" || { mark_skip "personal data" "openssl unavailable to decrypt the archive"; return 0; }; fi
+  if ! have_cmd openssl; then ask_install_addition "personal data" "openssl" "decrypt your transferred SSH keys / Contacts / fonts / wallpaper" || { mark_skip "personal data" "openssl unavailable to decrypt the archive"; return 0; }; fi
   if ! have_cmd tar; then mark_skip "personal data" "tar unavailable to extract the archive"; return 0; fi
   local key=""
   if [ -r /dev/tty ]; then
-    printf '  Enter the password used to encrypt your transferred personal data (SSH keys / Contacts; same as WiFi; empty to skip): ' > /dev/tty
+    printf '  Enter the password used to encrypt your transferred personal data (SSH keys / Contacts / fonts / wallpaper; same as WiFi; empty to skip): ' > /dev/tty
     read -r key < /dev/tty || key=""
   fi
-  [ -z "$key" ] && { mark_skip "personal data" "no decryption password given (SSH/Contacts skipped)"; return 0; }
+  [ -z "$key" ] && { mark_skip "personal data" "no decryption password given (personal data skipped)"; return 0; }
   STAGE_TMP="$(mktemp -d 2>/dev/null || echo /tmp/mtl_stage.$$)"; mkdir -p "$STAGE_TMP"
   if openssl enc -d -aes-256-cbc -pbkdf2 -salt -pass pass:"$key" -in "$archive" 2>/dev/null | tar -xf - -C "$STAGE_TMP" 2>/dev/null; then
     STAGE_DIR="$STAGE_TMP"
@@ -2968,17 +3142,84 @@ copy_contacts() {
   fi
 }
 
+copy_fonts() {
+  local src="$STAGE_DIR/fonts"
+  [ -n "$STAGE_DIR" ] && [ -d "$src" ] && [ -n "$(ls -A "$src" 2>/dev/null)" ] || return 0
+  log "Fonts -> ~/.local/share/fonts"
+  local dest="$TARGET_HOME/.local/share/fonts" n=0 f
+  mkdir -p "$dest"
+  for f in "$src"/*; do
+    [ -f "$f" ] || continue
+    if cp -fn "$f" "$dest/" 2>/dev/null; then n=$((n+1)); fi
+  done
+  chown -R "$TARGET_USER":"$TARGET_USER" "$dest" 2>/dev/null || true
+  have_cmd fc-cache && run_as_user fc-cache -f >/dev/null 2>&1 || true
+  mark_set "fonts: copied $n font file(s) to ~/.local/share/fonts"
+}
+
+apply_wallpaper() {
+  local src="$STAGE_DIR/wallpaper"
+  [ -n "$STAGE_DIR" ] && [ -d "$src" ] && [ -n "$(ls -A "$src" 2>/dev/null)" ] || return 0
+  log "Wallpaper -> desktop background"
+  local img="" dest f
+  for f in "$src"/*; do [ -f "$f" ] && { img="$f"; break; }; done
+  [ -z "$img" ] && return 0
+  dest="$TARGET_HOME/.local/share/backgrounds/$(basename "$img")"
+  mkdir -p "$(dirname "$dest")"
+  if cp -f "$img" "$dest" 2>/dev/null; then
+    chown -R "$TARGET_USER":"$TARGET_USER" "$TARGET_HOME/.local/share/backgrounds" 2>/dev/null || true
+    case "$DE" in
+      gnome|cinnamon)
+        gset org.gnome.desktop.background picture-uri "'file://$dest'"
+        gset org.gnome.desktop.background picture-uri-dark "'file://$dest'" ;;
+      *) mark_manual "wallpaper" "set $dest as your wallpaper" ;;
+    esac
+  else mark_fail "wallpaper" "could not copy the image"; fi
+}
+
+apply_default_browser() {
+  [ -z "${CFG_default_browser:-}" ] && return 0
+  log "Default web browser: ${CFG_default_browser}"
+  have_cmd xdg-settings || { mark_manual "default browser" "set ${CFG_default_browser} as default in Settings"; return 0; }
+  # Candidate .desktop ids per browser token, first installed one wins.
+  local cands="" did=""
+  case "$CFG_default_browser" in
+    chrome)  cands="google-chrome.desktop google-chrome-stable.desktop com.google.Chrome.desktop" ;;
+    firefox) cands="firefox.desktop firefox-esr.desktop org.mozilla.firefox.desktop" ;;
+    edge)    cands="microsoft-edge.desktop com.microsoft.Edge.desktop" ;;
+    brave)   cands="brave-browser.desktop com.brave.Browser.desktop" ;;
+    opera)   cands="opera.desktop com.opera.Opera.desktop" ;;
+  esac
+  local c d
+  for c in $cands; do
+    for d in /usr/share/applications /var/lib/flatpak/exports/share/applications "$TARGET_HOME/.local/share/applications"; do
+      [ -f "$d/$c" ] && { did="$c"; break 2; }
+    done
+  done
+  [ -z "$did" ] && { mark_skip "default browser" "${CFG_default_browser} not installed"; return 0; }
+  if capture run_as_user xdg-settings set default-web-browser "$did"; then mark_set "default browser = $did"
+  else mark_fail "default browser" "${LAST_ERR:-xdg-settings failed}"; fi
+}
+
 run_pre() {
   apply_display_scaling
   apply_resolution
   apply_mouse
+  apply_appearance
+  apply_touchpad
+  apply_power_timeouts
   apply_lock_timeout
   apply_keyboard_layout
   apply_accessibility
+  apply_locale
+  apply_proxy
   disable_telemetry_location
   apply_timezone_timesync
   apply_wifi
   apply_firewall
+  apply_hosts
+  apply_printers
+  apply_netcfg
   apply_lid_behavior
   info "Note: keyboard shortcuts (copy/paste/screenshot/etc.) map to your DE's"
   info "      defaults on Linux; review System Settings > Keyboard if needed."
@@ -2992,7 +3233,10 @@ run_post() {
   unpack_stage
   copy_ssh
   copy_contacts
+  copy_fonts
+  apply_wallpaper
   cleanup_stage
+  apply_default_browser
 }
 
 main() {

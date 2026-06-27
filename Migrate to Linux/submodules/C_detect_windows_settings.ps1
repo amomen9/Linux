@@ -190,7 +190,11 @@ function Get-XferPassword {
     }
     while ($true) {
         $confirm = Read-HostTimed -Prompt "Confirm password: " -TimeoutSec $TimeoutSec
-        if ($confirm.Status -eq 'ok' -and $confirm.Value -eq $first.Value) { return $first.Value }
+        if ($confirm.Status -eq 'ok' -and $confirm.Value -eq $first.Value) {
+            Write-Host ("  password set! " + [char]0x2705) -ForegroundColor Green
+            Write-Host ''
+            return $first.Value
+        }
         switch ($confirm.Status) {
             'timeout' {
                 Write-Host '  (no input within the time limit -> treated as empty / skipped)'
@@ -500,7 +504,7 @@ Add-Row 'Screen' 'lock_screen_timeout' $lockValue '' 'GNOME (system-wide dconf, 
 # -----------------------------------------------------------------------
 # 7. MOUSE - pointer size, speed, acceleration
 # -----------------------------------------------------------------------
-$mouseSize = ''; $mouseSpeed = ''; $mouseAccel = ''
+$mouseSize = ''; $mouseSpeed = ''; $mouseAccel = ''; $mouseSwap = ''; $mouseDbl = ''
 try {
     $m = Get-ItemProperty -Path 'HKCU:\Control Panel\Mouse' -ErrorAction SilentlyContinue
     # Sensitivity 1..20 (default 10)  ->  GNOME peripherals.mouse speed -1..1 (default 0).
@@ -510,6 +514,10 @@ try {
     # MouseSpeed 0 = no pointer acceleration ("flat"); >0 = Windows "enhance precision".
     $accelRaw = [int](Safe-Property $m 'MouseSpeed' 1)
     $mouseAccel = if ($accelRaw -eq 0) { 'flat' } else { 'default' }
+    # Primary-button swap (left-handed) and double-click speed (ms).
+    $mouseSwap = if ([int](Safe-Property $m 'SwapMouseButtons' 0) -eq 1) { 'true' } else { 'false' }
+    $dbl = [int](Safe-Property $m 'DoubleClickSpeed' 0)
+    if ($dbl -gt 0) { $mouseDbl = [string]$dbl }
 } catch {}
 try {
     $cur = Get-ItemProperty -Path 'HKCU:\Control Panel\Cursors' -ErrorAction SilentlyContinue
@@ -517,10 +525,12 @@ try {
     if ($base -gt 0) { $mouseSize = [string]$base }
 } catch {}
 
-Write-Host "Mouse: pointer size = $mouseSize ; speed = $mouseSpeed ; accel = $mouseAccel"
+Write-Host "Mouse: pointer size = $mouseSize ; speed = $mouseSpeed ; accel = $mouseAccel ; swap = $mouseSwap"
 Add-Row 'Mouse' 'mouse_size'  $mouseSize  '' 'GNOME org.gnome.desktop.interface cursor-size'
 Add-Row 'Mouse' 'mouse_speed' $mouseSpeed '' 'GNOME org.gnome.desktop.peripherals.mouse speed (-1..1)'
 Add-Row 'Mouse' 'mouse_accel' $mouseAccel '' 'GNOME org.gnome.desktop.peripherals.mouse accel-profile'
+Add-Row 'Mouse' 'mouse_swap'  $mouseSwap  '' 'GNOME org.gnome.desktop.peripherals.mouse left-handed'
+Add-Row 'Mouse' 'mouse_dblclick' $mouseDbl '' 'GNOME org.gnome.desktop.peripherals.mouse double-click (ms)'
 
 # -----------------------------------------------------------------------
 # 8. ACCESSIBILITY - sticky/slow/mouse keys, high contrast, magnifier
@@ -621,6 +631,178 @@ try {
 Write-Host "Timezone: $ianaTz ; NTP server: $ntpServer"
 Add-Row 'Time' 'timezone'   $ianaTz    '' 'Linux: timedatectl set-timezone' -Scope 'System'
 Add-Row 'Time' 'ntp_server' $ntpServer '' 'Linux: systemd-timesyncd NTP= (non-Microsoft)' -Scope 'System'
+
+# -----------------------------------------------------------------------
+# 10b. EXTRA DESKTOP/SYSTEM SETTINGS (theme, accent, locale, proxy, touchpad,
+#      sleep timeouts, night light) + hosts file, network printers, static IP/DNS.
+# -----------------------------------------------------------------------
+# THEME (dark/light)
+$colorScheme = ''
+try {
+    $pz = Get-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize' -ErrorAction SilentlyContinue
+    if ($pz -and $null -ne $pz.AppsUseLightTheme) { $colorScheme = if ([int]$pz.AppsUseLightTheme -eq 0) { 'prefer-dark' } else { 'default' } }
+} catch {}
+Add-Row 'Appearance' 'color_scheme' $colorScheme '' 'GNOME org.gnome.desktop.interface color-scheme'
+
+# ACCENT COLOR -> nearest GNOME accent (GNOME 47+).
+function Get-NearestAccent { param([int]$R, [int]$G, [int]$B)
+    $cands = @{ blue='3584e4'; teal='2190a4'; green='3a944a'; yellow='c88800'; orange='ed5b00'; red='e62d42'; pink='d56199'; purple='9141ac'; slate='6f8396' }
+    $best = ''; $bestD = [double]::MaxValue
+    foreach ($k in $cands.Keys) {
+        $h = $cands[$k]
+        $r2 = [Convert]::ToInt32($h.Substring(0,2),16); $g2 = [Convert]::ToInt32($h.Substring(2,2),16); $b2 = [Convert]::ToInt32($h.Substring(4,2),16)
+        $d = [math]::Pow($R-$r2,2) + [math]::Pow($G-$g2,2) + [math]::Pow($B-$b2,2)
+        if ($d -lt $bestD) { $bestD = $d; $best = $k }
+    }
+    return $best
+}
+$accent = ''
+try {
+    $dwm = Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\DWM' -Name 'AccentColor' -ErrorAction SilentlyContinue
+    if ($dwm -and $null -ne $dwm.AccentColor) {
+        $abgr = [uint32]$dwm.AccentColor          # stored 0xAABBGGRR
+        $r = [int]($abgr -band 0xFF); $g = [int](($abgr -shr 8) -band 0xFF); $b = [int](($abgr -shr 16) -band 0xFF)
+        $accent = Get-NearestAccent -R $r -G $g -B $b
+    }
+} catch {}
+Add-Row 'Appearance' 'accent_color' $accent '' 'GNOME org.gnome.desktop.interface accent-color (GNOME 47+)'
+
+# LOCALE / regional formats
+$posixLocale = ''
+try {
+    $intl = Get-ItemProperty -Path 'HKCU:\Control Panel\International' -Name 'LocaleName' -ErrorAction SilentlyContinue
+    $ln = if ($intl) { [string]$intl.LocaleName } else { (Get-Culture).Name }
+    if ($ln) { $posixLocale = ($ln -replace '-', '_') + '.UTF-8' }
+} catch {}
+Add-Row 'Locale' 'locale' $posixLocale '' 'Linux: localectl set-locale LANG=' -Scope 'System'
+
+# PROXY (WinINET)
+$proxyMode = 'none'; $proxyHost = ''; $proxyPort = ''; $proxyAuto = ''
+try {
+    $is = Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -ErrorAction SilentlyContinue
+    if ($is) {
+        if ($is.AutoConfigURL) { $proxyMode = 'auto'; $proxyAuto = [string]$is.AutoConfigURL }
+        elseif ([int](Safe-Property $is 'ProxyEnable' 0) -eq 1 -and $is.ProxyServer) {
+            $proxyMode = 'manual'
+            $ps = [string]$is.ProxyServer
+            if ($ps -match 'http=([^;]+)') { $ps = $Matches[1] } elseif ($ps -match ';') { $ps = ($ps -split ';')[0] }
+            $ps = $ps -replace '^[a-z]+=', ''
+            $proxyHost = ($ps -split ':')[0]; $proxyPort = ($ps -split ':')[1]
+        }
+    }
+} catch {}
+Add-Row 'Proxy' 'proxy_mode'       $proxyMode '' 'GNOME org.gnome.system.proxy mode'
+Add-Row 'Proxy' 'proxy_host'       $proxyHost '' 'GNOME org.gnome.system.proxy.http host'
+Add-Row 'Proxy' 'proxy_port'       $proxyPort '' 'GNOME org.gnome.system.proxy.http port'
+Add-Row 'Proxy' 'proxy_autoconfig' $proxyAuto '' 'GNOME org.gnome.system.proxy autoconfig-url'
+
+# TOUCHPAD (only if a precision touchpad is configured)
+$tpTap = ''; $tpNatural = ''
+try {
+    $tp = Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\PrecisionTouchPad' -ErrorAction SilentlyContinue
+    if ($tp) {
+        if ($null -ne $tp.TapsEnabled)    { $tpTap = if ([int]$tp.TapsEnabled -eq 1) { 'true' } else { 'false' } }
+        if ($null -ne $tp.ScrollDirection){ $tpNatural = if ([int]$tp.ScrollDirection -eq 1) { 'true' } else { 'false' } }
+    }
+} catch {}
+Add-Row 'Touchpad' 'touchpad_tap'     $tpTap     '' 'GNOME org.gnome.desktop.peripherals.touchpad tap-to-click'
+Add-Row 'Touchpad' 'touchpad_natural' $tpNatural '' 'GNOME org.gnome.desktop.peripherals.touchpad natural-scroll'
+
+# SLEEP timeouts (seconds; STANDBYIDLE on AC/DC from the active power scheme)
+$sleepAc = ''; $sleepDc = ''
+try {
+    $sl = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Power\User\PowerSchemes\*\238c9fa8-0aad-41ed-83f4-97be242c8f20\29f6c1db-86da-48c5-9fdb-f2b67b1f44da' -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($sl) { if ($null -ne $sl.ACSettingIndex) { $sleepAc = [string][int]$sl.ACSettingIndex }; if ($null -ne $sl.DCSettingIndex) { $sleepDc = [string][int]$sl.DCSettingIndex } }
+} catch {}
+Add-Row 'Power' 'sleep_ac' $sleepAc '' 'GNOME power sleep-inactive-ac-timeout (s)' -Scope 'System'
+Add-Row 'Power' 'sleep_dc' $sleepDc '' 'GNOME power sleep-inactive-battery-timeout (s)' -Scope 'System'
+
+# NIGHT LIGHT (blue-light reduction) on/off -- best-effort blob read.
+function Test-NightLight {
+    try {
+        $p = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\CloudStore\Store\DefaultAccount\Current\default$windows.data.bluelightreduction.bluelightreductionstate\windows.data.bluelightreduction.bluelightreductionstate'
+        $d = (Get-ItemProperty -Path $p -Name 'Data' -ErrorAction SilentlyContinue).Data
+        if (-not $d) { return '' }
+        for ($i = 0; $i -lt $d.Length - 5; $i++) {
+            if ($d[$i] -eq 0x10 -and $d[$i+1] -eq 0 -and $d[$i+2] -eq 0 -and $d[$i+3] -eq 0) {
+                if ($d[$i+4] -eq 0x02 -and $d[$i+5] -eq 0x01) { return 'true' } else { return 'false' }
+            }
+        }
+        return 'false'
+    } catch { return '' }
+}
+$nightLight = Test-NightLight
+Add-Row 'Appearance' 'night_light' $nightLight '' 'GNOME org.gnome.settings-daemon.plugins.color night-light-enabled'
+
+# DEFAULT WEB BROWSER (applied post-install once the equivalent is installed)
+$defBrowser = ''
+try {
+    $uc = Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\https\UserChoice' -Name 'ProgId' -ErrorAction SilentlyContinue
+    switch -Wildcard ([string]$uc.ProgId) {
+        'ChromeHTML*' { $defBrowser = 'chrome' }
+        'FirefoxURL*' { $defBrowser = 'firefox' }
+        'MSEdgeHTM*'  { $defBrowser = 'edge' }
+        'BraveHTML*'  { $defBrowser = 'brave' }
+        'OperaStable*'{ $defBrowser = 'opera' }
+    }
+} catch {}
+Add-Row 'DefaultApps' 'default_browser' $defBrowser '' 'Linux: xdg-settings set default-web-browser' -Phase 'post' -Scope 'User'
+
+# HOSTS file -- custom (non-default) entries only.
+$hostsCount = 0
+try {
+    $hp = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts'
+    if (Test-Path $hp) {
+        Get-Content $hp -ErrorAction SilentlyContinue | ForEach-Object {
+            $line = ($_ -replace '#.*$', '').Trim()
+            if (-not $line) { return }
+            $parts = $line -split '\s+', 2
+            if ($parts.Count -lt 2) { return }
+            $ip = $parts[0]
+            # skip the default loopback boilerplate
+            if ($ip -in @('127.0.0.1', '::1') -and $parts[1] -match '^(localhost)\s*$') { return }
+            Add-Row 'Hosts' 'host_entry' (($line -replace '\|', ' ')) '' 'Linux: merge into /etc/hosts' -Scope 'System'
+            $hostsCount++
+        }
+    }
+} catch {}
+if ($hostsCount -eq 0) { Add-Row 'Hosts' 'host_entry' '' '' 'No custom hosts entries (placeholder)' -Scope 'System' }
+Write-Host "Hosts: $hostsCount custom entr(ies)"
+
+# NETWORK PRINTERS (network/shared; local USB drivers are not portable).
+$prnCount = 0
+try {
+    Get-Printer -ErrorAction SilentlyContinue | Where-Object {
+        $_.PortName -and ($_.PortName -match '^(IP_|WSD|https?://)' -or $_.Shared -eq $true -or $_.Type -eq 'Connection')
+    } | ForEach-Object {
+        $hostp = ($_.PortName -replace '^IP_', '')
+        $packed = (@($_.Name, $hostp) | ForEach-Object { ([string]$_ -replace '\|', ' ') }) -join '|'
+        Add-Row 'Printers' 'printer' $packed '' 'Linux: CUPS lpadmin (best-effort)' -Scope 'System'
+        $prnCount++
+    }
+} catch {}
+if ($prnCount -eq 0) { Add-Row 'Printers' 'printer' '' '' 'No network printers (placeholder)' -Scope 'System' }
+Write-Host "Printers: $prnCount network printer(s)"
+
+# STATIC IP / DNS (captured as a MANUAL note -- never auto-applied, so migration
+# cannot break the user's network).
+$netCount = 0
+try {
+    Get-NetIPConfiguration -ErrorAction SilentlyContinue | ForEach-Object {
+        $cfg = $_
+        $man = $cfg.IPv4Address | Where-Object { $_.PrefixOrigin -eq 'Manual' }
+        $dns = ($cfg.DNSServer | Where-Object { $_.AddressFamily -eq 2 } | ForEach-Object { $_.ServerAddresses }) -join ','
+        if ($man -or $dns) {
+            $ip = if ($man) { ($man | Select-Object -First 1).IPAddress } else { '' }
+            $gw = [string]$cfg.IPv4DefaultGateway.NextHop
+            $packed = (@($cfg.InterfaceAlias, $ip, $gw, $dns) | ForEach-Object { ([string]$_ -replace '\|', ' ') }) -join '|'
+            Add-Row 'NetConfig' 'static_net' $packed '' 'Linux: configure via NetworkManager (manual note)' -Scope 'System'
+            $netCount++
+        }
+    }
+} catch {}
+if ($netCount -eq 0) { Add-Row 'NetConfig' 'static_net' '' '' 'No static IP/DNS config (placeholder)' -Scope 'System' }
+Write-Host "Static network config: $netCount adapter(s)"
 
 # -----------------------------------------------------------------------
 # 11. WIFI known networks + (optionally encrypted) passwords
@@ -872,6 +1054,40 @@ if (Test-Path $contactsSrc) {
     Add-Row 'Contacts' 'contacts_dir' '' '' 'No Contacts folder found (category placeholder)' -Phase 'post' -Scope 'User'
 }
 Write-Host "Contacts: $contactsCount file(s) staged"
+
+# -----------------------------------------------------------------------
+# 15b. FONTS - stage user-installed fonts (cross-platform .ttf/.otf). They ride
+#      inside the same encrypted archive and land in ~/.local/share/fonts.
+# -----------------------------------------------------------------------
+$fontCount = 0
+try {
+    $fontSrc = Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\Fonts'
+    if (Test-Path $fontSrc) {
+        $fontDst = Join-Path $stageRoot 'fonts'
+        New-Item -ItemType Directory -Force -Path $fontDst | Out-Null
+        Get-ChildItem -Path $fontSrc -Include *.ttf, *.otf, *.ttc -File -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+            Copy-Item -LiteralPath $_.FullName -Destination $fontDst -Force -ErrorAction SilentlyContinue; $fontCount++
+        }
+    }
+} catch {}
+Add-Row 'Fonts' 'fonts_dir' $(if ($fontCount -gt 0) { 'staged: migrated_user_data (encrypted archive)' } else { '' }) '' 'Linux: copy into ~/.local/share/fonts + fc-cache' -Phase 'post' -Scope 'User'
+Write-Host "Fonts: $fontCount user font(s) staged"
+
+# -----------------------------------------------------------------------
+# 15c. WALLPAPER - stage the current desktop wallpaper image.
+# -----------------------------------------------------------------------
+$wpStaged = 0
+try {
+    $wp = (Get-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name 'WallPaper' -ErrorAction SilentlyContinue).WallPaper
+    if ($wp -and (Test-Path $wp)) {
+        $wpDst = Join-Path $stageRoot 'wallpaper'
+        New-Item -ItemType Directory -Force -Path $wpDst | Out-Null
+        Copy-Item -LiteralPath $wp -Destination (Join-Path $wpDst ([System.IO.Path]::GetFileName($wp))) -Force -ErrorAction SilentlyContinue
+        $wpStaged = 1
+    }
+} catch {}
+Add-Row 'Wallpaper' 'wallpaper_file' $(if ($wpStaged) { 'staged: migrated_user_data (encrypted archive)' } else { '' }) '' 'Linux: set org.gnome.desktop.background picture-uri' -Phase 'post' -Scope 'User'
+Write-Host "Wallpaper: $(if ($wpStaged) { 'staged' } else { 'none' })"
 
 # -----------------------------------------------------------------------
 # 16. ENCRYPT the staged personal data into ONE archive and remove the clear copy.

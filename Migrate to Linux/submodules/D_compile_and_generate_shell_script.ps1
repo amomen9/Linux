@@ -503,6 +503,21 @@ $cfgMap = @{
     'mouse_size'          = 'CFG_mouse_size'
     'mouse_speed'         = 'CFG_mouse_speed'
     'mouse_accel'         = 'CFG_mouse_accel'
+    'mouse_swap'          = 'CFG_mouse_swap'
+    'mouse_dblclick'      = 'CFG_mouse_dblclick'
+    'color_scheme'        = 'CFG_color_scheme'
+    'accent_color'        = 'CFG_accent'
+    'night_light'         = 'CFG_night_light'
+    'locale'              = 'CFG_locale'
+    'proxy_mode'          = 'CFG_proxy_mode'
+    'proxy_host'          = 'CFG_proxy_host'
+    'proxy_port'          = 'CFG_proxy_port'
+    'proxy_autoconfig'    = 'CFG_proxy_autoconfig'
+    'touchpad_tap'        = 'CFG_touchpad_tap'
+    'touchpad_natural'    = 'CFG_touchpad_natural'
+    'sleep_ac'            = 'CFG_sleep_ac'
+    'sleep_dc'            = 'CFG_sleep_dc'
+    'default_browser'     = 'CFG_default_browser'
     'a11y_stickykeys'     = 'CFG_a11y_stickykeys'
     'a11y_slowkeys'       = 'CFG_a11y_slowkeys'
     'a11y_bouncekeys'     = 'CFG_a11y_bouncekeys'
@@ -524,6 +539,9 @@ $scLines   = New-Object System.Collections.Generic.List[string]
 $startLines = New-Object System.Collections.Generic.List[string]
 $svcLines   = New-Object System.Collections.Generic.List[string]
 $taskLines  = New-Object System.Collections.Generic.List[string]
+$hostsLines = New-Object System.Collections.Generic.List[string]
+$prnLines   = New-Object System.Collections.Generic.List[string]
+$netLines   = New-Object System.Collections.Generic.List[string]
 function ConvertTo-TsvLine { param([string] $PipeValue)
     if ($null -eq $PipeValue) { return '' }
     $fields = $PipeValue -split '\|'
@@ -563,6 +581,18 @@ if (Test-Path $ConfigCsv) {
             $line = ConvertTo-TsvLine ([string]$row.WindowsValue)   # name<TAB>scope<TAB>schedule<TAB>exeBase
             if (([string]$row.WindowsValue).Trim()) { $taskLines.Add($line) }
         }
+        elseif ($cat -eq 'Hosts' -and $key -eq 'host_entry') {
+            $v = ([string]$row.WindowsValue).Trim()                 # one /etc/hosts line, verbatim
+            if ($v) { $hostsLines.Add($v) }
+        }
+        elseif ($cat -eq 'Printers' -and $key -eq 'printer') {
+            $line = ConvertTo-TsvLine ([string]$row.WindowsValue)   # name<TAB>host
+            if (([string]$row.WindowsValue).Trim()) { $prnLines.Add($line) }
+        }
+        elseif ($cat -eq 'NetConfig' -and $key -eq 'static_net') {
+            $line = ConvertTo-TsvLine ([string]$row.WindowsValue)   # iface<TAB>ip<TAB>gw<TAB>dns
+            if (([string]$row.WindowsValue).Trim()) { $netLines.Add($line) }
+        }
     }
 }
 if ($settingsLines.Count -eq 0) { $settingsLines.Add('# (no mappable settings found in C_windows_configs.csv)') }
@@ -573,7 +603,10 @@ $scData       = ($scLines -join "`n")
 $startData    = ($startLines -join "`n")
 $svcData      = ($svcLines -join "`n")
 $taskData     = ($taskLines -join "`n")
-Write-Host ("  settings: {0} scalar; wifi: {1}; firewall: {2}; shortcuts: {3}; startup: {4}; services: {5}; tasks: {6}" -f ($settingsLines.Count), $wifiLines.Count, $fwLines.Count, $scLines.Count, $startLines.Count, $svcLines.Count, $taskLines.Count) -ForegroundColor Green
+$hostsData    = ($hostsLines -join "`n")
+$prnData      = ($prnLines -join "`n")
+$netData      = ($netLines -join "`n")
+Write-Host ("  settings: {0} scalar; wifi: {1}; firewall: {2}; shortcuts: {3}; startup: {4}; services: {5}; tasks: {6}; hosts: {7}; printers: {8}; netcfg: {9}" -f ($settingsLines.Count), $wifiLines.Count, $fwLines.Count, $scLines.Count, $startLines.Count, $svcLines.Count, $taskLines.Count, $hostsLines.Count, $prnLines.Count, $netLines.Count) -ForegroundColor Green
 
 # ---------------------------------------------------------------------------
 # 3. DRIVERS  (from A_installed_windows_drivers.csv) - reference list
@@ -609,7 +642,7 @@ $subDir = Join-Path $OutputDir 'submodules'
 if (-not (Test-Path $subDir -PathType Container)) { New-Item -ItemType Directory -Path $subDir -Force | Out-Null }
 $map = @{
     'install_must_have_software.sh.tmpl' = @{ apps = $appsData }
-    'apply_settings.sh.tmpl'             = @{ settings = $settingsData; wifi = $wifiData; firewall = $fwData; shortcuts = $scData; startup = $startData; services = $svcData; tasks = $taskData }
+    'apply_settings.sh.tmpl'             = @{ settings = $settingsData; wifi = $wifiData; firewall = $fwData; shortcuts = $scData; startup = $startData; services = $svcData; tasks = $taskData; hosts = $hostsData; printers = $prnData; netcfg = $netData }
     'install_device_drivers.sh.tmpl'     = @{ drivers = $driversData }
     'execute_all.sh.tmpl'                = @{ manual = $manualData; unmatched = $unmatchedData }
 }
@@ -628,6 +661,9 @@ foreach ($tmplName in $map.Keys) {
     if ($map[$tmplName].ContainsKey('startup'))  { $content = $content.Replace('### __STARTUP_DATA__ ###', $map[$tmplName].startup) }
     if ($map[$tmplName].ContainsKey('services')) { $content = $content.Replace('### __SERVICES_DATA__ ###', $map[$tmplName].services) }
     if ($map[$tmplName].ContainsKey('tasks'))    { $content = $content.Replace('### __SCHEDTASKS_DATA__ ###', $map[$tmplName].tasks) }
+    if ($map[$tmplName].ContainsKey('hosts'))    { $content = $content.Replace('### __HOSTS_DATA__ ###', $map[$tmplName].hosts) }
+    if ($map[$tmplName].ContainsKey('printers')) { $content = $content.Replace('### __PRINTERS_DATA__ ###', $map[$tmplName].printers) }
+    if ($map[$tmplName].ContainsKey('netcfg'))   { $content = $content.Replace('### __NETCFG_DATA__ ###', $map[$tmplName].netcfg) }
     if ($map[$tmplName].ContainsKey('drivers'))  { $content = $content.Replace('### __DRIVERS_DATA__ ###', $map[$tmplName].drivers) }
     if ($map[$tmplName].ContainsKey('manual'))   { $content = $content.Replace('### __MANUAL_APPS__ ###', $map[$tmplName].manual) }
     if ($map[$tmplName].ContainsKey('unmatched')){ $content = $content.Replace('### __UNMATCHED_APPS__ ###', $map[$tmplName].unmatched) }
