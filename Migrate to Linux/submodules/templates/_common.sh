@@ -24,6 +24,9 @@ info() { printf '       %s\n' "$*" >&3; }
 ok()   { printf '       \033[32m%s\033[0m\n' "$*" >&3; }
 warn() { printf '       \033[1;33m%s\033[0m\n' "$*" >&3; }
 err()  { printf '\033[1;31m%s\033[0m\n' "$*" >&3; }
+# Purple/magenta line -- used for the interactive wine (Windows emulator) first-launch
+# appearance-tuning prompts so they stand out from ordinary install chatter.
+purple() { printf '\033[1;35m%s\033[0m\n' "$*" >&3; }
 
 have_cmd() { command -v "$1" >/dev/null 2>&1; }
 
@@ -681,6 +684,22 @@ run_wine() {  # run_wine CMD [ARGS...]
   fi
 }
 
+# Like run_wine, but also forwards the desktop session (DISPLAY / WAYLAND_DISPLAY /
+# XAUTHORITY) so a wine GUI window actually shows up on screen -- used to LAUNCH an app
+# for the interactive first-launch appearance test. Registry/wineserver work that needs
+# no display keeps using plain run_wine.
+run_wine_gui() {  # run_wine_gui CMD [ARGS...]
+  local prefix="${WINE_PREFIX_DIR:-$TARGET_HOME/.wine}"
+  local disp="${DISPLAY:-:0}" xauth="${XAUTHORITY:-$TARGET_HOME/.Xauthority}" wld="${WAYLAND_DISPLAY:-}"
+  if [ "$(id -u)" -eq 0 ] && [ "$TARGET_USER" != "root" ]; then
+    sudo -u "$TARGET_USER" env HOME="$TARGET_HOME" WINEARCH=win64 WINEPREFIX="$prefix" WINEDEBUG=-all \
+      DISPLAY="$disp" XAUTHORITY="$xauth" ${wld:+WAYLAND_DISPLAY="$wld"} "$@"
+  else
+    env HOME="$TARGET_HOME" WINEARCH=win64 WINEPREFIX="$prefix" WINEDEBUG=-all \
+      DISPLAY="$disp" XAUTHORITY="$xauth" ${wld:+WAYLAND_DISPLAY="$wld"} "$@"
+  fi
+}
+
 # Ensure wine (the Windows emulator) is installed -- and, if the user opted to update
 # existing apps, up to date. Only ever called when a wine install is actually needed
 # (from wine_app), and it does its package work at most once per run.
@@ -807,6 +826,145 @@ manual_fallback() {  # manual_fallback NAME [ALT] [NOTE] [URL] [LAUNCH]
   done
 }
 
+# --------------------- wine first-launch appearance tuning -------------------
+# The adjustable visual factors and the "current" value that reproduces the
+# appearance the freshly-installed app already has (font/DPI starts at 2.5x = 240,
+# no virtual desktop). Once the user picks "yes all" these remembered values are
+# applied silently to every later wine install. Defaults are seeded lazily.
+: "${WINE_CFG_DPI:=240}"          # font scaling (DPI); 96 = 1x, 240 = 2.5x
+: "${WINE_CFG_DESKTOP:=off}"      # virtual desktop size "WxH", or "off" for native windows
+: "${WINE_APPEARANCE_ALL:=0}"     # 1 once the user answered "a" (apply to all upcoming)
+
+# Pick the most likely "main program" Start Menu .lnk to launch for the test run
+# (skip uninstallers / readmes / help / website links).
+wine_primary_lnk() {  # wine_primary_lnk PREFIX
+  local prefix="$1"
+  [ -d "$prefix/drive_c" ] || return 1
+  find "$prefix/drive_c" -iname '*.lnk' -ipath '*Start Menu*' 2>/dev/null \
+    | grep -viE 'uninstall|readme|help|website|home page|homepage|on the web|manual' \
+    | head -n1
+}
+
+# Launch the app (non-blocking) so its window appears on the user's desktop.
+wine_launch() {  # wine_launch PREFIX LNK
+  local prefix="$1" lnk="$2"
+  WINE_PREFIX_DIR="$prefix"
+  [ -n "$lnk" ] || { warn "no Start Menu shortcut found to launch for the test -- skipping the live preview"; return 1; }
+  ( run_wine_gui wine start /unix "$lnk" >/dev/null 2>&1 & ) >/dev/null 2>&1
+  sleep 3   # give the window a moment to draw before we ask about its appearance
+  return 0
+}
+
+# Close every wine process in the prefix (used between/after appearance changes).
+wine_close() {  # wine_close PREFIX
+  local prefix="$1"; WINE_PREFIX_DIR="$prefix"
+  run_wine wineserver -k >/dev/null 2>&1 || true
+  sleep 1
+}
+
+# Validate the adjustable factors the user types.
+valid_wine_dpi() {  # whole number 96..480
+  case "$1" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$1" -ge 96 ] && [ "$1" -le 480 ]
+}
+# Accepts (W,H) / W,H / WxH (W,H positive), or off/native/none/no -> echoes WxH or "off".
+normalize_wine_desktop() {  # normalize_wine_desktop INPUT  (echoes normalized, or nothing if invalid)
+  local v="$1" w h
+  v="$(printf '%s' "$v" | tr -d '[:space:]()')"
+  case "$v" in
+    [Oo][Ff][Ff]|[Nn][Oo]|[Nn][Oo][Nn][Ee]|[Nn][Aa][Tt][Ii][Vv][Ee]) printf 'off'; return 0 ;;
+  esac
+  v="$(printf '%s' "$v" | tr 'X' 'x')"
+  case "$v" in
+    *,*) w="${v%%,*}"; h="${v##*,}" ;;
+    *x*) w="${v%%x*}"; h="${v##*x}" ;;
+    *)   return 1 ;;
+  esac
+  case "$w" in ''|*[!0-9]*) return 1 ;; esac
+  case "$h" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$w" -ge 320 ] && [ "$h" -ge 240 ] || return 1
+  printf '%sx%s' "$w" "$h"
+}
+
+# Apply the current WINE_CFG_* factors to a prefix (font DPI + virtual desktop).
+wine_apply_appearance() {  # wine_apply_appearance PREFIX
+  local prefix="$1" hex; WINE_PREFIX_DIR="$prefix"
+  hex="$(printf '0x%08X' "${WINE_CFG_DPI:-240}")"
+  run_wine wine reg add 'HKEY_CURRENT_USER\Control Panel\Desktop' /v LogPixels /t REG_DWORD /d "$hex" /f >/dev/null 2>&1 || true
+  if [ -n "${WINE_CFG_DESKTOP:-}" ] && [ "${WINE_CFG_DESKTOP}" != "off" ]; then
+    run_wine wine reg add 'HKEY_CURRENT_USER\Software\Wine\Explorer\Desktops' /v Default /t REG_SZ /d "${WINE_CFG_DESKTOP}" /f >/dev/null 2>&1 || true
+    run_wine wine reg add 'HKEY_CURRENT_USER\Software\Wine\Explorer'          /v Desktop /t REG_SZ /d Default            /f >/dev/null 2>&1 || true
+  else
+    run_wine wine reg delete 'HKEY_CURRENT_USER\Software\Wine\Explorer' /v Desktop /f >/dev/null 2>&1 || true
+  fi
+}
+
+# Collect new values for every adjustable factor (each its own validate-or-retry loop).
+# Updates WINE_CFG_DPI / WINE_CFG_DESKTOP. Empty input leaves a factor unchanged.
+wine_collect_factors() {
+  local ans norm
+  # --- font scaling (DPI) ---
+  while :; do
+    printf '  enter new value for font scaling (DPI) in the format <a whole number 96-480, e.g. 96/120/144/192/240> (Current:%s) or enter to leave it unchanged: ' "${WINE_CFG_DPI:-240}" > /dev/tty
+    read -r ans < /dev/tty || ans=""
+    [ -z "$ans" ] && break
+    if valid_wine_dpi "$ans"; then WINE_CFG_DPI="$ans"; break
+    else printf '\033[1;31m  Invalid font scaling -- enter a whole number between 96 and 480 (96 = normal, 240 = 2.5x).\033[0m\n' > /dev/tty; fi
+  done
+  # --- window size (virtual desktop) ---
+  while :; do
+    printf '  enter new value for window size in the format <(width,height), e.g. (1024,768), or "off" for the app to use its own windows> (Current:%s) or enter to leave it unchanged: ' "${WINE_CFG_DESKTOP:-off}" > /dev/tty
+    read -r ans < /dev/tty || ans=""
+    [ -z "$ans" ] && break
+    norm="$(normalize_wine_desktop "$ans")"
+    if [ -n "$norm" ]; then WINE_CFG_DESKTOP="$norm"; break
+    else printf '\033[1;31m  Invalid window size -- use (width,height) with width>=320 and height>=240 (e.g. (1280,720)), or "off".\033[0m\n' > /dev/tty; fi
+  done
+}
+
+# Interactive first-launch appearance tuning for a freshly-installed wine app. Launches
+# the app so the user can see it, collects/validates new visual-factor values, applies
+# them, relaunches, and confirms -- with "start over" (r), "yes" (y) and "yes all" (a,
+# remembered for every later wine install). No tty -> leave the defaults already applied.
+wine_tune_appearance() {  # wine_tune_appearance NAME PREFIX
+  local name="$1" prefix="$2" lnk ans
+  WINE_PREFIX_DIR="$prefix"
+  [ -r /dev/tty ] || return 0
+  lnk="$(wine_primary_lnk "$prefix")"
+  # "yes all" chosen earlier: apply the remembered look silently, no launch/prompting.
+  if [ "${WINE_APPEARANCE_ALL:-0}" = "1" ]; then
+    wine_apply_appearance "$prefix"
+    info "applied your saved wine appearance (font DPI ${WINE_CFG_DPI:-240}, window ${WINE_CFG_DESKTOP:-off}) to $name"
+    return 0
+  fi
+  # This app was just installed with the baseline look (DPI 240, native windows), so the
+  # "Current:" shown for each factor must reflect that baseline.
+  WINE_CFG_DPI=240; WINE_CFG_DESKTOP=off
+  # one empty line after the last install line, then the purple launch notice.
+  printf '\n' >&3
+  purple "Now we launch the installed $name for the first time for testing"
+  wine_launch "$prefix" "$lnk"
+  while :; do   # start-over loop: broken only by "yes" (y) or "yes all" (a)
+    purple "According to what you see for the appearance of the app, adjust the following visual settings or press enter to leave the default values:"
+    wine_collect_factors
+    # close, apply the chosen factors, then relaunch so the user sees the result.
+    wine_close "$prefix"
+    wine_apply_appearance "$prefix"
+    wine_launch "$prefix" "$lnk"
+    while :; do
+      purple 'Is the current appearance what you would expect? "a" applies same configurations to all upcoming wine installations. (y=yes / a=yes all / r=start over)'
+      printf '  (y/a/r): ' > /dev/tty
+      read -r ans < /dev/tty || ans="y"
+      case "$ans" in
+        [Yy]|[Yy][Ee][Ss]) wine_close "$prefix"; return 0 ;;
+        [Aa]|[Aa][Ll][Ll]) WINE_APPEARANCE_ALL=1; wine_close "$prefix"; info "these appearance settings will be applied to all upcoming wine installations"; return 0 ;;
+        [Rr]|[Rr][Ee][Ss][Tt][Aa][Rr][Tt]) break ;;   # start over -> re-collect (app stays open)
+        *) printf '\033[1;31m  Please answer y (yes), a (yes all), or r (start over).\033[0m\n' > /dev/tty ;;
+      esac
+    done
+  done
+}
+
 # Install a non-cross-platform Windows app under wine (the Windows emulator), when the
 # user opted in (MIGRATE_WINE_NONCROSS=yes). Tries the manifest-provided Windows
 # installer URL first; on failure (or none) asks for the installer path in single
@@ -876,6 +1034,9 @@ wine_app() {  # wine_app NAME [WINDOWS_INSTALLER_URL] [NOT_RECOMMENDED_REASON] [
     ledger_add wine "$prefix"
     wine_make_launchers "$name" "$prefix" "$slug"
     mark_ok "$name (wine - Windows emulator)" "installed under wine (per-app prefix); font/DPI 2.5x (240)"
+    # First-launch appearance tuning: launch the app, let the user adjust the visual
+    # factors, apply + confirm (or reuse the "yes all" settings). No-op without a tty.
+    wine_tune_appearance "$name" "$prefix"
   else
     # Surface the most informative line from wine's output (skip fixme/diag noise),
     # then explain likely causes and the exact command to reproduce it interactively.
