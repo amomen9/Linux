@@ -204,10 +204,46 @@ require_root() {
 }
 
 # The non-root user we should install Flatpak apps / write desktop files for,
-# even though the script itself runs under sudo.
-TARGET_USER="${SUDO_USER:-$(id -un)}"
+# even though the script itself runs under sudo. logname is the original login
+# name of the session and is more reliable than $SUDO_USER (which is empty when
+# the script is not entered through sudo, and can be stale across su/sudo chains).
+TARGET_USER="$(logname 2>/dev/null || true)"
+{ [ -z "$TARGET_USER" ] || [ "$TARGET_USER" = "root" ]; } && TARGET_USER="${SUDO_USER:-$(id -un)}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" 2>/dev/null | cut -d: -f6)"
 [ -z "$TARGET_HOME" ] && TARGET_HOME="$HOME"
+
+# ----------------------------- optional additions ----------------------------
+# Some migrated settings (e.g. firewall rules, display resolution, NTP) need a
+# package that may not be installed. ask_install_addition explains WHAT the
+# package is for and offers yes / skip / skip all, mirroring the skip-all model
+# used by manual_fallback. Returns 0 if the package(s) are now present (user said
+# yes and the install succeeded), 1 otherwise (skipped, no tty, or install failed).
+#   ask_install_addition "Display resolution" "x11-xserver-utils" "set the screen resolution"
+ADDITIONS_SKIP_ALL=0
+ask_install_addition() {  # ask_install_addition PURPOSE_LABEL "PKG [PKG...]" WHAT_FOR
+  local label="$1" pkgs="$2" whatfor="$3" ans
+  [ "${ADDITIONS_SKIP_ALL:-0}" = "1" ] && { mark_skip "$label" "addition skipped (skip all)"; return 1; }
+  if is_dry_run; then info "[dry-run] would offer to install: $pkgs (for $label)"; return 1; fi
+  printf '\n\033[1;34m==> %s needs an extra package\033[0m\n' "$label" >&3
+  info "The package(s) \"$pkgs\" are required to ${whatfor}."
+  info "They come from your distribution's own repositories ($PM)."
+  if [ ! -r /dev/tty ]; then mark_skip "$label" "addition needs \"$pkgs\" (no tty to ask)"; return 1; fi
+  while :; do
+    printf '  Install %s now? (y=yes / s=skip / a=skip all): ' "$pkgs" > /dev/tty
+    read -r ans < /dev/tty || ans="s"
+    case "$ans" in
+      [Yy]|[Yy][Ee][Ss])
+        pm_refresh
+        # shellcheck disable=SC2086
+        if capture pm_install $pkgs; then ok "installed: $pkgs"; return 0
+        else mark_fail "$label" "${LAST_ERR:-could not install $pkgs}"; return 1; fi ;;
+      [Aa]|[Aa][Ll][Ll]|'skip all'|'Skip all'|'Skip All'|'SKIP ALL')
+        ADDITIONS_SKIP_ALL=1; mark_skip "$label" "addition skipped (skip all)"; return 1 ;;
+      [Ss]|[Ss][Kk][Ii][Pp]) mark_skip "$label" "addition skipped (needs $pkgs)"; return 1 ;;
+      *) printf '\033[1;31m  Please answer y (yes), s (skip), or a (skip all).\033[0m\n' > /dev/tty ;;
+    esac
+  done
+}
 
 # =============================================================================
 #  DISTRO + ARCHITECTURE DETECTION

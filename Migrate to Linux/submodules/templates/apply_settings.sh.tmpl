@@ -12,6 +12,39 @@
 # Captured Windows settings (injected from C_windows_configs.csv):
 ### __SETTINGS_DATA__ ###
 
+# WiFi profiles, one per line:  ssid<TAB>auth<TAB>secret<TAB>sectype
+#   sectype = enc (secret is an OpenSSL-encrypted, base64 key) | plain | none
+# Quoted heredoc so passwords/keys are never shell-expanded.
+WIFI_DATA="$(cat <<'__WIFI_EOF__'
+### __WIFI_DATA__ ###
+__WIFI_EOF__
+)"
+
+# Firewall rules, one per line:  name<TAB>dir<TAB>action<TAB>enabled<TAB>proto<TAB>port
+FIREWALL_DATA="$(cat <<'__FW_EOF__'
+### __FIREWALL_DATA__ ###
+__FW_EOF__
+)"
+
+# Shortcuts to recreate AFTER apps are installed, one per line:
+#   kind<TAB>displayName<TAB>exeBase     (kind = quicklaunch | startmenu | desktop)
+SHORTCUTS_DATA="$(cat <<'__SC_EOF__'
+### __SHORTCUTS_DATA__ ###
+__SC_EOF__
+)"
+
+# Windows startup items, one per line:  scope<TAB>name<TAB>exeBase  (scope = user|system)
+STARTUP_DATA="$(cat <<'__ST_EOF__'
+### __STARTUP_DATA__ ###
+__ST_EOF__
+)"
+
+# Auto-start third-party Windows services, one per line:  displayName<TAB>serviceName
+SERVICES_DATA="$(cat <<'__SV_EOF__'
+### __SERVICES_DATA__ ###
+__SV_EOF__
+)"
+
 DE="unknown"
 detect_de() {
   local d="${XDG_CURRENT_DESKTOP:-${DESKTOP_SESSION:-}}"
@@ -40,6 +73,18 @@ run_as_user() {
 mark_set() { OK_LIST+=("$1"); record_line OK "$1" "${2:-}"; ok "applied: $1"; }
 
 gset() {  # gset SCHEMA KEY VALUE  (GNOME/Cinnamon share most schemas)
+  # Idempotent + schema-aware:
+  #   - if the schema/key does not exist on this DE -> skip quietly (no failure noise)
+  #   - if the current value already equals VALUE   -> skip (don't re-run the change)
+  #   - otherwise set it and record the change
+  local cur
+  if ! run_as_user gsettings list-keys "$1" 2>/dev/null | grep -qx "$2"; then
+    mark_skip "$1 $2" "not available on $DE"; return 0
+  fi
+  cur="$(run_as_user gsettings get "$1" "$2" 2>/dev/null)"
+  if [ -n "$cur" ] && [ "$cur" = "$3" ]; then
+    mark_skip "$1 $2" "already set ($3)"; return 0
+  fi
   if capture run_as_user gsettings set "$1" "$2" "$3"; then
     mark_set "$1 $2 = $3"
   else
@@ -72,40 +117,61 @@ apply_lock_timeout() {
     gnome|cinnamon)
       gset org.gnome.desktop.session idle-delay "uint32 ${secs}"
       if [ "$secs" -eq 0 ]; then gset org.gnome.desktop.screensaver lock-enabled false
-      else gset org.gnome.desktop.screensaver lock-enabled true; fi ;;
+      else gset org.gnome.desktop.screensaver lock-enabled true; fi
+      # Disabling the idle autolock should NOT disable locking on suspend/resume.
+      # (ubuntu-lock-on-suspend exists only on Ubuntu; gset skips it elsewhere.)
+      gset org.gnome.desktop.screensaver lock-on-suspend true
+      gset org.gnome.desktop.screensaver ubuntu-lock-on-suspend true ;;
     *) mark_manual "lock timeout" "set screen lock to ${CFG_lock_timeout} in your DE settings" ;;
   esac
 }
 
 apply_keyboard_layout() {
-  [ -z "${CFG_keyboard_layout:-}" ] && return 0
-  log "Keyboard layout: ${CFG_keyboard_layout}"
-  # Map free-text layout to xkb codes (best-effort).
-  local layouts="us"
-  printf '%s' "$CFG_keyboard_layout" | grep -qi 'fa\|persian' && layouts="us,ir"
+  # Skip the whole module only when nothing keyboard-related was captured.
+  [ -z "${CFG_keyboard_layout:-}${CFG_key_repeat_delay:-}${CFG_key_repeat_rate:-}${CFG_numlock:-}" ] && return 0
+  log "Keyboard settings"
+  if [ -n "${CFG_keyboard_layout:-}" ]; then
+    # Map free-text layout to xkb codes (best-effort).
+    local layouts="us"
+    printf '%s' "$CFG_keyboard_layout" | grep -qi 'fa\|persian' && layouts="us,ir"
+    case "$DE" in
+      gnome|cinnamon)
+        local srcs="[('xkb', 'us')]"
+        [ "$layouts" = "us,ir" ] && srcs="[('xkb', 'us'), ('xkb', 'ir')]"
+        gset org.gnome.desktop.input-sources sources "$srcs" ;;
+      *) if have_cmd localectl; then
+           if capture localectl set-x11-keymap "$layouts"; then mark_set "x11 keymap = $layouts"
+           else mark_fail "keyboard layout" "${LAST_ERR:-localectl set-x11-keymap failed}"; fi
+         fi ;;
+    esac
+  fi
+  # Key-repeat speed and NumLock state (GNOME/Cinnamon).
   case "$DE" in
     gnome|cinnamon)
-      local srcs="[('xkb', 'us')]"
-      [ "$layouts" = "us,ir" ] && srcs="[('xkb', 'us'), ('xkb', 'ir')]"
-      gset org.gnome.desktop.input-sources sources "$srcs" ;;
-    *) if have_cmd localectl; then
-         if capture localectl set-x11-keymap "$layouts"; then mark_set "x11 keymap = $layouts"
-         else mark_fail "keyboard layout" "${LAST_ERR:-localectl set-x11-keymap failed}"; fi
-       fi ;;
+      [ -n "${CFG_key_repeat_delay:-}" ] && gset org.gnome.desktop.peripherals.keyboard delay "uint32 ${CFG_key_repeat_delay}"
+      [ -n "${CFG_key_repeat_rate:-}" ]  && gset org.gnome.desktop.peripherals.keyboard repeat-interval "uint32 ${CFG_key_repeat_rate}"
+      if [ -n "${CFG_numlock:-}" ]; then
+        gset org.gnome.desktop.peripherals.keyboard remember-numlock-state true
+        gset org.gnome.desktop.peripherals.keyboard numlock-state "$CFG_numlock"
+      fi ;;
   esac
 }
 
 disable_telemetry_location() {
-  log "Privacy: disable telemetry / location"
-  if [ "${CFG_location:-}" = "enabled" ] || [ -n "${CFG_telemetry:-}" ]; then
-    systemctl disable --now geoclue.service 2>/dev/null && mark_set "telemetry/location: disabled geoclue" \
-      || info "geoclue not active"
-    case "$DE" in
-      gnome|cinnamon)
-        gset org.gnome.system.location enabled false
-        gset org.gnome.desktop.privacy report-technical-problems false ;;
-    esac
+  [ -z "${CFG_location:-}${CFG_telemetry:-}" ] && return 0
+  log "Privacy & security"
+  if systemctl is-enabled geoclue.service >/dev/null 2>&1; then
+    if capture systemctl disable --now geoclue.service; then mark_set "telemetry/location: disabled geoclue"
+    else mark_fail "geoclue" "${LAST_ERR:-could not disable geoclue}"; fi
+  else
+    mark_skip "geoclue" "not enabled"
   fi
+  case "$DE" in
+    gnome|cinnamon)
+      gset org.gnome.system.location enabled false
+      gset org.gnome.desktop.privacy report-technical-problems false
+      gset org.gnome.desktop.privacy send-software-usage-stats false ;;
+  esac
 }
 
 apply_lid_behavior() {
@@ -123,24 +189,467 @@ apply_lid_behavior() {
   fi
 }
 
+apply_resolution() {
+  [ -z "${CFG_resolution:-}" ] && return 0
+  case "$CFG_resolution" in *[0-9]x[0-9]*) ;; *) return 0 ;; esac
+  log "Display resolution: ${CFG_resolution}"
+  # Wayland sessions cannot be driven by xrandr.
+  if [ -n "${WAYLAND_DISPLAY:-}" ] || [ "$(printf '%s' "${XDG_SESSION_TYPE:-}" | tr '[:upper:]' '[:lower:]')" = "wayland" ]; then
+    mark_manual "display resolution" "Wayland session: set ${CFG_resolution} in Settings > Displays"; return 0
+  fi
+  if ! have_cmd xrandr; then
+    local pkg=""
+    case "$PM" in apt) pkg="x11-xserver-utils" ;; dnf|zypper) pkg="xorg-x11-server-utils" ;; pacman) pkg="xorg-xrandr" ;; esac
+    ask_install_addition "display resolution" "$pkg" "set the screen resolution with xrandr" \
+      || { mark_manual "display resolution" "set ${CFG_resolution} in Settings > Displays"; return 0; }
+  fi
+  local xr out cur mode="$CFG_resolution"
+  xr="$(run_as_user xrandr 2>/dev/null)"
+  out="$(printf '%s\n' "$xr" | awk '/ connected/{print $1; exit}')"
+  cur="$(printf '%s\n' "$xr" | awk '/\*/{print $1; exit}')"
+  [ -z "$out" ] && { mark_manual "display resolution" "no connected display found via xrandr"; return 0; }
+  [ "$cur" = "$mode" ] && { mark_skip "display resolution" "already $mode"; return 0; }
+  if capture run_as_user xrandr --output "$out" --mode "$mode"; then mark_set "resolution $out = $mode"
+  else mark_fail "display resolution" "${LAST_ERR:-xrandr could not set $mode on $out (mode may be unsupported)}"; fi
+}
+
+apply_mouse() {
+  [ -z "${CFG_mouse_size:-}${CFG_mouse_speed:-}${CFG_mouse_accel:-}" ] && return 0
+  log "Mouse: pointer size / speed / acceleration"
+  case "$DE" in
+    gnome|cinnamon)
+      [ -n "${CFG_mouse_size:-}" ]  && gset org.gnome.desktop.interface cursor-size "$CFG_mouse_size"
+      [ -n "${CFG_mouse_speed:-}" ] && gset org.gnome.desktop.peripherals.mouse speed "$CFG_mouse_speed"
+      [ -n "${CFG_mouse_accel:-}" ] && gset org.gnome.desktop.peripherals.mouse accel-profile "'$CFG_mouse_accel'" ;;
+    *) mark_manual "mouse settings" "set pointer size/speed in your DE settings" ;;
+  esac
+}
+
+apply_accessibility() {
+  [ -z "${CFG_a11y_stickykeys:-}${CFG_a11y_slowkeys:-}${CFG_a11y_bouncekeys:-}${CFG_a11y_mousekeys:-}${CFG_a11y_highcontrast:-}${CFG_a11y_magnifier:-}${CFG_a11y_screenreader:-}" ] && return 0
+  log "Accessibility options"
+  case "$DE" in
+    gnome|cinnamon)
+      [ -n "${CFG_a11y_stickykeys:-}" ]   && gset org.gnome.desktop.a11y.keyboard stickykeys-enable "$CFG_a11y_stickykeys"
+      [ -n "${CFG_a11y_slowkeys:-}" ]     && gset org.gnome.desktop.a11y.keyboard slowkeys-enable "$CFG_a11y_slowkeys"
+      [ -n "${CFG_a11y_bouncekeys:-}" ]   && gset org.gnome.desktop.a11y.keyboard bouncekeys-enable "$CFG_a11y_bouncekeys"
+      [ -n "${CFG_a11y_mousekeys:-}" ]    && gset org.gnome.desktop.a11y.keyboard mousekeys-enable "$CFG_a11y_mousekeys"
+      [ -n "${CFG_a11y_magnifier:-}" ]    && gset org.gnome.desktop.a11y.applications screen-magnifier-enabled "$CFG_a11y_magnifier"
+      [ -n "${CFG_a11y_screenreader:-}" ] && gset org.gnome.desktop.a11y.applications screen-reader-enabled "$CFG_a11y_screenreader"
+      [ -n "${CFG_a11y_highcontrast:-}" ] && gset org.gnome.desktop.a11y.interface high-contrast "$CFG_a11y_highcontrast" ;;
+    *) mark_manual "accessibility" "set accessibility options in your DE settings" ;;
+  esac
+}
+
+apply_timezone_timesync() {
+  [ -z "${CFG_timezone:-}${CFG_ntp_server:-}" ] && return 0
+  log "Timezone & time synchronization"
+  if [ -n "${CFG_timezone:-}" ] && [ "$CFG_timezone" != "unknown" ] && have_cmd timedatectl; then
+    local curtz; curtz="$(timedatectl show -p Timezone --value 2>/dev/null)"
+    if [ "$curtz" = "$CFG_timezone" ]; then mark_skip "timezone" "already $CFG_timezone"
+    elif capture timedatectl set-timezone "$CFG_timezone"; then mark_set "timezone = $CFG_timezone"
+    else mark_fail "timezone" "${LAST_ERR:-timedatectl set-timezone failed for $CFG_timezone}"; fi
+  fi
+  # Time synchronization with a non-Microsoft NTP server.
+  local ntp="${CFG_ntp_server:-}"
+  case "$ntp" in *time.windows.com*|"") ntp="pool.ntp.org" ;; esac
+  have_cmd timedatectl && { capture timedatectl set-ntp true >/dev/null 2>&1 || true; }
+  local conf=/etc/systemd/timesyncd.conf
+  if [ -f "$conf" ] || systemctl list-unit-files 2>/dev/null | grep -q '^systemd-timesyncd'; then
+    if [ -f "$conf" ] && grep -qE "^NTP=${ntp}( |$)" "$conf"; then
+      mark_skip "ntp server" "already $ntp"
+    else
+      if [ -f "$conf" ] && grep -qE '^[#[:space:]]*NTP=' "$conf"; then
+        sed -i -E "s|^[#[:space:]]*NTP=.*|NTP=${ntp}|" "$conf" 2>/dev/null
+      elif [ -f "$conf" ] && grep -qE '^\[Time\]' "$conf"; then
+        sed -i -E "s|^\[Time\]|[Time]\nNTP=${ntp}|" "$conf" 2>/dev/null
+      else
+        printf '[Time]\nNTP=%s\n' "$ntp" >> "$conf" 2>/dev/null
+      fi
+      systemctl restart systemd-timesyncd 2>/dev/null || true
+      mark_set "ntp server = $ntp (systemd-timesyncd)"
+    fi
+  elif have_cmd chronyd || have_cmd chronyc; then
+    mark_manual "ntp server" "chrony present: add 'server $ntp iburst' to /etc/chrony.conf and restart chrony"
+  else
+    if ask_install_addition "time synchronization" "chrony" "synchronize the clock with $ntp"; then
+      mark_manual "ntp server" "add 'server $ntp iburst' to /etc/chrony.conf and restart chrony"
+    else
+      mark_skip "ntp server" "no time-sync service available"
+    fi
+  fi
+}
+
+apply_wifi() {
+  [ -z "$(printf '%s' "$WIFI_DATA" | tr -d '[:space:]')" ] && return 0
+  log "WiFi known networks"
+  if ! have_cmd nmcli; then
+    mark_manual "wifi networks" "NetworkManager (nmcli) not present; import WiFi profiles manually"; return 0
+  fi
+  # If any entry carries an encrypted key, ask once for the password to decrypt them.
+  local has_enc=0 wifikey=""
+  printf '%s\n' "$WIFI_DATA" | awk -F'\t' '$4=="enc"{f=1} END{exit !f}' && has_enc=1
+  if [ "$has_enc" = "1" ]; then
+    have_cmd openssl || ask_install_addition "wifi passwords" "openssl" "decrypt the exported WiFi passwords" || true
+    if have_cmd openssl && [ -r /dev/tty ]; then
+      printf '  Enter the password used to encrypt the WiFi keys (empty to import profiles WITHOUT saved passwords): ' > /dev/tty
+      read -r wifikey < /dev/tty || wifikey=""
+    fi
+  fi
+  local ssid auth secret sectype psk
+  while IFS="$(printf '\t')" read -r ssid auth secret sectype; do
+    [ -z "$ssid" ] && continue
+    # Idempotent: skip if a connection profile of this name already exists.
+    if nmcli -t -g NAME connection show 2>/dev/null | grep -qxF "$ssid"; then
+      mark_skip "wifi: $ssid" "connection already exists"; continue
+    fi
+    # Open networks have no key: add them straight away (no password needed).
+    case "$(printf '%s' "$auth" | tr '[:upper:]' '[:lower:]')" in
+      open|none|"")
+        if capture nmcli connection add type wifi con-name "$ssid" ssid "$ssid" connection.autoconnect yes; then
+          mark_set "wifi: $ssid (open network)"
+        else mark_fail "wifi: $ssid" "${LAST_ERR:-nmcli could not add the connection}"; fi
+        continue ;;
+    esac
+    psk=""
+    case "$sectype" in
+      enc) if [ -n "$wifikey" ] && have_cmd openssl; then
+             psk="$(printf '%s' "$secret" | openssl enc -d -aes-256-cbc -pbkdf2 -salt -base64 -A -pass pass:"$wifikey" 2>/dev/null)" || psk=""
+           fi ;;
+      plain) psk="$secret" ;;
+    esac
+    if [ -n "$psk" ]; then
+      if capture nmcli connection add type wifi con-name "$ssid" ssid "$ssid" \
+           wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$psk" connection.autoconnect yes; then
+        mark_set "wifi: $ssid (with saved password)"
+      else mark_fail "wifi: $ssid" "${LAST_ERR:-nmcli could not add the connection}"; fi
+    else
+      if capture nmcli connection add type wifi con-name "$ssid" ssid "$ssid" connection.autoconnect yes; then
+        mark_manual "wifi: $ssid" "profile added WITHOUT password - enter the WiFi password to connect"
+      else mark_fail "wifi: $ssid" "${LAST_ERR:-nmcli could not add the connection}"; fi
+    fi
+  done <<EOF
+$(printf '%s\n' "$WIFI_DATA")
+EOF
+}
+
+apply_firewall() {
+  [ -z "$(printf '%s' "$FIREWALL_DATA" | tr -d '[:space:]')" ] && return 0
+  log "Firewall rules"
+  local backend="" enablecmd=""
+  if have_cmd ufw; then backend="ufw"; enablecmd="ufw enable"
+  elif have_cmd firewall-cmd; then backend="firewalld"; enablecmd="systemctl enable --now firewalld"
+  else
+    local pkg=""; case "$FAMILY" in debian) pkg="ufw" ;; *) pkg="firewalld" ;; esac
+    if ask_install_addition "firewall rules" "$pkg" "create the migrated firewall rules"; then
+      if have_cmd ufw; then backend="ufw"; enablecmd="ufw enable"
+      elif have_cmd firewall-cmd; then backend="firewalld"; enablecmd="systemctl enable --now firewalld"; fi
+    fi
+    [ -z "$backend" ] && { mark_manual "firewall rules" "no ufw/firewalld available"; return 0; }
+  fi
+
+  local name dir action enabled proto port lproto dirl
+  while IFS="$(printf '\t')" read -r name dir action enabled proto port; do
+    [ -z "$name" ] && continue
+    lproto="$(printf '%s' "$proto" | tr '[:upper:]' '[:lower:]')"
+    dirl="$(printf '%s' "$dir" | tr '[:upper:]' '[:lower:]')"
+    # Only rules with a concrete TCP/UDP port map cleanly; app/service rules don't.
+    case "$lproto" in tcp|udp) ;; *) mark_manual "fw: $name" "not portable to $backend (proto='${proto:-?}' port='${port:-?}')"; continue ;; esac
+    [ -z "$port" ] && { mark_manual "fw: $name" "no local port; not portable to $backend"; continue; }
+    case "$backend" in
+      ufw)
+        if [ "$enabled" != "True" ]; then mark_skip "fw: $name" "disabled rule (ufw cannot store disabled rules)"; continue; fi
+        local verb="allow"; [ "$action" = "Block" ] && verb="deny"
+        local dirflag="in"; case "$dirl" in *out*) dirflag="out" ;; esac
+        if capture ufw "$verb" "$dirflag" "${port}/${lproto}"; then mark_set "fw: $name ($verb $dirflag ${port}/${lproto})"
+        else mark_fail "fw: $name" "${LAST_ERR:-ufw rejected the rule}"; fi ;;
+      firewalld)
+        local fwaction="accept"; [ "$action" = "Block" ] && fwaction="reject"
+        local rich="rule family=\"ipv4\" port port=\"${port}\" protocol=\"${lproto}\" ${fwaction}"
+        if firewall-cmd --permanent --query-rich-rule="$rich" >/dev/null 2>&1; then
+          mark_skip "fw: $name" "already present"; continue
+        fi
+        if capture firewall-cmd --permanent --add-rich-rule="$rich"; then
+          [ "$enabled" = "True" ] || info "  (Windows had this rule disabled; it is present in firewalld - remove it if unwanted)"
+          mark_set "fw: $name (${fwaction} ${port}/${lproto})"
+        else mark_fail "fw: $name" "${LAST_ERR:-firewall-cmd rejected the rule}"; fi ;;
+    esac
+  done <<EOF
+$(printf '%s\n' "$FIREWALL_DATA")
+EOF
+
+  # Reload so the transferred rules take effect regardless of the prompt below.
+  case "$backend" in
+    ufw)       ufw reload >/dev/null 2>&1 || true ;;
+    firewalld) firewall-cmd --reload >/dev/null 2>&1 || true ;;
+  esac
+
+  # Ask (in yellow) whether to enable + start the firewall now.
+  if [ -r /dev/tty ]; then
+    warn "Firewall rules transferred. Do you want to enable and start firewall now?"
+    warn "If you feel it might brake something you can skip it now."
+    warn "You can always do that by executing sudo $enablecmd (y/n)"
+    local ans; printf '  (y/n): ' > /dev/tty; read -r ans < /dev/tty || ans="n"
+    case "$ans" in
+      [Yy]*) if capture sh -c "$enablecmd"; then mark_set "firewall enabled ($enablecmd)"
+             else mark_fail "firewall enable" "${LAST_ERR:-$enablecmd failed}"; fi ;;
+      *)     info "firewall left disabled; enable later with: sudo $enablecmd" ;;
+    esac
+  fi
+}
+
+# =============================================================================
+#  POST-INSTALL phase  (runs AFTER apps are installed)
+# =============================================================================
+# Where C_detect staged the user's personal files. apply_settings.sh lives in
+# submodules/, so its grandparent dir is "Execute on Linux!" -> migrated_user_data.
+MIGRATE_STAGE="${MIGRATE_STAGE:-$(dirname "$(cd "$(dirname "$0")" && pwd)")/migrated_user_data}"
+
+# Find an installed app's .desktop id by matching a Windows shortcut name / exe base.
+# Echoes the .desktop basename (e.g. "org.videolan.VLC.desktop") or nothing.
+resolve_desktop() {  # resolve_desktop "Display Name" "exebase"
+  local disp="$1" exe="$2" d f base nlow
+  local dirs="/usr/share/applications /var/lib/flatpak/exports/share/applications $TARGET_HOME/.local/share/applications"
+  # 1) exe base name maps most reliably (e.g. "vlc" -> .../vlc.desktop).
+  for d in $dirs; do
+    [ -d "$d" ] || continue
+    [ -n "$exe" ] || break
+    for f in "$d/"*"${exe}"*.desktop; do
+      [ -f "$f" ] && { basename "$f"; return 0; }
+    done
+  done
+  # 2) fall back to a case-insensitive match on the desktop file's Name= field.
+  nlow="$(printf '%s' "$disp" | tr '[:upper:]' '[:lower:]')"
+  [ -n "$nlow" ] || return 1
+  for d in $dirs; do
+    [ -d "$d" ] || continue
+    for f in "$d/"*.desktop; do
+      [ -f "$f" ] || continue
+      if grep -iqE "^Name=.*${nlow}" "$f" 2>/dev/null; then basename "$f"; return 0; fi
+    done
+  done
+  return 1
+}
+
+# Append a .desktop id to the GNOME favourites list, idempotently.
+add_favorite() {  # add_favorite "app.desktop"
+  local id="$1" cur
+  case "$DE" in gnome|cinnamon) ;; *) mark_manual "favourite: $id" "pin it in your DE manually"; return 0 ;; esac
+  run_as_user gsettings list-keys org.gnome.shell 2>/dev/null | grep -qx favorite-apps || {
+    mark_skip "favourite: $id" "org.gnome.shell favorite-apps not available on $DE"; return 0; }
+  cur="$(run_as_user gsettings get org.gnome.shell favorite-apps 2>/dev/null)"   # e.g. ['a.desktop', 'b.desktop']
+  case "$cur" in *"'$id'"*) mark_skip "favourite: $id" "already pinned"; return 0 ;; esac
+  # An empty list is reported as "[]" OR (typed) "@as []"; strip the annotation + spaces.
+  local newlist stripped
+  stripped="$(printf '%s' "$cur" | sed 's/^@as //; s/[[:space:]]//g')"
+  if [ -z "$cur" ] || [ "$stripped" = "[]" ]; then
+    newlist="['$id']"
+  else
+    newlist="$(printf '%s' "$cur" | sed "s/]$/, '$id']/")"
+  fi
+  if capture run_as_user gsettings set org.gnome.shell favorite-apps "$newlist"; then mark_set "favourite pinned: $id"
+  else mark_fail "favourite: $id" "${LAST_ERR:-could not update favorite-apps}"; fi
+}
+
+apply_shortcuts() {
+  [ -z "$(printf '%s' "$SHORTCUTS_DATA" | tr -d '[:space:]')" ] && return 0
+  log "Shortcuts (Quick Launch / Start menu / Desktop) -> installed apps"
+  local appdir="$TARGET_HOME/.local/share/applications" kind disp exe did
+  while IFS="$(printf '\t')" read -r kind disp exe; do
+    [ -z "$disp$exe" ] && continue
+    did="$(resolve_desktop "$disp" "$exe")" || { mark_skip "shortcut: ${disp:-$exe}" "no installed equivalent (skipped to avoid a broken link)"; continue; }
+    case "$kind" in
+      desktop)
+        local src=""
+        for d in /usr/share/applications /var/lib/flatpak/exports/share/applications "$appdir"; do
+          [ -f "$d/$did" ] && { src="$d/$did"; break; }
+        done
+        [ -z "$src" ] && { mark_skip "desktop shortcut: $disp" "resolved app file not found"; continue; }
+        mkdir -p "$TARGET_HOME/Desktop"
+        if cp -f "$src" "$TARGET_HOME/Desktop/$did" 2>/dev/null; then
+          chown "$TARGET_USER":"$TARGET_USER" "$TARGET_HOME/Desktop/$did" 2>/dev/null || true
+          chmod +x "$TARGET_HOME/Desktop/$did" 2>/dev/null || true
+          run_as_user gio set "$TARGET_HOME/Desktop/$did" metadata::trusted true >/dev/null 2>&1 || true
+          mark_set "desktop shortcut: $disp -> $did"
+        else mark_fail "desktop shortcut: $disp" "could not write to ~/Desktop"; fi ;;
+      quicklaunch|startmenu) add_favorite "$did" ;;
+      *) mark_skip "shortcut: $disp" "unknown kind '$kind'" ;;
+    esac
+  done <<EOF
+$(printf '%s\n' "$SHORTCUTS_DATA")
+EOF
+}
+
+# Record a note ONLY in the results log file -- not on screen, not in the printed
+# summary (print_* ignores the NOTE status). Used for startup items / services with
+# no Linux equivalent: harmless misses the user said "do not and cannot matter".
+log_note() { record_line NOTE "$1" "${2:-}"; }
+
+# Startup items -> XDG autostart, but ONLY when they resolve to an installed app.
+# Scope is preserved: Windows machine-wide -> /etc/xdg/autostart (system); current
+# user -> ~/.config/autostart (user). Non-resolving items are recorded log-only.
+apply_startup_items() {
+  [ -z "$(printf '%s' "$STARTUP_DATA" | tr -d '[:space:]')" ] && return 0
+  log "Startup items -> autostart (resolved apps only)"
+  local scope name exe did src d dest
+  while IFS="$(printf '\t')" read -r scope name exe; do
+    [ -z "$name$exe" ] && continue
+    did="$(resolve_desktop "$name" "$exe")" || { log_note "startup: ${name:-$exe}" "no installed equivalent (left out; harmless)"; continue; }
+    src=""
+    for d in /usr/share/applications /var/lib/flatpak/exports/share/applications "$TARGET_HOME/.local/share/applications"; do
+      [ -f "$d/$did" ] && { src="$d/$did"; break; }
+    done
+    [ -z "$src" ] && { log_note "startup: $name" "resolved app file not found"; continue; }
+    case "$scope" in
+      system) dest="/etc/xdg/autostart/$did" ;;
+      *)      dest="$TARGET_HOME/.config/autostart/$did" ;;
+    esac
+    [ -e "$dest" ] && { mark_skip "startup: $name" "already in autostart"; continue; }
+    mkdir -p "$(dirname "$dest")"
+    if cp -f "$src" "$dest" 2>/dev/null; then
+      [ "$scope" = "system" ] || chown "$TARGET_USER":"$TARGET_USER" "$dest" 2>/dev/null || true
+      mark_set "startup ($scope): $name -> autostart"
+    else mark_fail "startup: $name" "could not write autostart entry"; fi
+  done <<EOF
+$(printf '%s\n' "$STARTUP_DATA")
+EOF
+}
+
+# Auto-start Windows services -> enable the systemd unit ONLY when a unit whose base
+# name clearly matches exists (services are system scope). No match -> log-only note.
+enable_services() {
+  [ -z "$(printf '%s' "$SERVICES_DATA" | tr -d '[:space:]')" ] && return 0
+  log "Auto-start services -> systemd (clear name matches only)"
+  if ! have_cmd systemctl; then log_note "services" "systemctl not available"; return 0; fi
+  local units disp name key unit
+  units="$(systemctl list-unit-files --type=service --no-legend --no-pager 2>/dev/null | awk '{print $1}')"
+  while IFS="$(printf '\t')" read -r disp name; do
+    [ -z "$disp$name" ] && continue
+    # Normalize the Windows service name to a bare alpha token (drop arch/version/punct).
+    key="$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]' | sed -E 's/x64|x86|amd64//g; s/[0-9]+//g; s/[^a-z]//g')"
+    [ -z "$key" ] && { log_note "service: ${disp:-$name}" "no comparable name"; continue; }
+    unit="$(printf '%s\n' "$units" | grep -iE "^${key}\.service$" | head -n1)"
+    [ -z "$unit" ] && { log_note "service: ${disp:-$name}" "no clearly-matching systemd unit"; continue; }
+    if systemctl is-enabled "$unit" >/dev/null 2>&1; then mark_skip "service: $disp" "$unit already enabled"; continue; fi
+    if capture systemctl enable --now "$unit"; then mark_set "service: $disp -> enabled $unit"
+    else mark_fail "service: $disp" "${LAST_ERR:-could not enable $unit}"; fi
+  done <<EOF
+$(printf '%s\n' "$SERVICES_DATA")
+EOF
+}
+
+# C_detect packs the user's personal files into ONE encrypted archive next to the
+# staging dir: "<migrated_user_data>.tar.enc" (AES-256-CBC / PBKDF2, same transfer
+# password as WiFi). Decrypt + extract it ONCE into a private temp dir; copy_ssh and
+# copy_contacts then read from there. STAGE_DIR is the dir they read; STAGE_TMP is
+# cleaned up afterwards. If no archive but a plaintext staging dir exists (standalone
+# / legacy), use that directly.
+STAGE_DIR=""; STAGE_TMP=""
+unpack_stage() {
+  local archive="${MIGRATE_STAGE}.tar.enc"
+  if [ ! -f "$archive" ]; then
+    [ -d "$MIGRATE_STAGE" ] && [ -n "$(ls -A "$MIGRATE_STAGE" 2>/dev/null)" ] && STAGE_DIR="$MIGRATE_STAGE"
+    return 0
+  fi
+  if ! have_cmd openssl; then ask_install_addition "personal data" "openssl" "decrypt your transferred SSH keys and Contacts" || { mark_skip "personal data" "openssl unavailable to decrypt the archive"; return 0; }; fi
+  if ! have_cmd tar; then mark_skip "personal data" "tar unavailable to extract the archive"; return 0; fi
+  local key=""
+  if [ -r /dev/tty ]; then
+    printf '  Enter the password used to encrypt your transferred personal data (SSH keys / Contacts; same as WiFi; empty to skip): ' > /dev/tty
+    read -r key < /dev/tty || key=""
+  fi
+  [ -z "$key" ] && { mark_skip "personal data" "no decryption password given (SSH/Contacts skipped)"; return 0; }
+  STAGE_TMP="$(mktemp -d 2>/dev/null || echo /tmp/mtl_stage.$$)"; mkdir -p "$STAGE_TMP"
+  if openssl enc -d -aes-256-cbc -pbkdf2 -salt -pass pass:"$key" -in "$archive" 2>/dev/null | tar -xf - -C "$STAGE_TMP" 2>/dev/null; then
+    STAGE_DIR="$STAGE_TMP"
+  else
+    rm -rf "$STAGE_TMP" 2>/dev/null || true; STAGE_TMP=""
+    mark_fail "personal data" "could not decrypt the archive (wrong password?) - SSH/Contacts skipped"
+  fi
+}
+
+cleanup_stage() {
+  [ -n "$STAGE_TMP" ] && rm -rf "$STAGE_TMP" 2>/dev/null || true
+}
+
+copy_ssh() {
+  local src="$STAGE_DIR/ssh"
+  [ -n "$STAGE_DIR" ] && [ -d "$src" ] && [ -n "$(ls -A "$src" 2>/dev/null)" ] || return 0
+  log "SSH keys / config -> ~/.ssh"
+  local dest="$TARGET_HOME/.ssh" f base out
+  mkdir -p "$dest"; chmod 700 "$dest" 2>/dev/null || true
+  for f in "$src"/*; do
+    [ -f "$f" ] || continue
+    base="$(basename "$f")"
+    out="$dest/$base"
+    [ -e "$out" ] && { mark_skip "ssh: $base" "already exists (left untouched)"; continue; }
+    if cp -f "$f" "$out" 2>/dev/null; then
+      chown "$TARGET_USER":"$TARGET_USER" "$out" 2>/dev/null || true
+      case "$base" in *.pub|config|known_hosts|authorized_keys) chmod 644 "$out" 2>/dev/null || true ;; *) chmod 600 "$out" 2>/dev/null || true ;; esac
+      mark_set "ssh file: $base"
+    else mark_fail "ssh: $base" "could not copy into ~/.ssh"; fi
+  done
+  chown "$TARGET_USER":"$TARGET_USER" "$dest" 2>/dev/null || true
+}
+
+copy_contacts() {
+  local src="$STAGE_DIR/contacts"
+  [ -n "$STAGE_DIR" ] && [ -d "$src" ] && [ -n "$(ls -A "$src" 2>/dev/null)" ] || return 0
+  log "Contacts -> ~/Contacts"
+  local dest="$TARGET_HOME/Contacts"
+  mkdir -p "$dest"
+  if cp -rn "$src"/. "$dest"/ 2>/dev/null; then
+    chown -R "$TARGET_USER":"$TARGET_USER" "$dest" 2>/dev/null || true
+    mark_set "contacts copied to ~/Contacts (.contact files are XML - import into your address book)"
+  else
+    mark_fail "contacts" "could not copy into ~/Contacts"
+  fi
+}
+
+run_pre() {
+  apply_display_scaling
+  apply_resolution
+  apply_mouse
+  apply_lock_timeout
+  apply_keyboard_layout
+  apply_accessibility
+  disable_telemetry_location
+  apply_timezone_timesync
+  apply_wifi
+  apply_firewall
+  apply_lid_behavior
+  info "Note: keyboard shortcuts (copy/paste/screenshot/etc.) map to your DE's"
+  info "      defaults on Linux; review System Settings > Keyboard if needed."
+}
+
+run_post() {
+  apply_shortcuts
+  apply_startup_items
+  enable_services
+  unpack_stage
+  copy_ssh
+  copy_contacts
+  cleanup_stage
+}
+
 main() {
   require_root
   detect_distro
   detect_arch
   detect_de
   MODULE="Config settings"
-  log "Migrate to Linux  --  Apply Settings"
+  # Phase: pre (before apps), post (after apps), or all (standalone). Default all.
+  local phase="${1:-all}"
+  log "Migrate to Linux  --  Apply Settings (${phase})"
   info "Distribution : ${DISTRO_NAME}"
   info "Desktop env  : ${DE}"
 
-  apply_display_scaling
-  apply_lock_timeout
-  apply_keyboard_layout
-  disable_telemetry_location
-  apply_lid_behavior
+  case "$phase" in
+    pre)  run_pre ;;
+    post) run_post ;;
+    *)    run_pre; run_post ;;
+  esac
 
-  info "Note: keyboard shortcuts (copy/paste/screenshot/etc.) map to your DE's"
-  info "      defaults on Linux; review System Settings > Keyboard if needed."
   print_summary
 }
 
