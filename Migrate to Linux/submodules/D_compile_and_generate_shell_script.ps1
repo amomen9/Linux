@@ -492,22 +492,82 @@ Write-Host ("  apps: {0} total ({1} enriched, {2} fallback); {3} manual file-pro
 # ---------------------------------------------------------------------------
 $cfgMap = @{
     'scaling'             = 'CFG_scaling'
+    'resolution'          = 'CFG_resolution'
     'lock_screen_timeout' = 'CFG_lock_timeout'
     'layout'              = 'CFG_keyboard_layout'
+    'key_repeat_delay'    = 'CFG_key_repeat_delay'
+    'key_repeat_rate'     = 'CFG_key_repeat_rate'
+    'numlock'             = 'CFG_numlock'
     'telemetry_level'     = 'CFG_telemetry'
     'location_service'    = 'CFG_location'
+    'mouse_size'          = 'CFG_mouse_size'
+    'mouse_speed'         = 'CFG_mouse_speed'
+    'mouse_accel'         = 'CFG_mouse_accel'
+    'a11y_stickykeys'     = 'CFG_a11y_stickykeys'
+    'a11y_slowkeys'       = 'CFG_a11y_slowkeys'
+    'a11y_bouncekeys'     = 'CFG_a11y_bouncekeys'
+    'a11y_mousekeys'      = 'CFG_a11y_mousekeys'
+    'a11y_highcontrast'   = 'CFG_a11y_highcontrast'
+    'a11y_magnifier'      = 'CFG_a11y_magnifier'
+    'a11y_screenreader'   = 'CFG_a11y_screenreader'
+    'timezone'            = 'CFG_timezone'
+    'ntp_server'          = 'CFG_ntp_server'
 }
 $settingsLines = New-Object System.Collections.Generic.List[string]
+# WiFi / Firewall rows are multi-field (pipe-packed in WindowsValue). They are emitted
+# as TAB-delimited lines into single-quoted heredocs in apply_settings.sh, so they must
+# stay LITERAL (no bash escaping -- that would corrupt '$' in WiFi passwords). We only
+# strip embedded tabs/newlines so the TSV layout is preserved.
+$wifiLines = New-Object System.Collections.Generic.List[string]
+$fwLines   = New-Object System.Collections.Generic.List[string]
+$scLines   = New-Object System.Collections.Generic.List[string]
+$startLines = New-Object System.Collections.Generic.List[string]
+$svcLines   = New-Object System.Collections.Generic.List[string]
+function ConvertTo-TsvLine { param([string] $PipeValue)
+    if ($null -eq $PipeValue) { return '' }
+    $fields = $PipeValue -split '\|'
+    $clean  = $fields | ForEach-Object { ($_ -replace "[`r`n`t]", ' ') }
+    return ($clean -join "`t")
+}
 if (Test-Path $ConfigCsv) {
     foreach ($row in (Import-Csv -Path $ConfigCsv)) {
         $key = [string]$row.ConfigKey
+        $cat = [string]$row.Category
         if ($cfgMap.ContainsKey($key)) {
             $settingsLines.Add($cfgMap[$key] + '="' + (ConvertTo-BashString ([string]$row.WindowsValue)) + '"')
+        }
+        elseif ($cat -eq 'Wifi' -and $key -eq 'wifi_profile') {
+            $line = ConvertTo-TsvLine ([string]$row.WindowsValue)
+            if ($line.Trim()) { $wifiLines.Add($line) }
+        }
+        elseif ($cat -eq 'Firewall' -and $key -eq 'fw_rule') {
+            $line = ConvertTo-TsvLine ([string]$row.WindowsValue)
+            if ($line.Trim()) { $fwLines.Add($line) }
+        }
+        elseif ($cat -eq 'Shortcuts') {
+            # ConfigKey is the shortcut kind (quicklaunch|startmenu|desktop); prepend it.
+            $line = ConvertTo-TsvLine (($key + '|' + [string]$row.WindowsValue))
+            if ((($key + [string]$row.WindowsValue)).Trim()) { $scLines.Add($line) }
+        }
+        elseif ($cat -eq 'Startup' -and $key -eq 'startup_item') {
+            # Carry Scope (user|system) as the first field:  scope<TAB>name<TAB>exeBase
+            $line = ConvertTo-TsvLine (((([string]$row.Scope).ToLower()) + '|' + [string]$row.WindowsValue))
+            if (([string]$row.WindowsValue).Trim()) { $startLines.Add($line) }
+        }
+        elseif ($cat -eq 'Services' -and $key -eq 'service') {
+            $line = ConvertTo-TsvLine ([string]$row.WindowsValue)   # display<TAB>name
+            if (([string]$row.WindowsValue).Trim()) { $svcLines.Add($line) }
         }
     }
 }
 if ($settingsLines.Count -eq 0) { $settingsLines.Add('# (no mappable settings found in C_windows_configs.csv)') }
 $settingsData = ($settingsLines -join "`n")
+$wifiData     = ($wifiLines -join "`n")
+$fwData       = ($fwLines -join "`n")
+$scData       = ($scLines -join "`n")
+$startData    = ($startLines -join "`n")
+$svcData      = ($svcLines -join "`n")
+Write-Host ("  settings: {0} scalar; wifi: {1}; firewall: {2}; shortcuts: {3}; startup: {4}; services: {5}" -f ($settingsLines.Count), $wifiLines.Count, $fwLines.Count, $scLines.Count, $startLines.Count, $svcLines.Count) -ForegroundColor Green
 
 # ---------------------------------------------------------------------------
 # 3. DRIVERS  (from A_installed_windows_drivers.csv) - reference list
@@ -543,7 +603,7 @@ $subDir = Join-Path $OutputDir 'submodules'
 if (-not (Test-Path $subDir -PathType Container)) { New-Item -ItemType Directory -Path $subDir -Force | Out-Null }
 $map = @{
     'install_must_have_software.sh.tmpl' = @{ apps = $appsData }
-    'apply_settings.sh.tmpl'             = @{ settings = $settingsData }
+    'apply_settings.sh.tmpl'             = @{ settings = $settingsData; wifi = $wifiData; firewall = $fwData; shortcuts = $scData; startup = $startData; services = $svcData }
     'install_device_drivers.sh.tmpl'     = @{ drivers = $driversData }
     'execute_all.sh.tmpl'                = @{ manual = $manualData; unmatched = $unmatchedData }
 }
@@ -556,6 +616,11 @@ foreach ($tmplName in $map.Keys) {
     $content = $content.Replace('### __COMMON__ ###', $common)
     if ($map[$tmplName].ContainsKey('apps'))     { $content = $content.Replace('### __APPS_DATA__ ###', $map[$tmplName].apps) }
     if ($map[$tmplName].ContainsKey('settings')) { $content = $content.Replace('### __SETTINGS_DATA__ ###', $map[$tmplName].settings) }
+    if ($map[$tmplName].ContainsKey('wifi'))     { $content = $content.Replace('### __WIFI_DATA__ ###', $map[$tmplName].wifi) }
+    if ($map[$tmplName].ContainsKey('firewall')) { $content = $content.Replace('### __FIREWALL_DATA__ ###', $map[$tmplName].firewall) }
+    if ($map[$tmplName].ContainsKey('shortcuts')){ $content = $content.Replace('### __SHORTCUTS_DATA__ ###', $map[$tmplName].shortcuts) }
+    if ($map[$tmplName].ContainsKey('startup'))  { $content = $content.Replace('### __STARTUP_DATA__ ###', $map[$tmplName].startup) }
+    if ($map[$tmplName].ContainsKey('services')) { $content = $content.Replace('### __SERVICES_DATA__ ###', $map[$tmplName].services) }
     if ($map[$tmplName].ContainsKey('drivers'))  { $content = $content.Replace('### __DRIVERS_DATA__ ###', $map[$tmplName].drivers) }
     if ($map[$tmplName].ContainsKey('manual'))   { $content = $content.Replace('### __MANUAL_APPS__ ###', $map[$tmplName].manual) }
     if ($map[$tmplName].ContainsKey('unmatched')){ $content = $content.Replace('### __UNMATCHED_APPS__ ###', $map[$tmplName].unmatched) }

@@ -212,10 +212,46 @@ require_root() {
 }
 
 # The non-root user we should install Flatpak apps / write desktop files for,
-# even though the script itself runs under sudo.
-TARGET_USER="${SUDO_USER:-$(id -un)}"
+# even though the script itself runs under sudo. logname is the original login
+# name of the session and is more reliable than $SUDO_USER (which is empty when
+# the script is not entered through sudo, and can be stale across su/sudo chains).
+TARGET_USER="$(logname 2>/dev/null || true)"
+{ [ -z "$TARGET_USER" ] || [ "$TARGET_USER" = "root" ]; } && TARGET_USER="${SUDO_USER:-$(id -un)}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" 2>/dev/null | cut -d: -f6)"
 [ -z "$TARGET_HOME" ] && TARGET_HOME="$HOME"
+
+# ----------------------------- optional additions ----------------------------
+# Some migrated settings (e.g. firewall rules, display resolution, NTP) need a
+# package that may not be installed. ask_install_addition explains WHAT the
+# package is for and offers yes / skip / skip all, mirroring the skip-all model
+# used by manual_fallback. Returns 0 if the package(s) are now present (user said
+# yes and the install succeeded), 1 otherwise (skipped, no tty, or install failed).
+#   ask_install_addition "Display resolution" "x11-xserver-utils" "set the screen resolution"
+ADDITIONS_SKIP_ALL=0
+ask_install_addition() {  # ask_install_addition PURPOSE_LABEL "PKG [PKG...]" WHAT_FOR
+  local label="$1" pkgs="$2" whatfor="$3" ans
+  [ "${ADDITIONS_SKIP_ALL:-0}" = "1" ] && { mark_skip "$label" "addition skipped (skip all)"; return 1; }
+  if is_dry_run; then info "[dry-run] would offer to install: $pkgs (for $label)"; return 1; fi
+  printf '\n\033[1;34m==> %s needs an extra package\033[0m\n' "$label" >&3
+  info "The package(s) \"$pkgs\" are required to ${whatfor}."
+  info "They come from your distribution's own repositories ($PM)."
+  if [ ! -r /dev/tty ]; then mark_skip "$label" "addition needs \"$pkgs\" (no tty to ask)"; return 1; fi
+  while :; do
+    printf '  Install %s now? (y=yes / s=skip / a=skip all): ' "$pkgs" > /dev/tty
+    read -r ans < /dev/tty || ans="s"
+    case "$ans" in
+      [Yy]|[Yy][Ee][Ss])
+        pm_refresh
+        # shellcheck disable=SC2086
+        if capture pm_install $pkgs; then ok "installed: $pkgs"; return 0
+        else mark_fail "$label" "${LAST_ERR:-could not install $pkgs}"; return 1; fi ;;
+      [Aa]|[Aa][Ll][Ll]|'skip all'|'Skip all'|'Skip All'|'SKIP ALL')
+        ADDITIONS_SKIP_ALL=1; mark_skip "$label" "addition skipped (skip all)"; return 1 ;;
+      [Ss]|[Ss][Kk][Ii][Pp]) mark_skip "$label" "addition skipped (needs $pkgs)"; return 1 ;;
+      *) printf '\033[1;31m  Please answer y (yes), s (skip), or a (skip all).\033[0m\n' > /dev/tty ;;
+    esac
+  done
+}
 
 # =============================================================================
 #  DISTRO + ARCHITECTURE DETECTION
@@ -1231,11 +1267,1052 @@ print_launched_containers() {
 
 
 # Captured Windows settings (injected from C_windows_configs.csv):
+CFG_resolution="2560x1600"
 CFG_scaling="150%"
 CFG_keyboard_layout="English (United States) (en-US)"
 CFG_telemetry="Full"
 CFG_location="enabled"
 CFG_lock_timeout="10 min"
+CFG_mouse_size="48"
+CFG_mouse_speed="0.8"
+CFG_mouse_accel="default"
+CFG_a11y_stickykeys="false"
+CFG_a11y_slowkeys="false"
+CFG_a11y_mousekeys="false"
+CFG_a11y_highcontrast="false"
+CFG_a11y_magnifier="false"
+CFG_key_repeat_delay="500"
+CFG_key_repeat_rate="33"
+CFG_numlock="true"
+CFG_timezone="Europe/Berlin"
+CFG_ntp_server="pool.ntp.org"
+
+# WiFi profiles, one per line:  ssid<TAB>auth<TAB>secret<TAB>sectype
+#   sectype = enc (secret is an OpenSSL-encrypted, base64 key) | plain | none
+# Quoted heredoc so passwords/keys are never shell-expanded.
+WIFI_DATA="$(cat <<'__WIFI_EOF__'
+eduroam	wpa		none
+somenet	open		none
+V.momen	wpa		none
+Tbilisi Loves You	open		none
+Tbilisi Airport Free	open		none
+Simorgh-WiFi	open		none
+Shatel	wpa		none
+SHAW-48EE	wpa		none
+Redmi Note 10 Pro Max	wpa		none
+Parsway	wpa		none
+NZT9930134C	wpa		none
+Mofid-GoHyper!	open		none
+Jobvision-WiFi	wpa		none
+JobVision_DLink	wpa		none
+JobVision-3rd	wpa		none
+JobVision	wpa		none
+Galaxy A51	wpa		none
+Fatemeh's Galaxy A71	wpa		none
+AndroidAPA50	wpa		none
+DivorceHousing	wpa		none
+__WIFI_EOF__
+)"
+
+# Firewall rules, one per line:  name<TAB>dir<TAB>action<TAB>enabled<TAB>proto<TAB>port
+FIREWALL_DATA="$(cat <<'__FW_EOF__'
+Network Discovery (UPnP-Out)	Outbound	Allow	False	TCP	Any
+Wi-Fi Direct Spooler Use (Out)	Outbound	Allow	True	Any	Any
+Remote Assistance (TCP-Out)	Outbound	Allow	False	TCP	Any
+Network Discovery (SSDP-Out)	Outbound	Allow	True	UDP	Any
+Network Discovery (WSD Events-Out)	Outbound	Allow	True	TCP	Any
+Remote Event Log Management (NP-In)	Inbound	Allow	False	TCP	445
+Remote Scheduled Tasks Management (RPC)	Inbound	Allow	False	TCP	RPC
+Wi-Fi Direct Spooler Use (In)	Inbound	Allow	True	Any	Any
+Remote Assistance (TCP-Out)	Outbound	Allow	False	TCP	Any
+Distributed Transaction Coordinator (TCP-Out)	Outbound	Allow	False	TCP	Any
+Routing and Remote Access (L2TP-Out)	Outbound	Allow	False	UDP	Any
+Core Networking - Packet Too Big (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC
+Connected Devices Platform (UDP-Out)	Outbound	Allow	True	UDP	Any
+Windows Collaboration Computer Name Registration Service (PNRP-In)	Inbound	Allow	False	UDP	3540
+Network Discovery (NB-Name-Out)	Outbound	Allow	False	UDP	Any
+Network Discovery (NB-Datagram-Out)	Outbound	Allow	False	UDP	Any
+Remote Event Log Management (RPC)	Inbound	Allow	False	TCP	RPC
+Core Networking - IPv6 (IPv6-In)	Inbound	Allow	True	41	Any
+Connected Devices Platform - Wi-Fi Direct Transport (TCP-Out)	Outbound	Allow	True	TCP	Any
+Network Discovery (LLMNR-UDP-In)	Inbound	Allow	False	UDP	5355
+Remote Event Log Management (NP-In)	Inbound	Allow	False	TCP	445
+SNMP Trap Service (UDP In)	Inbound	Allow	False	UDP	162
+mDNS (UDP-Out)	Outbound	Allow	True	UDP	Any
+Delivery Optimization (UDP-In)	Inbound	Allow	True	UDP	7680
+Core Networking - Parameter Problem (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC
+Core Networking - Router Advertisement (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC
+Core Networking - Destination Unreachable Fragmentation Needed (ICMPv4-In)	Inbound	Allow	True	ICMPv4	RPC
+Core Networking - Dynamic Host Configuration Protocol (DHCP-In)	Inbound	Allow	True	UDP	68
+Network Discovery (WSD-In)	Inbound	Allow	True	UDP	3702
+Routing and Remote Access (GRE-In)	Inbound	Allow	False	47	Any
+TPM Virtual Smart Card Management (DCOM-In)	Inbound	Allow	False	TCP	135
+Core Networking - Dynamic Host Configuration Protocol for IPv6(DHCPV6-In)	Inbound	Allow	True	UDP	546
+Distributed Transaction Coordinator (RPC)	Inbound	Allow	False	TCP	RPC
+Network Discovery for Teredo (SSDP-In)	Inbound	Allow	False	UDP	Any
+iSCSI Service (TCP-Out)	Outbound	Allow	False	TCP	Any
+Network Discovery (UPnPHost-Out)	Outbound	Allow	False	TCP	Any
+Connected Devices Platform (TCP-Out)	Outbound	Allow	True	TCP	Any
+Distributed Transaction Coordinator (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap
+Wi-Fi Direct Scan Service Use (In)	Inbound	Allow	True	Any	Any
+Remote Assistance (PNRP-Out)	Outbound	Allow	False	UDP	Any
+Network Discovery (WSD-In)	Inbound	Allow	True	UDP	3702
+Core Networking - Router Solicitation (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC
+Remote Assistance (SSDP UDP-Out)	Outbound	Allow	False	UDP	Any
+Remote Assistance (SSDP TCP-Out)	Outbound	Allow	False	TCP	Any
+Network Discovery (WSD Events-In)	Inbound	Allow	True	TCP	5357
+Core Networking - Neighbor Discovery Solicitation (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC
+Remote Event Monitor (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap
+Remote Assistance (DCOM-In)	Inbound	Allow	False	TCP	135
+Network Discovery (UPnP-Out)	Outbound	Allow	True	TCP	Any
+Network Discovery (WSD EventsSecure-In)	Inbound	Allow	True	TCP	5358
+Remote Volume Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap
+Remote Assistance (RA Server TCP-In)	Inbound	Allow	False	TCP	Any
+Network Discovery (UPnP-In)	Inbound	Allow	True	TCP	2869
+Remote Event Log Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap
+Core Networking - Multicast Listener Report v2 (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC
+Core Networking Diagnostics - ICMP Echo Request (ICMPv6-Out)	Outbound	Allow	False	ICMPv6	RPC
+Remote Event Monitor (RPC)	Inbound	Allow	False	TCP	RPC
+Microsoft Media Foundation Network Source IN [UDP 5004-5009]	Inbound	Allow	True	UDP	5000-5020
+Windows Device Management Enrollment Service (TCP out)	Outbound	Allow	True	TCP	49152-65535
+SNMP Trap Service (UDP In)	Inbound	Allow	False	UDP	162
+Windows Management Instrumentation (ASync-In)	Inbound	Allow	False	TCP	Any
+Core Networking Diagnostics - ICMP Echo Request (ICMPv4-Out)	Outbound	Allow	False	ICMPv4	RPC
+mDNS (UDP-Out)	Outbound	Allow	True	UDP	Any
+Windows Management Instrumentation (WMI-In)	Inbound	Allow	False	TCP	Any
+Windows Defender Firewall Remote Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap
+Performance Logs and Alerts (TCP-In)	Inbound	Allow	False	TCP	Any
+Windows Remote Management (HTTP-In)	Inbound	Allow	True	TCP	5985
+Delivery Optimization (TCP-In)	Inbound	Allow	True	TCP	7680
+Distributed Transaction Coordinator (TCP-Out)	Outbound	Allow	False	TCP	Any
+Network Discovery (NB-Name-In)	Inbound	Allow	False	UDP	137
+Virtual Machine Monitoring (RPC)	Inbound	Allow	False	TCP	RPC
+Core Networking - Multicast Listener Done (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC
+Windows Device Management Certificate Installer (TCP out)	Outbound	Allow	True	TCP	49152-65535
+iSCSI Service (TCP-In)	Inbound	Allow	False	TCP	Any
+Remote Assistance (PNRP-In)	Inbound	Allow	False	UDP	3540
+Routing and Remote Access (PPTP-In)	Inbound	Allow	False	TCP	1723
+Core Networking - Teredo (UDP-Out)	Outbound	Allow	True	UDP	Any
+Remote Volume Management - Virtual Disk Service (RPC)	Inbound	Allow	False	TCP	RPC
+TPM Virtual Smart Card Management (TCP-In)	Inbound	Allow	False	TCP	Any
+Windows Management Instrumentation (WMI-Out)	Outbound	Allow	False	TCP	Any
+Network Discovery (NB-Datagram-In)	Inbound	Allow	False	UDP	138
+Virtual Machine Monitoring (DCOM-In)	Inbound	Allow	False	TCP	135
+Core Networking - Router Solicitation (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC
+Windows Management Instrumentation (DCOM-In)	Inbound	Allow	False	TCP	135
+Wireless Display Infrastructure Back Channel (TCP-In)	Inbound	Allow	True	TCP	7250
+Windows Collaboration Computer Name Registration Service (SSDP-Out)	Outbound	Allow	False	UDP	Any
+Network Discovery (Pub-WSD-In)	Inbound	Allow	True	UDP	3702
+Network Discovery (WSD EventsSecure-Out)	Outbound	Allow	False	TCP	Any
+Core Networking - Group Policy (LSASS-Out)	Outbound	Allow	True	TCP	Any
+Recommended Troubleshooting Client (HTTP/HTTPS Out)	Outbound	Allow	True	TCP	Any
+Remote Scheduled Tasks Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap
+Remote Assistance (PNRP-In)	Inbound	Allow	False	UDP	3540
+Network Discovery (UPnP-Out)	Outbound	Allow	False	TCP	Any
+Windows Peer to Peer Collaboration Foundation (PNRP-In)	Inbound	Allow	False	UDP	3540
+DIAL protocol server (HTTP-In)	Inbound	Allow	True	TCP	10247
+Network Discovery (WSD Events-In)	Inbound	Allow	False	TCP	5357
+Remote Service Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap
+Windows Management Instrumentation (ASync-In)	Inbound	Allow	False	TCP	Any
+Network Discovery (WSD Events-Out)	Outbound	Allow	False	TCP	Any
+Network Discovery (Pub WSD-Out)	Outbound	Allow	True	UDP	Any
+Network Discovery (LLMNR-UDP-Out)	Outbound	Allow	False	UDP	Any
+Virtual Machine Monitoring (NB-Session-In)	Inbound	Allow	False	TCP	139
+Windows Defender Firewall Remote Management (RPC)	Inbound	Allow	False	TCP	RPC
+Wireless Display (TCP-Out)	Outbound	Allow	True	TCP	Any
+Wireless Display (UDP-Out)	Outbound	Allow	True	UDP	Any
+Remote Assistance (RA Server TCP-Out)	Outbound	Allow	False	TCP	Any
+Core Networking - Router Advertisement (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC
+Network Discovery (WSD EventsSecure-In)	Inbound	Allow	False	TCP	5358
+Core Networking - Neighbor Discovery Advertisement (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC
+Core Networking - IPHTTPS (TCP-Out)	Outbound	Allow	True	TCP	Any
+Microsoft Media Foundation Network Source IN [TCP 554]	Inbound	Allow	True	TCP	554,8554-8558
+Network Discovery (SSDP-In)	Inbound	Allow	False	UDP	1900
+Remote Service Management (RPC)	Inbound	Allow	False	TCP	RPC
+Remote Service Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap
+Core Networking - Internet Group Management Protocol (IGMP-Out)	Outbound	Allow	True	2	Any
+Windows Remote Management - Compatibility Mode (HTTP-In)	Inbound	Allow	False	TCP	80
+Network Discovery (WSD-In)	Inbound	Allow	False	UDP	3702
+iSCSI Service (TCP-In)	Inbound	Allow	False	TCP	Any
+Network Discovery (NB-Name-In)	Inbound	Allow	True	UDP	137
+Core Networking - Parameter Problem (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC
+Core Networking - DNS (UDP-Out)	Outbound	Allow	True	UDP	Any
+Network Discovery (NB-Datagram-Out)	Outbound	Allow	True	UDP	Any
+Network Discovery (NB-Datagram-In)	Inbound	Allow	False	UDP	138
+Remote Service Management (NP-In)	Inbound	Allow	False	TCP	445
+Core Networking - Teredo (UDP-In)	Inbound	Allow	True	UDP	Teredo
+Remote Service Management (RPC)	Inbound	Allow	False	TCP	RPC
+Microsoft Media Foundation Network Source OUT [TCP ALL]	Outbound	Allow	True	TCP	Any
+Windows Collaboration Computer Name Registration Service (PNRP-Out)	Outbound	Allow	False	UDP	Any
+Distributed Transaction Coordinator (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap
+Network Discovery (UPnP-In)	Inbound	Allow	False	TCP	2869
+Core Networking - Neighbor Discovery Advertisement (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC
+AllJoyn Router (UDP-Out)	Outbound	Allow	True	UDP	Any
+Windows Defender Firewall Remote Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap
+Remote Service Management (NP-In)	Inbound	Allow	False	TCP	445
+Windows Device Management Device Enroller (TCP out)	Outbound	Allow	True	TCP	49152-65535
+Core Networking - Multicast Listener Query (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC
+Windows Peer to Peer Collaboration Foundation (SSDP-Out)	Outbound	Allow	False	UDP	Any
+Network Discovery (NB-Name-In)	Inbound	Allow	False	UDP	137
+Core Networking Diagnostics - ICMP Echo Request (ICMPv6-In)	Inbound	Allow	False	ICMPv6	RPC
+Remote Volume Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap
+Remote Volume Management - Virtual Disk Service Loader (RPC)	Inbound	Allow	False	TCP	RPC
+TPM Virtual Smart Card Management (DCOM-In)	Inbound	Allow	False	TCP	135
+TPM Virtual Smart Card Management (TCP-In)	Inbound	Allow	False	TCP	Any
+TPM Virtual Smart Card Management (TCP-Out)	Outbound	Allow	False	TCP	Any
+Remote Assistance (SSDP UDP-In)	Inbound	Allow	False	UDP	1900
+Network Discovery (WSD EventsSecure-Out)	Outbound	Allow	False	TCP	Any
+Network Discovery (LLMNR-UDP-Out)	Outbound	Allow	True	UDP	Any
+Network Discovery for Teredo (UPnP-In)	Inbound	Allow	False	TCP	Any
+Network Discovery (Pub WSD-Out)	Outbound	Allow	False	UDP	Any
+Core Networking - Time Exceeded (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC
+Netlogon Service (NP-In)	Inbound	Allow	False	TCP	445
+Network Discovery (SSDP-In)	Inbound	Allow	True	UDP	1900
+Virtual Machine Monitoring (Echo Request - ICMPv4-In)	Inbound	Allow	False	ICMPv4	Any
+Connected Devices Platform (UDP-In)	Inbound	Allow	True	UDP	Any
+Connected Devices Platform (TCP-In)	Inbound	Allow	True	TCP	Any
+Remote Scheduled Tasks Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap
+mDNS (UDP-In)	Inbound	Allow	True	UDP	5353
+AllJoyn Router (TCP-Out)	Outbound	Allow	True	TCP	Any
+Remote Assistance (TCP-In)	Inbound	Allow	False	TCP	Any
+Proximity sharing over TCP (TCP sharing-Out)	Outbound	Allow	True	TCP	Any
+Network Discovery (LLMNR-UDP-In)	Inbound	Allow	True	UDP	5355
+Virtual Machine Monitoring (Echo Request - ICMPv6-In)	Inbound	Allow	False	ICMPv6	Any
+Core Networking - Multicast Listener Report (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC
+TPM Virtual Smart Card Management (TCP-Out)	Outbound	Allow	False	TCP	Any
+Wi-Fi Direct Network Discovery (Out)	Outbound	Allow	True	Any	Any
+Routing and Remote Access (L2TP-In)	Inbound	Allow	False	UDP	1701
+Core Networking - Packet Too Big (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC
+Core Networking - Dynamic Host Configuration Protocol (DHCP-Out)	Outbound	Allow	True	UDP	68
+Core Networking - IPHTTPS (TCP-In)	Inbound	Allow	True	TCP	IPHTTPSIn
+Network Discovery (WSD Events-Out)	Outbound	Allow	False	TCP	Any
+Windows Defender Firewall Remote Management (RPC)	Inbound	Allow	False	TCP	RPC
+AllJoyn Router (TCP-In)	Inbound	Allow	True	TCP	9955
+AllJoyn Router (UDP-In)	Inbound	Allow	True	UDP	Any
+Remote Assistance (PNRP-Out)	Outbound	Allow	False	UDP	Any
+Core Networking - Multicast Listener Done (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC
+Connected User Experiences and Telemetry	Outbound	Allow	True	TCP	Any
+Network Discovery (WSD EventsSecure-In)	Inbound	Allow	False	TCP	5358
+Core Networking - Destination Unreachable (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC
+Wi-Fi Direct Scan Service Use (Out)	Outbound	Allow	True	Any	Any
+Network Discovery (NB-Datagram-In)	Inbound	Allow	True	UDP	138
+Connected Devices Platform - Wi-Fi Direct Transport (TCP-In)	Inbound	Allow	True	TCP	Any
+Remote Scheduled Tasks Management (RPC)	Inbound	Allow	False	TCP	RPC
+Network Discovery (SSDP-Out)	Outbound	Allow	False	UDP	Any
+Core Networking Diagnostics - ICMP Echo Request (ICMPv4-Out)	Outbound	Allow	False	ICMPv4	RPC
+mDNS (UDP-Out)	Outbound	Allow	True	UDP	Any
+Network Discovery (NB-Datagram-Out)	Outbound	Allow	False	UDP	Any
+Performance Logs and Alerts (DCOM-In)	Inbound	Allow	False	TCP	135
+Routing and Remote Access (PPTP-Out)	Outbound	Allow	False	TCP	Any
+Performance Logs and Alerts (TCP-In)	Inbound	Allow	False	TCP	Any
+Windows Remote Management (HTTP-In)	Inbound	Allow	True	TCP	5985
+Network Discovery (WSD-Out)	Outbound	Allow	False	UDP	Any
+Network Discovery (WSD Events-In)	Inbound	Allow	False	TCP	5357
+Core Networking - Neighbor Discovery Solicitation (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC
+Wi-Fi Direct Network Discovery (In)	Inbound	Allow	True	Any	Any
+Windows Peer to Peer Collaboration Foundation (PNRP-Out)	Outbound	Allow	False	UDP	Any
+Wireless Display (TCP-In)	Inbound	Allow	True	TCP	Any
+Windows Collaboration Computer Name Registration Service (SSDP-In)	Inbound	Allow	False	UDP	1900
+Network Discovery (UPnP-In)	Inbound	Allow	False	TCP	2869
+Performance Logs and Alerts (DCOM-In)	Inbound	Allow	False	TCP	135
+Core Networking - IPv6 (IPv6-Out)	Outbound	Allow	True	41	Any
+Network Discovery (WSD EventsSecure-Out)	Outbound	Allow	True	TCP	Any
+Remote Event Log Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap
+Core Networking Diagnostics - ICMP Echo Request (ICMPv6-Out)	Outbound	Allow	False	ICMPv6	RPC
+Windows Management Instrumentation (DCOM-In)	Inbound	Allow	False	TCP	135
+Remote Assistance (SSDP TCP-In)	Inbound	Allow	False	TCP	2869
+Distributed Transaction Coordinator (RPC)	Inbound	Allow	False	TCP	RPC
+Proximity sharing over TCP (TCP sharing-In)	Inbound	Allow	True	TCP	Any
+iSCSI Service (TCP-Out)	Outbound	Allow	False	TCP	Any
+Network Discovery (Pub-WSD-In)	Inbound	Allow	False	UDP	3702
+Core Networking - Internet Group Management Protocol (IGMP-In)	Inbound	Allow	True	2	Any
+Core Networking - Group Policy (NP-Out)	Outbound	Allow	True	TCP	Any
+Windows Management Instrumentation (WMI-In)	Inbound	Allow	False	TCP	Any
+Core Networking - Multicast Listener Report v2 (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC
+Remote Volume Management - Virtual Disk Service Loader (RPC)	Inbound	Allow	False	TCP	RPC
+Network Discovery (WSD-Out)	Outbound	Allow	True	UDP	Any
+Network Discovery (WSD-In)	Inbound	Allow	False	UDP	3702
+Remote Event Log Management (RPC)	Inbound	Allow	False	TCP	RPC
+Core Networking - Multicast Listener Query (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC
+Windows Peer to Peer Collaboration Foundation (SSDP-In)	Inbound	Allow	False	UDP	1900
+Windows Device Management Sync Client (TCP out)	Outbound	Allow	True	TCP	49152-65535
+Core Networking - Multicast Listener Report (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC
+Core Networking Diagnostics - ICMP Echo Request (ICMPv4-In)	Inbound	Allow	False	ICMPv4	RPC
+Secure Socket Tunneling Protocol (SSTP-In)	Inbound	Allow	False	TCP	443
+DIAL protocol server (HTTP-In)	Inbound	Allow	True	TCP	10247
+Distributed Transaction Coordinator (TCP-In)	Inbound	Allow	False	TCP	Any
+Core Networking - Dynamic Host Configuration Protocol for IPv6(DHCPV6-Out)	Outbound	Allow	True	UDP	546
+Remote Volume Management - Virtual Disk Service (RPC)	Inbound	Allow	False	TCP	RPC
+Windows Management Instrumentation (WMI-Out)	Outbound	Allow	False	TCP	Any
+Netlogon Service Authz (RPC)	Inbound	Allow	False	TCP	RPC
+Core Networking - Time Exceeded (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC
+mDNS (UDP-In)	Inbound	Allow	True	UDP	5353
+Remote Assistance (TCP-In)	Inbound	Allow	False	TCP	Any
+Network Discovery (UPnPHost-Out)	Outbound	Allow	True	TCP	Any
+Core Networking Diagnostics - ICMP Echo Request (ICMPv4-In)	Inbound	Allow	False	ICMPv4	RPC
+Windows Remote Management - Compatibility Mode (HTTP-In)	Inbound	Allow	False	TCP	80
+Network Discovery (NB-Name-Out)	Outbound	Allow	True	UDP	Any
+Routing and Remote Access (GRE-Out)	Outbound	Allow	False	47	Any
+Distributed Transaction Coordinator (TCP-In)	Inbound	Allow	False	TCP	Any
+Network Discovery (NB-Name-Out)	Outbound	Allow	False	UDP	Any
+Core Networking - Group Policy (TCP-Out)	Outbound	Allow	True	TCP	Any
+Core Networking Diagnostics - ICMP Echo Request (ICMPv6-In)	Inbound	Allow	False	ICMPv6	RPC
+mDNS (UDP-In)	Inbound	Allow	True	UDP	5353
+Windows Media Player Network Sharing Service (Streaming-TCP-Out)	Outbound	Allow	False	TCP	Any
+Windows Media Player (UDP-In)	Inbound	Allow	False	UDP	Any
+BranchCache Hosted Cache Server(HTTP-Out)	Outbound	Allow	False	TCP	80,443
+Cast to Device functionality (qWave-TCP-Out)	Outbound	Allow	True	TCP	Any
+BranchCache Peer Discovery (WSD-In)	Inbound	Allow	False	UDP	3702
+Cast to Device streaming server (RTCP-Streaming-In)	Inbound	Allow	True	UDP	Any
+Media Center Extenders - HTTP Streaming (TCP-In)	Inbound	Allow	False	TCP	10244
+Wireless Portable Devices (TCP-Out)	Outbound	Allow	False	TCP	Any
+Media Center Extenders - qWave (UDP-In)	Inbound	Allow	False	UDP	2177
+Cast to Device streaming server (RTP-Streaming-Out)	Outbound	Allow	True	UDP	Any
+Cast to Device streaming server (RTP-Streaming-Out)	Outbound	Allow	True	UDP	Any
+Windows Media Player Network Sharing Service (qWave-TCP-In)	Inbound	Allow	False	TCP	2177
+Windows Media Player Network Sharing Service (qWave-UDP-In)	Inbound	Allow	False	UDP	2177
+Cast to Device streaming server (RTCP-Streaming-In)	Inbound	Allow	True	UDP	Any
+Windows Media Player Network Sharing Service (UPnP-In)	Inbound	Allow	False	TCP	2869
+Windows Media Player Network Sharing Service (Streaming-UDP-Out)	Outbound	Allow	False	UDP	Any
+BranchCache Hosted Cache Server (HTTP-In)	Inbound	Allow	False	TCP	80,443
+Windows Media Player Network Sharing Service (UPnPHost-Out)	Outbound	Allow	False	TCP	Any
+Windows Media Player Network Sharing Service (UDP-In)	Inbound	Allow	False	UDP	Any
+Windows Media Player Network Sharing Service (TCP-In)	Inbound	Allow	False	TCP	Any
+Windows Media Player Network Sharing Service (qWave-TCP-In)	Inbound	Allow	False	TCP	2177
+Cast to Device streaming server (RTSP-Streaming-In)	Inbound	Allow	True	TCP	23554,23555,23556
+Windows Media Player x86 (UDP-In)	Inbound	Allow	False	UDP	Any
+Windows Media Player Network Sharing Service (UDP-In)	Inbound	Allow	False	UDP	Any
+Windows Media Player Network Sharing Service (TCP-In)	Inbound	Allow	False	TCP	Any
+Wireless Portable Devices (TCP-Out)	Outbound	Allow	False	TCP	Any
+Windows Media Player Network Sharing Service (Streaming-UDP-In)	Inbound	Allow	False	UDP	Any
+Cast to Device functionality (qWave-UDP-In)	Inbound	Allow	True	UDP	2177
+Windows Media Player Network Sharing Service (HTTP-Streaming-Out)	Outbound	Allow	False	TCP	Any
+Cloud Identity (TCP-Out)	Outbound	Allow	True	TCP	Any
+Windows Media Player Network Sharing Service (Streaming-UDP-In)	Inbound	Allow	False	UDP	Any
+Media Center Extenders - qWave (UDP-Out)	Outbound	Allow	False	UDP	Any
+Media Center Extenders - qWave (TCP-Out)	Outbound	Allow	False	TCP	Any
+Cast to Device functionality (qWave-UDP-Out)	Outbound	Allow	True	UDP	Any
+Media Center Extenders - XSP (TCP-In)	Inbound	Allow	False	TCP	3390
+Windows Media Player Network Sharing Service (SSDP-Out)	Outbound	Allow	False	UDP	Any
+Key Management Service (TCP-In)	Inbound	Allow	False	TCP	1688
+Windows Media Player Network Sharing Service (qWave-TCP-Out)	Outbound	Allow	False	TCP	Any
+Windows Media Player Network Sharing Service (Streaming-TCP-Out)	Outbound	Allow	False	TCP	Any
+Windows Media Player Network Sharing Service (UPnP-Out)	Outbound	Allow	False	TCP	Any
+File and Printer Sharing over SMBDirect (iWARP-In)	Inbound	Allow	False	TCP	5445
+Windows Media Player Network Sharing Service (SSDP-In)	Inbound	Allow	False	UDP	1900
+Wireless Portable Devices (UPnP-In)	Inbound	Allow	False	TCP	2869
+Windows Media Player Network Sharing Service (HTTP-Streaming-Out)	Outbound	Allow	False	TCP	Any
+Wireless Portable Devices (UPnP-Out)	Outbound	Allow	False	TCP	Any
+Windows Media Player Network Sharing Service (UDP-Out)	Outbound	Allow	False	UDP	Any
+Windows Media Player Network Sharing Service (HTTP-Streaming-In)	Inbound	Allow	False	TCP	10243
+Windows Media Player Network Sharing Service (qWave-UDP-Out)	Outbound	Allow	False	UDP	Any
+Cast to Device streaming server (HTTP-Streaming-In)	Inbound	Allow	True	TCP	10246
+Cast to Device functionality (qWave-TCP-In)	Inbound	Allow	True	TCP	2177
+Media Center Extenders - SSDP (UDP-In)	Inbound	Allow	False	UDP	1900
+Windows Media Player Network Sharing Service (qWave-UDP-Out)	Outbound	Allow	False	UDP	Any
+Windows Media Player Network Sharing Service (qWave-TCP-Out)	Outbound	Allow	False	TCP	Any
+Media Center Extenders - UPnP (TCP-Out)	Outbound	Allow	False	TCP	Any
+Media Center Extenders - Service (TCP-Out)	Outbound	Allow	False	TCP	Any
+Windows Media Player Network Sharing Service (TCP-Out)	Outbound	Allow	False	TCP	Any
+BranchCache Hosted Cache Client (HTTP-Out)	Outbound	Allow	False	TCP	Any
+Cast to Device SSDP Discovery (UDP-In)	Inbound	Allow	True	UDP	PlayToDiscovery
+Wireless Portable Devices (SSDP-In)	Inbound	Allow	False	UDP	1900
+Cast to Device streaming server (RTP-Streaming-Out)	Outbound	Allow	True	UDP	Any
+Wireless Portable Devices (SSDP-Out)	Outbound	Allow	False	UDP	Any
+Wireless Portable Devices (UPnPHost-Out)	Outbound	Allow	False	TCP	Any
+Cast to Device UPnP Events (TCP-In)	Inbound	Allow	True	TCP	2869
+Media Center Extenders - Media Streaming (UDP-Out)	Outbound	Allow	False	UDP	1900
+Cast to Device streaming server (RTSP-Streaming-In)	Inbound	Allow	True	TCP	23554,23555,23556
+Windows Media Player Network Sharing Service (UDP-Out)	Outbound	Allow	False	UDP	Any
+Cast to Device streaming server (RTCP-Streaming-In)	Inbound	Allow	True	UDP	Any
+Key Management Service (TCP-In)	Inbound	Allow	False	TCP	1688
+Media Center Extenders - Media Streaming (TCP-In)	Inbound	Allow	False	TCP	2869
+BranchCache Content Retrieval (HTTP-Out)	Outbound	Allow	False	TCP	Any
+Media Center Extenders - SSDP (UDP-Out)	Outbound	Allow	False	UDP	Any
+Media Center Extenders - Media Streaming (TCP-Out)	Outbound	Allow	False	TCP	Any
+Windows Media Player x86 (UDP-Out)	Outbound	Allow	False	UDP	Any
+Windows Media Player x86 (TCP-Out)	Outbound	Allow	False	TCP	Any
+Cast to Device streaming server (HTTP-Streaming-In)	Inbound	Allow	True	TCP	10246
+Cast to Device streaming server (HTTP-Streaming-In)	Inbound	Allow	True	TCP	10246
+Cast to Device streaming server (RTSP-Streaming-In)	Inbound	Allow	True	TCP	23554,23555,23556
+Windows Media Player Network Sharing Service (Streaming-UDP-Out)	Outbound	Allow	False	UDP	Any
+Windows Media Player Network Sharing Service (HTTP-Streaming-In)	Inbound	Allow	False	TCP	10243
+BranchCache Content Retrieval (HTTP-In)	Inbound	Allow	False	TCP	80
+Windows Media Player (UDP-Out)	Outbound	Allow	False	UDP	Any
+Windows Media Player (TCP-Out)	Outbound	Allow	False	TCP	Any
+BranchCache Peer Discovery (WSD-Out)	Outbound	Allow	False	UDP	Any
+Windows Media Player Network Sharing Service (qWave-UDP-In)	Inbound	Allow	False	UDP	2177
+Windows Media Player Network Sharing Service (TCP-Out)	Outbound	Allow	False	TCP	Any
+Media Center Extenders - qWave (TCP-In)	Inbound	Allow	False	TCP	2177
+File and Printer Sharing (Spooler Service - RPC-EPMAP)	Inbound	Allow	True	TCP	RPCEPMap
+File and Printer Sharing (Spooler Service - RPC)	Inbound	Allow	True	TCP	RPC
+File and Printer Sharing (Restrictive) (Echo Request - ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC
+File and Printer Sharing (NB-Session-In)	Inbound	Allow	True	TCP	139
+File and Printer Sharing (NB-Datagram-Out)	Outbound	Allow	True	UDP	Any
+File and Printer Sharing (Spooler Service - RPC)	Inbound	Allow	True	TCP	RPC
+File and Printer Sharing (Echo Request - ICMPv4-Out)	Outbound	Allow	True	ICMPv4	RPC
+Inbound Rule for Remote Shutdown (TCP-In)	Inbound	Allow	False	TCP	RPC
+File and Printer Sharing (NB-Name-Out)	Outbound	Allow	True	UDP	Any
+File and Printer Sharing (SMB-Out)	Outbound	Allow	True	TCP	Any
+File and Printer Sharing (Echo Request - ICMPv4-Out)	Outbound	Allow	True	ICMPv4	RPC
+File and Printer Sharing (SMB-Out)	Outbound	Allow	True	TCP	Any
+File and Printer Sharing (Restrictive) (SMB-In)	Inbound	Allow	True	TCP	445
+File and Printer Sharing (Spooler Service Worker - RPC)	Inbound	Allow	True	TCP	RPC
+File and Printer Sharing (NB-Datagram-In)	Inbound	Allow	True	UDP	138
+File and Printer Sharing (NB-Name-In)	Inbound	Allow	True	UDP	137
+WFD ASP Coordination Protocol (UDP-Out)	Outbound	Allow	True	UDP	7235
+File and Printer Sharing (NB-Session-Out)	Outbound	Allow	True	TCP	Any
+File and Printer Sharing (Restrictive) (LLMNR-UDP-In)	Inbound	Allow	True	UDP	5355
+File and Printer Sharing (Restrictive) (LLMNR-UDP-Out)	Outbound	Allow	True	UDP	Any
+File and Printer Sharing (Spooler Service - RPC-EPMAP)	Inbound	Allow	True	TCP	RPCEPMap
+File and Printer Sharing (Echo Request - ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC
+File and Printer Sharing (NB-Name-In)	Inbound	Allow	True	UDP	137
+File and Printer Sharing (Restrictive) (Spooler Service - RPC)	Inbound	Allow	True	TCP	RPC
+File and Printer Sharing (NB-Session-In)	Inbound	Allow	True	TCP	139
+File and Printer Sharing (Echo Request - ICMPv4-In)	Inbound	Allow	True	ICMPv4	RPC
+File and Printer Sharing (Restrictive) (Spooler Service Worker - RPC)	Inbound	Allow	True	TCP	RPC
+File and Printer Sharing (SMB-In)	Inbound	Allow	True	TCP	445
+File and Printer Sharing (Restrictive) (SMB-Out)	Outbound	Allow	True	TCP	Any
+WFD Driver-only (TCP-In)	Inbound	Allow	True	TCP	Any
+WFD Driver-only (UDP-In)	Inbound	Allow	True	UDP	Any
+File and Printer Sharing (SMB-In)	Inbound	Allow	True	TCP	445
+File and Printer Sharing (Echo Request - ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC
+File and Printer Sharing (Spooler Service Worker - RPC)	Inbound	Allow	True	TCP	RPC
+File and Printer Sharing (Restrictive) (Echo Request - ICMPv4-In)	Inbound	Allow	True	ICMPv4	RPC
+File and Printer Sharing (NB-Datagram-Out)	Outbound	Allow	True	UDP	Any
+WFD Driver-only (TCP-Out)	Outbound	Allow	True	TCP	Any
+File and Printer Sharing (NB-Session-Out)	Outbound	Allow	True	TCP	Any
+File and Printer Sharing (Echo Request - ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC
+File and Printer Sharing (Restrictive) (Spooler Service - RPC-EPMAP)	Inbound	Allow	True	TCP	RPCEPMap
+File and Printer Sharing (Restrictive) (Echo Request - ICMPv4-Out)	Outbound	Allow	True	ICMPv4	RPC
+Inbound Rule for Remote Shutdown (RPC-EP-In)	Inbound	Allow	False	TCP	RPCEPMap
+File and Printer Sharing (Echo Request - ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC
+WFD Driver-only (UDP-Out)	Outbound	Allow	True	UDP	Any
+WFD ASP Coordination Protocol (UDP-In)	Inbound	Allow	True	UDP	7235
+File and Printer Sharing (NB-Name-Out)	Outbound	Allow	True	UDP	Any
+File and Printer Sharing (NB-Datagram-In)	Inbound	Allow	True	UDP	138
+File and Printer Sharing (Echo Request - ICMPv4-In)	Inbound	Allow	True	ICMPv4	RPC
+File and Printer Sharing (LLMNR-UDP-In)	Inbound	Allow	True	UDP	5355
+File and Printer Sharing (LLMNR-UDP-Out)	Outbound	Allow	True	UDP	Any
+File and Printer Sharing (Restrictive) (Echo Request - ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC
+Hyper-V Replica HTTPS Listener (TCP-In)	Inbound	Allow	False	TCP	443
+Hyper-V - WMI (TCP-In)	Inbound	Allow	True	TCP	Any
+Hyper-V - WMI (Async-In)	Inbound	Allow	True	TCP	Any
+Hyper-V (REMOTE_DESKTOP_TCP_IN)	Inbound	Allow	True	TCP	2179
+Hyper-V Management Clients - WMI (DCOM-In)	Inbound	Allow	True	TCP	135
+Hyper-V Management Clients - WMI (TCP-In)	Inbound	Allow	True	TCP	Any
+Hyper-V Management Clients - WMI (Async-In)	Inbound	Allow	True	TCP	Any
+Hyper-V - WMI (TCP-Out)	Outbound	Allow	True	TCP	Any
+Hyper-V (MIG-TCP-In)	Inbound	Allow	True	TCP	6600
+Hyper-V Management Clients - WMI (TCP-Out)	Outbound	Allow	True	TCP	Any
+Hyper-V - WMI (DCOM-In)	Inbound	Allow	True	TCP	135
+Hyper-V (RPC-EPMAP)	Inbound	Allow	True	TCP	RPCEPMap
+Hyper-V (RPC)	Inbound	Allow	True	TCP	RPC
+Hyper-V Replica HTTP Listener (TCP-In)	Inbound	Allow	False	TCP	80
+File and Printer Sharing (LLMNR-UDP-Out)	Outbound	Allow	True	UDP	Any
+File and Printer Sharing (LLMNR-UDP-In)	Inbound	Allow	True	UDP	5355
+File and Printer Sharing (NB-Datagram-In)	Inbound	Allow	True	UDP	138
+File and Printer Sharing (NB-Name-Out)	Outbound	Allow	True	UDP	Any
+File and Printer Sharing (Echo Request - ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC
+File and Printer Sharing (NB-Datagram-Out)	Outbound	Allow	True	UDP	Any
+File and Printer Sharing (SMB-In)	Inbound	Allow	True	TCP	445
+File and Printer Sharing (Echo Request - ICMPv4-In)	Inbound	Allow	True	ICMPv4	RPC
+File and Printer Sharing (NB-Session-In)	Inbound	Allow	True	TCP	139
+File and Printer Sharing (Echo Request - ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC
+File and Printer Sharing (Spooler Service - RPC-EPMAP)	Inbound	Allow	True	TCP	RPCEPMap
+File and Printer Sharing (NB-Session-Out)	Outbound	Allow	True	TCP	Any
+File and Printer Sharing (NB-Name-In)	Inbound	Allow	True	UDP	137
+File and Printer Sharing (Spooler Service Worker - RPC)	Inbound	Allow	True	TCP	RPC
+File and Printer Sharing (SMB-Out)	Outbound	Allow	True	TCP	Any
+File and Printer Sharing (Echo Request - ICMPv4-Out)	Outbound	Allow	True	ICMPv4	RPC
+File and Printer Sharing (Spooler Service - RPC)	Inbound	Allow	True	TCP	RPC
+File and Printer Sharing (Restrictive) (Echo Request - ICMPv6-In)	Inbound	Allow	False	ICMPv6	RPC
+File and Printer Sharing (Restrictive) (Echo Request - ICMPv4-Out)	Outbound	Allow	False	ICMPv4	RPC
+File and Printer Sharing (Restrictive) (Spooler Service - RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap
+File and Printer Sharing (Restrictive) (Echo Request - ICMPv4-In)	Inbound	Allow	False	ICMPv4	RPC
+File and Printer Sharing (Restrictive) (SMB-Out)	Outbound	Allow	False	TCP	Any
+File and Printer Sharing (Restrictive) (Spooler Service Worker - RPC)	Inbound	Allow	False	TCP	RPC
+File and Printer Sharing (Restrictive) (Spooler Service - RPC)	Inbound	Allow	False	TCP	RPC
+File and Printer Sharing (Restrictive) (LLMNR-UDP-Out)	Outbound	Allow	False	UDP	Any
+File and Printer Sharing (Restrictive) (LLMNR-UDP-In)	Inbound	Allow	False	UDP	5355
+File and Printer Sharing (Restrictive) (SMB-In)	Inbound	Allow	False	TCP	445
+File and Printer Sharing (Restrictive) (Echo Request - ICMPv6-Out)	Outbound	Allow	False	ICMPv6	RPC
+acrobat	Outbound	Block	True	Any	Any
+acrobat	Outbound	Block	True	Any	Any
+crwindowsclientservice	Outbound	Block	True	Any	Any
+acrocef	Outbound	Block	True	Any	Any
+Microsoft Office Outlook	Inbound	Allow	True	UDP	6004
+Microsoft Defender	Inbound	Allow	True	Any	Any
+Microsoft Defender	Outbound	Allow	True	Any	Any
+Firefox	Inbound	Allow	True	UDP	Any
+Firefox	Inbound	Allow	True	TCP	Any
+Windows Feature Experience Pack	Inbound	Allow	True	Any	Any
+Windows Feature Experience Pack	Outbound	Allow	True	Any	Any
+@{MicrosoftWindows.57074914.Livtop_1000.26100.4946.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.57074914.Livtop/Resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+@{MicrosoftWindows.57074904.InpApp_1000.26100.4946.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.57074904.InpApp/Resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+@{MicrosoftWindows.57058570.Speion_1000.26100.4946.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.57058570.Speion/Resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+@{MicrosoftWindows.56978801.Voiess_1000.26100.4946.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.56978801.Voiess/Resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+Start	Inbound	Allow	True	Any	Any
+Start	Outbound	Allow	True	Any	Any
+Microsoft Edge Game Assist	Outbound	Allow	True	Any	Any
+Microsoft Lync UcMapi	Inbound	Allow	True	TCP	Any
+Microsoft Lync	Inbound	Allow	True	TCP	Any
+Feedback Hub	Inbound	Allow	True	Any	Any
+Feedback Hub	Outbound	Allow	True	Any	Any
+Windows Maps	Outbound	Allow	True	Any	Any
+Movies & TV	Inbound	Allow	True	Any	Any
+Movies & TV	Outbound	Allow	True	Any	Any
+motty.exe	Inbound	Allow	True	UDP	Any
+motty.exe	Inbound	Allow	True	TCP	Any
+Allow local 172	Outbound	Allow	True	Any	Any
+Lenovo Hotkeys	Outbound	Allow	True	Any	Any
+@{MicrosoftWindows.LKG.TwinSxS_1000.26100.4061.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.LKG.TwinSxS/Resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+@{MicrosoftWindows.55182690.Taskbar_1000.26100.4061.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.55182690.Taskbar/Resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+Proxifier Standard Edition v4.12 x64	Inbound	Allow	True	UDP	Any
+Proxifier Standard Edition v4.12 x64	Inbound	Allow	True	TCP	Any
+Mail and Calendar	Inbound	Allow	True	Any	Any
+Mail and Calendar	Outbound	Allow	True	Any	Any
+News	Outbound	Allow	True	Any	Any
+Xbox Identity Provider	Outbound	Allow	True	Any	Any
+Microsoft People	Outbound	Allow	True	Any	Any
+Intel® Graphics Command Center	Outbound	Allow	True	Any	Any
+@{MicrosoftWindows.LKG.SpeechRuntime_1000.26100.3775.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.LKG.SpeechRuntime/Resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+@{MicrosoftWindows.LKG.RulesEngine_1000.26100.3775.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.LKG.RulesEngine/Resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+@{MicrosoftWindows.LKG.IrisService_1000.26100.3775.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.LKG.IrisService/Resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+@{MicrosoftWindows.LKG.DesktopSpotlight_1000.26100.3775.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.LKG.DesktopSpotlight/Resources/ProductPkgDisplayName}	Inbound	Allow	True	Any	Any
+@{MicrosoftWindows.LKG.DesktopSpotlight_1000.26100.3775.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.LKG.DesktopSpotlight/Resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+@{MicrosoftWindows.LKG.AccountsService_1000.26100.3775.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.LKG.AccountsService/Resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+Work or school account	Inbound	Allow	True	Any	Any
+Work or school account	Outbound	Allow	True	Any	Any
+FortiToken Windows	Outbound	Allow	True	Any	Any
+Microsoft Sticky Notes	Inbound	Allow	True	Any	Any
+Microsoft Sticky Notes	Outbound	Allow	True	Any	Any
+Microsoft 365 (Office)	Outbound	Allow	True	Any	Any
+mottynew.exe	Inbound	Allow	True	UDP	Any
+mottynew.exe	Inbound	Allow	True	TCP	Any
+@{MicrosoftWindows.Client.AIX_1000.26100.2314.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.Client.AIX/resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+Narrator	Outbound	Allow	True	Any	Any
+Windows Print	Outbound	Allow	True	Any	Any
+@{MicrosoftWindows.LKG.Search_1000.26100.1742.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.LKG.Search/Resources/ProductPkgDisplayName}	Inbound	Allow	True	Any	Any
+@{MicrosoftWindows.LKG.Search_1000.26100.1742.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.LKG.Search/Resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+Xbox Game UI	Outbound	Allow	True	Any	Any
+Take a Test	Outbound	Allow	True	Any	Any
+Print Queue	Outbound	Allow	True	Any	Any
+Windows Shell Experience	Outbound	Allow	True	Any	Any
+Microsoft Family Safety	Outbound	Allow	True	Any	Any
+Microsoft Content	Outbound	Allow	True	Any	Any
+Your account	Inbound	Allow	True	Any	Any
+Your account	Outbound	Allow	True	Any	Any
+Windows Defender SmartScreen	Outbound	Allow	True	Any	Any
+Desktop App Web Viewer	Inbound	Allow	True	Any	Any
+Desktop App Web Viewer	Outbound	Allow	True	Any	Any
+Email and accounts	Outbound	Allow	True	Any	Any
+OpenSSH SSH Server Preview (sshd)	Inbound	Allow	True	TCP	22
+V2rayPort_out	Outbound	Allow	True	Any	Any
+Microsoft Management Console	Inbound	Block	True	TCP	Any
+Microsoft Management Console	Inbound	Block	True	UDP	Any
+Microsoft Management Console	Inbound	Allow	True	UDP	Any
+Microsoft Management Console	Inbound	Allow	True	TCP	Any
+ApexSQL Manage port	Inbound	Allow	True	TCP	8285
+Firefox (C:\Program Files\Mozilla Firefox)	Inbound	Allow	True	TCP	Any
+Firefox (C:\Program Files\Mozilla Firefox)	Inbound	Allow	True	UDP	Any
+Block network access for AppContainer-00 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any
+Block network access for AppContainer-01 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any
+Block network access for AppContainer-02 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any
+Block network access for AppContainer-03 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any
+Block network access for AppContainer-04 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any
+Block network access for AppContainer-05 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any
+Block network access for AppContainer-07 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any
+Block network access for AppContainer-08 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any
+Block network access for AppContainer-09 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any
+Block network access for AppContainer-10 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any
+Block network access for AppContainer-11 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any
+Block network access for AppContainer-12 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any
+Block network access for AppContainer-13 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any
+Block network access for AppContainer-14 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any
+Block network access for AppContainer-15 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any
+Block network access for AppContainer-16 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any
+Block network access for AppContainer-17 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any
+Block network access for AppContainer-18 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any
+Block network access for AppContainer-19 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any
+Block network access for AppContainer-20 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any
+Block DNS	Outbound	Block	False	Any	Any
+Allow Local Ports	Inbound	Allow	True	TCP	Any
+Block Gateway	Outbound	Block	False	Any	Any
+Block network access for AppContainer-06 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any
+xwin_mobax.exe	Inbound	Block	True	TCP	Any
+xwin_mobax.exe	Inbound	Block	True	UDP	Any
+Mobax_out	Outbound	Allow	True	Any	Any
+Mobax_in	Inbound	Allow	True	Any	Any
+ApexSQL Defrag port	Inbound	Allow	True	TCP	53124
+ApexSQL Job port	Inbound	Allow	True	TCP	53124
+Allow 2828	Inbound	Allow	True	TCP	2828
+Allow Incoming private	Inbound	Allow	True	Any	Any
+Microsoft Lync	Inbound	Allow	True	UDP	Any
+Microsoft Lync UcMapi	Inbound	Allow	True	UDP	Any
+Bitvise SSH Client	Inbound	Allow	True	TCP	Any
+Bitvise SSH Client	Inbound	Allow	True	UDP	Any
+Cisco Jabber	Inbound	Allow	True	Any	Any
+wbxcOIEx (x86)	Inbound	Allow	True	Any	Any
+wbxcOIEx (64Bit)	Inbound	Allow	True	Any	Any
+@{Microsoft.BingWeather_4.53.52331.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.BingWeather/Resources/ApplicationTitleWithBranding}	Outbound	Allow	True	Any	Any
+@{Microsoft.BingWeather_4.53.52331.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.BingWeather/Resources/ApplicationTitleWithBranding}	Inbound	Allow	True	Any	Any
+Raft WSL	Outbound	Allow	True	Any	Any
+Lenovo Commercial Vantage	Outbound	Allow	True	Any	Any
+Lenovo Commercial Vantage	Inbound	Allow	True	Any	Any
+@{Microsoft.GetHelp_10.2308.12552.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.GetHelp/Resources/appDisplayName}	Outbound	Allow	True	Any	Any
+2fast – Two Factor Authenticator Supporting TOTP	Outbound	Allow	True	Any	Any
+2fast – Two Factor Authenticator Supporting TOTP	Inbound	Allow	True	Any	Any
+@{SAMSUNGELECTRONICSCoLtd.SamsungFlux_4.9.1004.0_x64__wyx1vj98g3asy?ms-resource://SAMSUNGELECTRONICSCoLtd.SamsungFlux/Resources/DisplayName}	Outbound	Allow	True	Any	Any
+@{SAMSUNGELECTRONICSCoLtd.SamsungFlux_4.9.1004.0_x64__wyx1vj98g3asy?ms-resource://SAMSUNGELECTRONICSCoLtd.SamsungFlux/Resources/DisplayName}	Inbound	Allow	True	Any	Any
+@{Microsoft.WindowsMaps_11.2311.1.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.WindowsMaps/Resources/AppStoreName}	Outbound	Allow	True	Any	Any
+ADB Explorer	Outbound	Allow	True	Any	Any
+@{Microsoft.DesktopAppInstaller_1.21.3482.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.DesktopAppInstaller/Resources/appDisplayName}	Outbound	Allow	True	Any	Any
+@{Microsoft.DesktopAppInstaller_1.21.3482.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.DesktopAppInstaller/Resources/appDisplayName}	Inbound	Allow	True	Any	Any
+@{Microsoft.XboxIdentityProvider_12.95.3001.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.XboxIdentityProvider/Resources/DisplayName}	Outbound	Allow	True	Any	Any
+@{Microsoft.WindowsCamera_2023.2312.3.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.WindowsCamera/LensSDK/Resources/AppStoreName}	Outbound	Allow	True	Any	Any
+@{Microsoft.WindowsSoundRecorder_11.2312.2.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.WindowsSoundRecorder/Resources/AppStoreName}	Outbound	Allow	True	Any	Any
+@{Microsoft.ZuneVideo_10.22091.10061.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.ZuneVideo/resources/IDS_MANIFEST_VIDEO_APP_NAME}	Outbound	Allow	True	Any	Any
+@{Microsoft.ZuneVideo_10.22091.10061.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.ZuneVideo/resources/IDS_MANIFEST_VIDEO_APP_NAME}	Inbound	Allow	True	Any	Any
+@{Clipchamp.Clipchamp_2.9.1.0_neutral__yxz26nhyzhsrt?ms-resource://Clipchamp.Clipchamp/Resources/Clipchamp/AppName}	Outbound	Allow	True	Any	Any
+Solitaire & Casual Games	Outbound	Allow	True	Any	Any
+Solitaire & Casual Games	Inbound	Allow	True	Any	Any
+Skype	Outbound	Allow	True	Any	Any
+Skype	Inbound	Allow	True	Any	Any
+WhatsApp	Outbound	Allow	True	Any	Any
+WhatsApp	Inbound	Allow	True	Any	Any
+@{MicrosoftCorporationII.WindowsSubsystemForLinux_2.0.14.0_x64__8wekyb3d8bbwe?ms-resource://MicrosoftCorporationII.WindowsSubsystemForLinux/Resources/AppName}	Outbound	Allow	True	Any	Any
+News	Outbound	Allow	True	Any	Any
+Microsoft 365 (Office)	Outbound	Allow	True	Any	Any
+@{Microsoft.Todos_2.114.7122.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.Todos/Resources/app_name_ms_todo}	Outbound	Allow	True	Any	Any
+@{Microsoft.Todos_2.114.7122.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.Todos/Resources/app_name_ms_todo}	Inbound	Allow	True	Any	Any
+@{Microsoft.WindowsCalculator_11.2311.0.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.WindowsCalculator/Resources/AppStoreName}	Outbound	Allow	True	Any	Any
+Game Bar	Outbound	Allow	True	Any	Any
+Game Bar	Inbound	Allow	True	Any	Any
+Microsoft Tips	Outbound	Allow	True	Any	Any
+@{Microsoft.People_10.2202.33.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.People/Resources/AppStoreName}	Outbound	Allow	True	Any	Any
+@{Microsoft.Windows.Photos_2024.11010.23003.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.Windows.Photos/Resources/AppStoreName}	Outbound	Allow	True	Any	Any
+@{Microsoft.Windows.Photos_2024.11010.23003.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.Windows.Photos/Resources/AppStoreName}	Inbound	Allow	True	Any	Any
+@{AppUp.IntelGraphicsExperience_1.100.5336.0_x64__8j3eq9eme6ctt?ms-resource://AppUp.IntelGraphicsExperience/Resources/System_Item_Title_IntelGraphicsControlPanel}	Outbound	Allow	True	Any	Any
+@{microsoft.windowscommunicationsapps_16005.14326.21830.0_x64__8wekyb3d8bbwe?ms-resource://microsoft.windowscommunicationsapps/hxoutlookintl/AppManifest_OutlookDesktop_DisplayName}	Outbound	Allow	True	Any	Any
+@{microsoft.windowscommunicationsapps_16005.14326.21830.0_x64__8wekyb3d8bbwe?ms-resource://microsoft.windowscommunicationsapps/hxoutlookintl/AppManifest_OutlookDesktop_DisplayName}	Inbound	Allow	True	Any	Any
+v4freedom	Outbound	Allow	True	Any	Any
+@{Microsoft.WindowsAlarms_11.2401.9.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.WindowsAlarms/Resources/AppStoreName}	Outbound	Allow	True	Any	Any
+@{Microsoft.WindowsAlarms_11.2401.9.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.WindowsAlarms/Resources/AppStoreName}	Inbound	Allow	True	Any	Any
+@{Microsoft.ZuneMusic_11.2401.2.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.ZuneMusic/Resources/AppStoreName}	Outbound	Allow	True	Any	Any
+@{Microsoft.ZuneMusic_11.2401.2.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.ZuneMusic/Resources/AppStoreName}	Inbound	Allow	True	Any	Any
+Lenovo Companion	Outbound	Allow	True	Any	Any
+Lenovo Companion	Inbound	Allow	True	Any	Any
+Bitvise SSH Client	Inbound	Allow	True	TCP	Any
+Bitvise SSH Client	Inbound	Allow	True	UDP	Any
+Allow 18444	Inbound	Allow	True	TCP	18444
+Microsoft Store	Outbound	Allow	True	Any	Any
+Microsoft Store	Inbound	Allow	True	Any	Any
+Windows Web Experience Pack	Outbound	Allow	True	Any	Any
+@{Microsoft.StorePurchaseApp_22312.1401.1.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.StorePurchaseApp/Resources/DisplayTitle}	Outbound	Allow	True	Any	Any
+@{Microsoft.StorePurchaseApp_22312.1401.1.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.StorePurchaseApp/Resources/DisplayTitle}	Inbound	Allow	True	Any	Any
+@{Microsoft.WindowsFeedbackHub_1.2401.20253.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.WindowsFeedbackHub/Resources/AppStoreName}	Outbound	Allow	True	Any	Any
+@{Microsoft.WindowsFeedbackHub_1.2401.20253.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.WindowsFeedbackHub/Resources/AppStoreName}	Inbound	Allow	True	Any	Any
+Allow VM Connection	Inbound	Allow	True	Any	Any
+Allow VM bound Connection	Outbound	Allow	True	Any	Any
+Microsoft People	Outbound	Allow	True	Any	Any
+News	Outbound	Allow	True	Any	Any
+Microsoft Tips	Outbound	Allow	True	Any	Any
+Visual Studio Code	Inbound	Allow	True	TCP	Any
+Visual Studio Code	Inbound	Allow	True	UDP	Any
+windows_ie_ac_001	Outbound	Allow	True	Any	Any
+@{Microsoft.Windows.CloudExperienceHost_10.0.22621.2506_neutral_neutral_cw5n1h2txyewy?ms-resource://Microsoft.Windows.CloudExperienceHost/resources/appDescription}	Outbound	Allow	True	Any	Any
+@{Microsoft.Windows.CloudExperienceHost_10.0.22621.2506_neutral_neutral_cw5n1h2txyewy?ms-resource://Microsoft.Windows.CloudExperienceHost/resources/appDescription}	Inbound	Allow	True	Any	Any
+@{MicrosoftWindows.Client.CBS_1000.22700.1003.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.Client.CBS/resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+@{MicrosoftWindows.Client.CBS_1000.22700.1003.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.Client.CBS/resources/ProductPkgDisplayName}	Inbound	Allow	True	Any	Any
+@{Microsoft.AAD.BrokerPlugin_1000.19580.1000.0_neutral_neutral_cw5n1h2txyewy?ms-resource://Microsoft.AAD.BrokerPlugin/resources/PackageDisplayName}	Outbound	Allow	True	Any	Any
+@{Microsoft.AAD.BrokerPlugin_1000.19580.1000.0_neutral_neutral_cw5n1h2txyewy?ms-resource://Microsoft.AAD.BrokerPlugin/resources/PackageDisplayName}	Inbound	Allow	True	Any	Any
+@{Microsoft.Windows.StartMenuExperienceHost_10.0.22621.2506_neutral_neutral_cw5n1h2txyewy?ms-resource://Microsoft.Windows.StartMenuExperienceHost/StartMenuExperienceHost/PkgDisplayName}	Outbound	Allow	True	Any	Any
+@{Microsoft.Windows.StartMenuExperienceHost_10.0.22621.2506_neutral_neutral_cw5n1h2txyewy?ms-resource://Microsoft.Windows.StartMenuExperienceHost/StartMenuExperienceHost/PkgDisplayName}	Inbound	Allow	True	Any	Any
+@{Microsoft.Windows.ContentDeliveryManager_10.0.22621.2506_neutral_neutral_cw5n1h2txyewy?ms-resource://Microsoft.Windows.ContentDeliveryManager/resources/AppDisplayName}	Outbound	Allow	True	Any	Any
+Microsoft Tips	Outbound	Allow	True	Any	Any
+Windows Web Experience Pack	Outbound	Allow	True	Any	Any
+Microsoft Store	Outbound	Allow	True	Any	Any
+Microsoft Store	Inbound	Allow	True	Any	Any
+@{Microsoft.XboxIdentityProvider_12.95.3001.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.XboxIdentityProvider/Resources/DisplayName}	Outbound	Allow	True	Any	Any
+@{Microsoft.DesktopAppInstaller_1.22.11261.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.DesktopAppInstaller/Resources/appDisplayName}	Outbound	Allow	True	Any	Any
+@{Microsoft.DesktopAppInstaller_1.22.11261.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.DesktopAppInstaller/Resources/appDisplayName}	Inbound	Allow	True	Any	Any
+@{Microsoft.ZuneMusic_11.2403.5.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.ZuneMusic/Resources/AppStoreName}	Outbound	Allow	True	Any	Any
+@{Microsoft.ZuneMusic_11.2403.5.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.ZuneMusic/Resources/AppStoreName}	Inbound	Allow	True	Any	Any
+Microsoft People	Outbound	Allow	True	Any	Any
+News	Outbound	Allow	True	Any	Any
+allow 172	Inbound	Allow	True	Any	Any
+utorrent.exe	Inbound	Allow	True	TCP	Any
+utorrent.exe	Inbound	Allow	True	UDP	Any
+utorrent.exe	Inbound	Allow	True	TCP	Any
+utorrent.exe	Inbound	Allow	True	UDP	Any
+Visual Studio Code	Inbound	Allow	True	TCP	Any
+Visual Studio Code	Inbound	Allow	True	UDP	Any
+@{MicrosoftWindows.Client.LKG_1000.22621.3880.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.Client.LKG/resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+@{MicrosoftWindows.Client.LKG_1000.22621.3880.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.Client.LKG/resources/ProductPkgDisplayName}	Inbound	Allow	True	Any	Any
+Microsoft Tips	Outbound	Allow	True	Any	Any
+Microsoft People	Outbound	Allow	True	Any	Any
+News	Outbound	Allow	True	Any	Any
+Xbox Identity Provider	Outbound	Allow	True	Any	Any
+@{Microsoft.LockApp_10.0.22621.3235_neutral__cw5n1h2txyewy?ms-resource://Microsoft.LockApp/resources/AppDisplayName}	Outbound	Allow	True	Any	Any
+@{Microsoft.Windows.StartMenuExperienceHost_10.0.22621.4249_neutral_neutral_cw5n1h2txyewy?ms-resource://Microsoft.Windows.StartMenuExperienceHost/StartMenuExperienceHost/PkgDisplayName}	Outbound	Allow	True	Any	Any
+@{Microsoft.Windows.StartMenuExperienceHost_10.0.22621.4249_neutral_neutral_cw5n1h2txyewy?ms-resource://Microsoft.Windows.StartMenuExperienceHost/StartMenuExperienceHost/PkgDisplayName}	Inbound	Allow	True	Any	Any
+@{MicrosoftWindows.Client.CBS_1000.22700.1041.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.Client.CBS/resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+@{MicrosoftWindows.Client.CBS_1000.22700.1041.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.Client.CBS/resources/ProductPkgDisplayName}	Inbound	Allow	True	Any	Any
+@{Microsoft.LockApp_10.0.22621.3235_neutral__cw5n1h2txyewy?ms-resource://Microsoft.LockApp/resources/AppDisplayName}	Outbound	Allow	True	Any	Any
+TechSmith Camtasia 2024	Inbound	Allow	True	TCP	8325
+Microsoft Sticky Notes	Outbound	Allow	True	Any	Any
+Microsoft Sticky Notes	Inbound	Allow	True	Any	Any
+Intel® Graphics Command Center	Outbound	Allow	True	Any	Any
+Microsoft Clipchamp	Outbound	Allow	True	Any	Any
+@{MicrosoftWindows.54792954.Filons_1000.26100.7171.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.54792954.Filons/Resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+@{MicrosoftWindows.58680125.Speion_1000.26100.7171.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.58680125.Speion/Resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+@{MicrosoftWindows.58681517.Voiess_1000.26100.7171.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.58681517.Voiess/Resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+@{MicrosoftWindows.58681560.Livtop_1000.26100.7171.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.58681560.Livtop/Resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+@{MicrosoftWindows.58683691.InpApp_1000.26100.7171.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.58683691.InpApp/Resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+AcrobatInfo	Outbound	Block	True	Any	Any
+acrobat_sl	Outbound	Block	True	Any	Any
+AcroBroker	Outbound	Block	True	Any	Any
+acrodist	Outbound	Block	True	Any	Any
+AcroShareTarget	Outbound	Block	True	Any	Any
+AcroTextExtractor	Outbound	Block	True	Any	Any
+acrotray	Outbound	Block	True	Any	Any
+ADelRCP	Outbound	Block	True	Any	Any
+ADNotificationManager	Outbound	Block	True	Any	Any
+Adobe Crash Processor	Outbound	Block	True	Any	Any
+AdobeCollabSync	Outbound	Block	True	Any	Any
+CRLogTransport	Outbound	Block	True	Any	Any
+Eula	Outbound	Block	True	Any	Any
+LogTransport2	Outbound	Block	True	Any	Any
+ShowAppPickerForPDF	Outbound	Block	True	Any	Any
+AcroServicesUpdater	Outbound	Block	True	Any	Any
+SingleClientServicesUpdater	Outbound	Block	True	Any	Any
+FullTrustNotifier	Outbound	Block	True	Any	Any
+WCChromeNativeMessagingHost	Outbound	Block	True	Any	Any
+Adobe_Acrobat_Diagnostics	Outbound	Block	True	Any	Any
+AGSService	Outbound	Block	True	Any	Any
+gccustomhook	Outbound	Block	True	Any	Any
+adobe_licensing_wf_acro	Outbound	Block	True	Any	Any
+adobe_licensing_wf_helper_acro	Outbound	Block	True	Any	Any
+AdobeFips	Outbound	Block	True	Any	Any
+32BitMAPIBroker	Outbound	Block	True	Any	Any
+64BitMAPIBroker	Outbound	Block	True	Any	Any
+MSRMSPIBroker	Outbound	Block	True	Any	Any
+AcroScanBroker	Outbound	Block	True	Any	Any
+FullTrustNotifier	Outbound	Block	True	Any	Any
+CreatePDFPrinterUtility64	Outbound	Block	True	Any	Any
+PrintInf64	Outbound	Block	True	Any	Any
+Acrobat Elements	Outbound	Block	True	Any	Any
+AdobeARM	Outbound	Block	True	Any	Any
+AdobeARMHelper	Outbound	Block	True	Any	Any
+armsvc	Outbound	Block	True	Any	Any
+HTML2PDFWrapFor64Bit	Outbound	Block	True	Any	Any
+Windows Camera	Outbound	Allow	True	Any	Any
+Windows Camera	Inbound	Allow	True	Any	Any
+Windows Calculator	Outbound	Allow	True	Any	Any
+Samsung Account	Outbound	Allow	True	Any	Any
+Samsung Account	Inbound	Allow	True	Any	Any
+Lenovo Companion	Outbound	Allow	True	Any	Any
+Lenovo Companion	Inbound	Allow	True	Any	Any
+AnyDesk	Inbound	Allow	True	TCP	Any
+AnyDesk	Inbound	Allow	True	UDP	Any
+AnyDesk	Inbound	Allow	True	TCP	Any
+AnyDesk	Inbound	Allow	True	UDP	Any
+AnyDesk	Inbound	Allow	True	TCP	Any
+AnyDesk	Inbound	Allow	True	UDP	Any
+Psiphon Conduit	Outbound	Allow	True	Any	Any
+Windows Clock	Outbound	Allow	True	Any	Any
+Windows Clock	Inbound	Allow	True	Any	Any
+Windows Sound Recorder	Outbound	Allow	True	Any	Any
+Remote Desktop - User Mode (TCP-In)	Inbound	Allow	True	TCP	3389
+Remote Desktop - User Mode (UDP-In)	Inbound	Allow	True	UDP	3389
+Remote Desktop - Shadow (TCP-In)	Inbound	Allow	True	TCP	Any
+Remote Desktop - (TCP-WSS-In)	Inbound	Allow	False	TCP	3392
+@{MicrosoftWindows.59336768.Speion_1000.26100.7824.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.59336768.Speion/Resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+@{MicrosoftWindows.59337133.Voiess_1000.26100.7824.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.59337133.Voiess/Resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+@{MicrosoftWindows.59337145.Livtop_1000.26100.7824.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.59337145.Livtop/Resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+@{MicrosoftWindows.59379618.InpApp_1000.26100.7824.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.59379618.InpApp/Resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+Network Discovery (WSD-In)	Inbound	Allow	False	UDP	3702
+Network Discovery (Pub-WSD-In)	Inbound	Allow	False	UDP	3702
+Network Discovery (WSD-Out)	Outbound	Allow	False	UDP	Any
+Network Discovery (SSDP-Out)	Outbound	Allow	False	UDP	Any
+Network Discovery (Pub WSD-Out)	Outbound	Allow	False	UDP	Any
+Network Discovery (WSD-In)	Inbound	Allow	False	UDP	3702
+Network Discovery (SSDP-In)	Inbound	Allow	False	UDP	1900
+Network Discovery (LLMNR-UDP-Out)	Outbound	Allow	False	UDP	Any
+Network Discovery (UPnPHost-Out)	Outbound	Allow	False	TCP	Any
+Network Discovery (LLMNR-UDP-In)	Inbound	Allow	False	UDP	5355
+HNS Container Networking - ICS DNS (TCP-In) - 790E58B4-7939-4434-9358-89AE7DDBE87F - 0	Inbound	Allow	True	TCP	53
+HNS Container Networking - DNS (UDP-In) - 790E58B4-7939-4434-9358-89AE7DDBE87F - 0	Inbound	Allow	True	UDP	53
+Gurobi WLS Proxy	Inbound	Allow	True	TCP	Any
+Gurobi WLS Proxy	Inbound	Allow	True	UDP	Any
+HNS Container Networking - ICS DNS (TCP-In) - C08CB7B8-9B3C-408E-8E30-5E16A3AEB445 - 0	Inbound	Allow	True	TCP	53
+HNS Container Networking - DNS (UDP-In) - C08CB7B8-9B3C-408E-8E30-5E16A3AEB445 - 0	Inbound	Allow	True	UDP	53
+Intel® Graphics Command Center	Outbound	Allow	True	Any	Any
+Windows Clock	Outbound	Allow	True	Any	Any
+Windows Clock	Inbound	Allow	True	Any	Any
+Windows Camera	Outbound	Allow	True	Any	Any
+Windows Camera	Inbound	Allow	True	Any	Any
+Windows Sound Recorder	Outbound	Allow	True	Any	Any
+Windows Calculator	Outbound	Allow	True	Any	Any
+Dropbox Lite	Outbound	Allow	True	Any	Any
+Dropbox Lite	Inbound	Allow	True	Any	Any
+windows_ie_ac_001	Outbound	Allow	True	Any	Any
+Microsoft Sticky Notes	Outbound	Allow	True	Any	Any
+Microsoft Sticky Notes	Inbound	Allow	True	Any	Any
+Windows Security	Outbound	Allow	True	Any	Any
+Windows Security	Inbound	Allow	True	Any	Any
+Windows Shell Experience	Outbound	Allow	True	Any	Any
+Windows Shell Experience	Inbound	Allow	True	Any	Any
+App Installer	Outbound	Allow	True	Any	Any
+App Installer	Inbound	Allow	True	Any	Any
+MSN Weather	Outbound	Allow	True	Any	Any
+MSN Weather	Inbound	Allow	True	Any	Any
+HNS Container Networking - ICS DNS (TCP-In) - 5966B6F6-E0FC-4255-989D-348BC7E3C582 - 0	Inbound	Allow	True	TCP	53
+HNS Container Networking - DNS (UDP-In) - 5966B6F6-E0FC-4255-989D-348BC7E3C582 - 0	Inbound	Allow	True	UDP	53
+Captive Portal Flow	Outbound	Allow	True	Any	Any
+@{MicrosoftWindows.60719890.Voiess_1000.26100.8328.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.60719890.Voiess/Resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+@{MicrosoftWindows.60719895.Livtop_1000.26100.8328.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.60719895.Livtop/Resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+@{MicrosoftWindows.60719896.Speion_1000.26100.8328.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.60719896.Speion/Resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+@{MicrosoftWindows.60719898.InpApp_1000.26100.8328.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.60719898.InpApp/Resources/ProductPkgDisplayName}	Outbound	Allow	True	Any	Any
+Microsoft Edge WebView2 mDNS [UDP]	Inbound	Allow	True	UDP	5353
+Windows Terminal	Outbound	Allow	True	Any	Any
+VMware Authd Service	Inbound	Allow	True	Any	Any
+VMware Authd Service (private)	Inbound	Allow	True	Any	Any
+Block Babylon.exe Outbound	Outbound	Block	True	Any	Any
+Block Babylon.exe Inbound	Inbound	Block	True	Any	Any
+Block Babylon.exe Outbound	Outbound	Block	True	Any	Any
+Block Babylon.exe Inbound	Inbound	Block	True	Any	Any
+Block BabylonHelper64.exe Outbound	Outbound	Block	True	Any	Any
+Block BabylonHelper64.exe Inbound	Inbound	Block	True	Any	Any
+Block BabylonFeedbackAgent.exe Outbound	Outbound	Block	True	Any	Any
+Block BabylonFeedbackAgent.exe Inbound	Inbound	Block	True	Any	Any
+Widgets Platform Runtime	Outbound	Allow	True	Any	Any
+pc-print-deploy-client HTTP-out	Outbound	Allow	True	TCP	Any
+NearbyShare TCP	Inbound	Allow	True	TCP	Any
+NearbyShare UDP	Inbound	Allow	True	UDP	Any
+Hotspot Shield VPN - Wifi Proxy	Outbound	Allow	True	Any	Any
+Hotspot Shield VPN - Wifi Proxy	Inbound	Allow	True	Any	Any
+OfficePushNotificationsUtility	Outbound	Allow	True	Any	Any
+Microsoft.Office.ActionsServer	Outbound	Allow	True	Any	Any
+Windows Media Player	Outbound	Allow	True	Any	Any
+Windows Media Player	Inbound	Allow	True	Any	Any
+Store Experience Host	Outbound	Allow	True	Any	Any
+Store Experience Host	Inbound	Allow	True	Any	Any
+Get Help	Outbound	Allow	True	Any	Any
+Microsoft Edge (mDNS-In)	Inbound	Allow	True	UDP	5353
+telegram.exe	Inbound	Allow	True	TCP	Any
+telegram.exe	Inbound	Allow	True	UDP	Any
+ms-resource:ProductPkgDisplayName	Inbound	Allow	True	TCP	7000
+ms-resource:ProductPkgDisplayName	Inbound	Allow	True	TCP	7000
+ms-resource:ProductPkgDisplayName	Inbound	Allow	True	UDP	7000
+ms-resource:ProductPkgDisplayName	Inbound	Allow	True	UDP	7000
+ms-resource:ProductPkgDisplayName	Outbound	Allow	True	TCP	7000
+ms-resource:ProductPkgDisplayName	Outbound	Allow	True	TCP	7000
+ms-resource:ProductPkgDisplayName	Outbound	Allow	True	UDP	7000
+ms-resource:ProductPkgDisplayName	Outbound	Allow	True	UDP	7000
+ms-resource:ProductPkgDisplayName	Inbound	Allow	True	TCP	7000
+ms-resource:ProductPkgDisplayName	Inbound	Allow	True	TCP	7000
+ms-resource:ProductPkgDisplayName	Inbound	Allow	True	UDP	7000
+ms-resource:ProductPkgDisplayName	Inbound	Allow	True	UDP	7000
+ms-resource:ProductPkgDisplayName	Outbound	Allow	True	TCP	7000
+ms-resource:ProductPkgDisplayName	Outbound	Allow	True	TCP	7000
+ms-resource:ProductPkgDisplayName	Outbound	Allow	True	UDP	7000
+ms-resource:ProductPkgDisplayName	Outbound	Allow	True	UDP	7000
+Windows Default Lock Screen	Outbound	Allow	True	Any	Any
+Windows Default Lock Screen	Inbound	Allow	True	Any	Any
+Windows Feature Experience Pack	Outbound	Allow	True	Any	Any
+Windows Feature Experience Pack	Outbound	Allow	True	Any	Any
+Windows Feature Experience Pack	Outbound	Allow	True	Any	Any
+Windows Feature Experience Pack	Outbound	Allow	True	Any	Any
+Windows Feature Experience Pack	Outbound	Allow	True	Any	Any
+Windows Feature Experience Pack	Outbound	Allow	True	Any	Any
+Windows Feature Experience Pack	Inbound	Allow	True	Any	Any
+Click to Do	Outbound	Allow	True	Any	Any
+Windows Feature Experience Pack	Outbound	Allow	True	Any	Any
+Windows Feature Experience Pack	Inbound	Allow	True	Any	Any
+Windows Feature Experience Pack	Outbound	Allow	True	Any	Any
+Windows Feature Experience Pack	Outbound	Allow	True	Any	Any
+Windows Feature Experience Pack	Inbound	Allow	True	Any	Any
+Windows Web Experience Pack	Outbound	Allow	True	Any	Any
+Windows Subsystem for Linux	Outbound	Allow	True	Any	Any
+Microsoft Edge (mDNS-In)	Inbound	Allow	True	UDP	5353
+Start Experiences App	Outbound	Allow	True	Any	Any
+Docker Desktop Backend	Inbound	Allow	True	TCP	Any
+Docker Desktop Backend	Inbound	Allow	True	UDP	Any
+Microsoft Edge (mDNS-In)	Inbound	Allow	True	UDP	5353
+Lenovo Display Control Center	Outbound	Allow	True	Any	Any
+Samsung account	Outbound	Allow	True	Any	Any
+Samsung account	Inbound	Allow	True	Any	Any
+Adobe Crash Processor	Outbound	Block	True	Any	Any
+convert	Outbound	Block	True	Any	Any
+CRLogTransport	Outbound	Block	True	Any	Any
+CRWindowsClientService	Outbound	Block	True	Any	Any
+flitetranscoder	Outbound	Block	True	Any	Any
+LogTransport2	Outbound	Block	True	Any	Any
+node	Outbound	Block	True	Any	Any
+Photoshop	Outbound	Block	True	Any	Any
+PhotoshopPrefsManager	Outbound	Block	True	Any	Any
+pngquant	Outbound	Block	True	Any	Any
+sniffer	Outbound	Block	True	Any	Any
+XPUInfoIPC	Outbound	Block	True	Any	Any
+Droplet Template	Outbound	Block	True	Any	Any
+CEPHtmlEngine	Outbound	Block	True	Any	Any
+amecommand	Outbound	Block	True	Any	Any
+dynamiclinkmanager	Outbound	Block	True	Any	Any
+dynamiclinkmediaserver	Outbound	Block	True	Any	Any
+ImporterREDServer	Outbound	Block	True	Any	Any
+elevated_tracing_service	Outbound	Block	True	Any	Any
+msedgewebview2	Outbound	Block	True	Any	Any
+notification_helper	Outbound	Block	True	Any	Any
+Adobe Crash Processor	Outbound	Block	True	Any	Any
+Adobe Desktop Service	Outbound	Block	True	Any	Any
+CRLogTransport	Outbound	Block	True	Any	Any
+CRWindowsClientService	Outbound	Block	True	Any	Any
+ADSCustomHook	Outbound	Block	True	Any	Any
+Adobe Update Helper	Outbound	Block	True	Any	Any
+CRLogTransport	Outbound	Block	True	Any	Any
+CRWindowsClientService	Outbound	Block	True	Any	Any
+HDHelper	Outbound	Block	True	Any	Any
+Set-up	Outbound	Block	True	Any	Any
+Setup	Outbound	Block	True	Any	Any
+TokenResolverx64	Outbound	Block	True	Any	Any
+HDCoreCustomHook	Outbound	Block	True	Any	Any
+AdobeIPCBroker	Outbound	Block	True	Any	Any
+CRLogTransport	Outbound	Block	True	Any	Any
+CRWindowsClientService	Outbound	Block	True	Any	Any
+AdobeIPCBrokerCustomHook	Outbound	Block	True	Any	Any
+adobe_licensing_helper	Outbound	Block	True	Any	Any
+RuntimeCustomHook	Outbound	Block	True	Any	Any
+Lenovo Vantage	Outbound	Allow	True	Any	Any
+Lenovo Vantage	Inbound	Allow	True	Any	Any
+Microsoft To Do	Outbound	Allow	True	Any	Any
+Microsoft To Do	Inbound	Allow	True	Any	Any
+PowerShell	Outbound	Allow	True	Any	Any
+Microsoft Teams	Inbound	Allow	True	TCP	Any
+Microsoft Teams	Inbound	Allow	True	UDP	Any
+Microsoft Teams	Outbound	Allow	True	TCP	Any
+Microsoft Teams	Outbound	Allow	True	UDP	Any
+Microsoft Teams	Outbound	Allow	True	Any	Any
+Microsoft Teams	Inbound	Allow	True	Any	Any
+WhatsApp	Outbound	Allow	True	Any	Any
+Microsoft Edge (mDNS-In)	Inbound	Allow	True	UDP	5353
+Dropbox	Inbound	Allow	True	TCP	17500-17510
+Dropbox	Inbound	Allow	True	UDP	17500
+Bing Wallpaper	Outbound	Allow	True	Any	Any
+Microsoft Store	Outbound	Allow	True	Any	Any
+Microsoft Store	Inbound	Allow	True	Any	Any
+Microsoft Copilot (mDNS-In)	Inbound	Allow	True	UDP	5353
+Copilot	Outbound	Allow	True	Any	Any
+Google Chrome (mDNS-In)	Inbound	Allow	True	UDP	5353
+Microsoft 365 Copilot	Inbound	Allow	True	TCP	Any
+Microsoft 365 Copilot	Inbound	Allow	True	UDP	Any
+Microsoft 365 Copilot	Outbound	Allow	True	TCP	Any
+Microsoft 365 Copilot	Outbound	Allow	True	UDP	Any
+Microsoft 365 Copilot	Outbound	Allow	True	Any	Any
+Microsoft 365 Copilot	Inbound	Allow	True	Any	Any
+PowerToys.MouseWithoutBorders	Inbound	Allow	True	Any	Any
+PowerToys.SparseApp	Outbound	Allow	True	Any	Any
+Microsoft Edge (mDNS-In)	Inbound	Allow	True	UDP	5353
+__FW_EOF__
+)"
+
+# Shortcuts to recreate AFTER apps are installed, one per line:
+#   kind<TAB>displayName<TAB>exeBase     (kind = quicklaunch | startmenu | desktop)
+SHORTCUTS_DATA="$(cat <<'__SC_EOF__'
+quicklaunch	Command Prompt	cmd
+quicklaunch	Excel	EXCEL
+quicklaunch	File Explorer	
+quicklaunch	Longman Dictionary of Contemporary English 5th Edition	ldoce5
+quicklaunch	Microsoft Edge	msedge
+quicklaunch	Microsoft SQL Server Management Studio (SSMS) 20	Ssms
+quicklaunch	Notepad++	notepad++
+quicklaunch	PowerPoint	POWERPNT
+quicklaunch	Remote Desktop Manager	RemoteDesktopManager
+quicklaunch	Word	WINWORD
+desktop	Close Chrome.bat - Shortcut	Close Chrome
+desktop	Close Edge.bat - Shortcut	Close Edge
+desktop	Close Firefox.bat - Shortcut	Close Firefox
+desktop	close frequent programs.bat - Shortcut	close frequent programs
+desktop	Internet Download Manager	IDMan
+desktop	Kill Acrobat	Kill Acrobat
+desktop	Kill VS Code.bat - Shortcut	Kill VS Code
+desktop	KMPlayer	KMPlayer
+desktop	restart chrome.bat - Shortcut	restart chrome
+desktop	restart explorer.bat - Shortcut	restart explorer
+desktop	restart firefox.bat - Shortcut	restart firefox
+desktop	restart jabber.bat - Shortcut	restart jabber
+desktop	Hotspot Shield	hsscp
+desktop	NordVPN	NordVPN
+desktop	VMware Workstation Pro	vmware
+__SC_EOF__
+)"
+
+# Windows startup items, one per line:  scope<TAB>name<TAB>exeBase  (scope = user|system)
+STARTUP_DATA="$(cat <<'__ST_EOF__'
+user	OneDrive	OneDrive
+user	Cisco Jabber	CiscoJabber
+user	IDMan	Program
+user	GoogleDriveFS	GoogleDriveFS
+user	Proxifier	Proxifier
+user	ut	uTorrent
+user	BingWallpaperDaemon	UnInstDaemon
+user	MicrosoftEdgeAutoLaunch_5849BF807E016217A11F1D6C1C6FB425	msedge
+user	LenovoVantageToolbar	QSHelper
+user	ConnectDetector	connectdetector
+user	Discord	Update
+user	Docker Desktop	Program
+user	NordVPN	NordVPN
+user	ca direct.tlp	ca direct
+user	Command Prompt	cmd
+user	de direct.tlp	de direct
+user	ir direct.tlp	ir direct
+user	OUTLOOK	OUTLOOK
+user	Send to OneNote	ONENOTEM
+system	SecurityHealth	SecurityHealthSystray
+system	RtkAudUService	RtkAudUService64
+system	Leonvo Go Central Startup	LenovoGoCentral
+system	vmware-tray.exe	vmware-tray
+system	PaperCut Print Deploy UI Controller	Program
+system	Nearby Share	nearby_share_launcher
+system	AnyDesk	AnyDesk
+system	Dropbox	Dropbox
+system	TeamsMachineInstaller	Program
+system	Lightshot	Program
+system	Babylon Client	Program
+system	SunJavaUpdateSched	jusched
+__ST_EOF__
+)"
+
+# Auto-start third-party Windows services, one per line:  displayName<TAB>serviceName
+SERVICES_DATA="$(cat <<'__SV_EOF__'
+Advanced SystemCare Service 19	AdvancedSystemCareService19
+Microsoft Office Click-to-Run Service	ClickToRunSvc
+CMigrationService	CMigrationService
+DropboxUpdater InternalService 123.0.6299.144 (DropboxUpdaterInternalService123.0.6299.144)	DropboxUpdaterInternalService123.0.6299.144
+DropboxUpdater Service 123.0.6299.144 (DropboxUpdaterService123.0.6299.144)	DropboxUpdaterService123.0.6299.144
+Microsoft Edge Update Service (edgeupdate)	edgeupdate
+Google Updater Internal Service (GoogleUpdaterInternalService150.0.7863.0)	GoogleUpdaterInternalService150.0.7863.0
+Google Updater Service (GoogleUpdaterService150.0.7863.0)	GoogleUpdaterService150.0.7863.0
+Critical Service for Lenovo Vantage	LenovoVantageService
+Microsoft Defender Core Service	MDCoreSvc
+PaperCut Print Deploy Client	pc-print-deploy-client
+PaperCut Direct Print Monitor	PCPrintProvider
+SamsungMagicianSVC	SamsungMagicianSVC
+SynTPEnh Caller Service	SynTPEnhService
+VMware Authorization Service	VMAuthdService
+VMware USB Arbitration Service	VMUSBArbService
+Microsoft Defender Antivirus Service	WinDefend
+Windows Subsystem for Linux	WslInstaller
+WSL Service	WSLService
+Samsung account	SamsungAccountService
+Hotspot Shield Service 12.16.0	hshld_12.16.0
+NordSec Update Service	NordUpdaterService
+nordvpn-service	nordvpn-service
+nordsec-threatprotection-service	nordsec-threatprotection-service
+Intel® Graphics Software	IntelGraphicsSoftwareService
+__SV_EOF__
+)"
 
 DE="unknown"
 detect_de() {
@@ -1265,6 +2342,18 @@ run_as_user() {
 mark_set() { OK_LIST+=("$1"); record_line OK "$1" "${2:-}"; ok "applied: $1"; }
 
 gset() {  # gset SCHEMA KEY VALUE  (GNOME/Cinnamon share most schemas)
+  # Idempotent + schema-aware:
+  #   - if the schema/key does not exist on this DE -> skip quietly (no failure noise)
+  #   - if the current value already equals VALUE   -> skip (don't re-run the change)
+  #   - otherwise set it and record the change
+  local cur
+  if ! run_as_user gsettings list-keys "$1" 2>/dev/null | grep -qx "$2"; then
+    mark_skip "$1 $2" "not available on $DE"; return 0
+  fi
+  cur="$(run_as_user gsettings get "$1" "$2" 2>/dev/null)"
+  if [ -n "$cur" ] && [ "$cur" = "$3" ]; then
+    mark_skip "$1 $2" "already set ($3)"; return 0
+  fi
   if capture run_as_user gsettings set "$1" "$2" "$3"; then
     mark_set "$1 $2 = $3"
   else
@@ -1297,40 +2386,61 @@ apply_lock_timeout() {
     gnome|cinnamon)
       gset org.gnome.desktop.session idle-delay "uint32 ${secs}"
       if [ "$secs" -eq 0 ]; then gset org.gnome.desktop.screensaver lock-enabled false
-      else gset org.gnome.desktop.screensaver lock-enabled true; fi ;;
+      else gset org.gnome.desktop.screensaver lock-enabled true; fi
+      # Disabling the idle autolock should NOT disable locking on suspend/resume.
+      # (ubuntu-lock-on-suspend exists only on Ubuntu; gset skips it elsewhere.)
+      gset org.gnome.desktop.screensaver lock-on-suspend true
+      gset org.gnome.desktop.screensaver ubuntu-lock-on-suspend true ;;
     *) mark_manual "lock timeout" "set screen lock to ${CFG_lock_timeout} in your DE settings" ;;
   esac
 }
 
 apply_keyboard_layout() {
-  [ -z "${CFG_keyboard_layout:-}" ] && return 0
-  log "Keyboard layout: ${CFG_keyboard_layout}"
-  # Map free-text layout to xkb codes (best-effort).
-  local layouts="us"
-  printf '%s' "$CFG_keyboard_layout" | grep -qi 'fa\|persian' && layouts="us,ir"
+  # Skip the whole module only when nothing keyboard-related was captured.
+  [ -z "${CFG_keyboard_layout:-}${CFG_key_repeat_delay:-}${CFG_key_repeat_rate:-}${CFG_numlock:-}" ] && return 0
+  log "Keyboard settings"
+  if [ -n "${CFG_keyboard_layout:-}" ]; then
+    # Map free-text layout to xkb codes (best-effort).
+    local layouts="us"
+    printf '%s' "$CFG_keyboard_layout" | grep -qi 'fa\|persian' && layouts="us,ir"
+    case "$DE" in
+      gnome|cinnamon)
+        local srcs="[('xkb', 'us')]"
+        [ "$layouts" = "us,ir" ] && srcs="[('xkb', 'us'), ('xkb', 'ir')]"
+        gset org.gnome.desktop.input-sources sources "$srcs" ;;
+      *) if have_cmd localectl; then
+           if capture localectl set-x11-keymap "$layouts"; then mark_set "x11 keymap = $layouts"
+           else mark_fail "keyboard layout" "${LAST_ERR:-localectl set-x11-keymap failed}"; fi
+         fi ;;
+    esac
+  fi
+  # Key-repeat speed and NumLock state (GNOME/Cinnamon).
   case "$DE" in
     gnome|cinnamon)
-      local srcs="[('xkb', 'us')]"
-      [ "$layouts" = "us,ir" ] && srcs="[('xkb', 'us'), ('xkb', 'ir')]"
-      gset org.gnome.desktop.input-sources sources "$srcs" ;;
-    *) if have_cmd localectl; then
-         if capture localectl set-x11-keymap "$layouts"; then mark_set "x11 keymap = $layouts"
-         else mark_fail "keyboard layout" "${LAST_ERR:-localectl set-x11-keymap failed}"; fi
-       fi ;;
+      [ -n "${CFG_key_repeat_delay:-}" ] && gset org.gnome.desktop.peripherals.keyboard delay "uint32 ${CFG_key_repeat_delay}"
+      [ -n "${CFG_key_repeat_rate:-}" ]  && gset org.gnome.desktop.peripherals.keyboard repeat-interval "uint32 ${CFG_key_repeat_rate}"
+      if [ -n "${CFG_numlock:-}" ]; then
+        gset org.gnome.desktop.peripherals.keyboard remember-numlock-state true
+        gset org.gnome.desktop.peripherals.keyboard numlock-state "$CFG_numlock"
+      fi ;;
   esac
 }
 
 disable_telemetry_location() {
-  log "Privacy: disable telemetry / location"
-  if [ "${CFG_location:-}" = "enabled" ] || [ -n "${CFG_telemetry:-}" ]; then
-    systemctl disable --now geoclue.service 2>/dev/null && mark_set "telemetry/location: disabled geoclue" \
-      || info "geoclue not active"
-    case "$DE" in
-      gnome|cinnamon)
-        gset org.gnome.system.location enabled false
-        gset org.gnome.desktop.privacy report-technical-problems false ;;
-    esac
+  [ -z "${CFG_location:-}${CFG_telemetry:-}" ] && return 0
+  log "Privacy & security"
+  if systemctl is-enabled geoclue.service >/dev/null 2>&1; then
+    if capture systemctl disable --now geoclue.service; then mark_set "telemetry/location: disabled geoclue"
+    else mark_fail "geoclue" "${LAST_ERR:-could not disable geoclue}"; fi
+  else
+    mark_skip "geoclue" "not enabled"
   fi
+  case "$DE" in
+    gnome|cinnamon)
+      gset org.gnome.system.location enabled false
+      gset org.gnome.desktop.privacy report-technical-problems false
+      gset org.gnome.desktop.privacy send-software-usage-stats false ;;
+  esac
 }
 
 apply_lid_behavior() {
@@ -1348,24 +2458,467 @@ apply_lid_behavior() {
   fi
 }
 
+apply_resolution() {
+  [ -z "${CFG_resolution:-}" ] && return 0
+  case "$CFG_resolution" in *[0-9]x[0-9]*) ;; *) return 0 ;; esac
+  log "Display resolution: ${CFG_resolution}"
+  # Wayland sessions cannot be driven by xrandr.
+  if [ -n "${WAYLAND_DISPLAY:-}" ] || [ "$(printf '%s' "${XDG_SESSION_TYPE:-}" | tr '[:upper:]' '[:lower:]')" = "wayland" ]; then
+    mark_manual "display resolution" "Wayland session: set ${CFG_resolution} in Settings > Displays"; return 0
+  fi
+  if ! have_cmd xrandr; then
+    local pkg=""
+    case "$PM" in apt) pkg="x11-xserver-utils" ;; dnf|zypper) pkg="xorg-x11-server-utils" ;; pacman) pkg="xorg-xrandr" ;; esac
+    ask_install_addition "display resolution" "$pkg" "set the screen resolution with xrandr" \
+      || { mark_manual "display resolution" "set ${CFG_resolution} in Settings > Displays"; return 0; }
+  fi
+  local xr out cur mode="$CFG_resolution"
+  xr="$(run_as_user xrandr 2>/dev/null)"
+  out="$(printf '%s\n' "$xr" | awk '/ connected/{print $1; exit}')"
+  cur="$(printf '%s\n' "$xr" | awk '/\*/{print $1; exit}')"
+  [ -z "$out" ] && { mark_manual "display resolution" "no connected display found via xrandr"; return 0; }
+  [ "$cur" = "$mode" ] && { mark_skip "display resolution" "already $mode"; return 0; }
+  if capture run_as_user xrandr --output "$out" --mode "$mode"; then mark_set "resolution $out = $mode"
+  else mark_fail "display resolution" "${LAST_ERR:-xrandr could not set $mode on $out (mode may be unsupported)}"; fi
+}
+
+apply_mouse() {
+  [ -z "${CFG_mouse_size:-}${CFG_mouse_speed:-}${CFG_mouse_accel:-}" ] && return 0
+  log "Mouse: pointer size / speed / acceleration"
+  case "$DE" in
+    gnome|cinnamon)
+      [ -n "${CFG_mouse_size:-}" ]  && gset org.gnome.desktop.interface cursor-size "$CFG_mouse_size"
+      [ -n "${CFG_mouse_speed:-}" ] && gset org.gnome.desktop.peripherals.mouse speed "$CFG_mouse_speed"
+      [ -n "${CFG_mouse_accel:-}" ] && gset org.gnome.desktop.peripherals.mouse accel-profile "'$CFG_mouse_accel'" ;;
+    *) mark_manual "mouse settings" "set pointer size/speed in your DE settings" ;;
+  esac
+}
+
+apply_accessibility() {
+  [ -z "${CFG_a11y_stickykeys:-}${CFG_a11y_slowkeys:-}${CFG_a11y_bouncekeys:-}${CFG_a11y_mousekeys:-}${CFG_a11y_highcontrast:-}${CFG_a11y_magnifier:-}${CFG_a11y_screenreader:-}" ] && return 0
+  log "Accessibility options"
+  case "$DE" in
+    gnome|cinnamon)
+      [ -n "${CFG_a11y_stickykeys:-}" ]   && gset org.gnome.desktop.a11y.keyboard stickykeys-enable "$CFG_a11y_stickykeys"
+      [ -n "${CFG_a11y_slowkeys:-}" ]     && gset org.gnome.desktop.a11y.keyboard slowkeys-enable "$CFG_a11y_slowkeys"
+      [ -n "${CFG_a11y_bouncekeys:-}" ]   && gset org.gnome.desktop.a11y.keyboard bouncekeys-enable "$CFG_a11y_bouncekeys"
+      [ -n "${CFG_a11y_mousekeys:-}" ]    && gset org.gnome.desktop.a11y.keyboard mousekeys-enable "$CFG_a11y_mousekeys"
+      [ -n "${CFG_a11y_magnifier:-}" ]    && gset org.gnome.desktop.a11y.applications screen-magnifier-enabled "$CFG_a11y_magnifier"
+      [ -n "${CFG_a11y_screenreader:-}" ] && gset org.gnome.desktop.a11y.applications screen-reader-enabled "$CFG_a11y_screenreader"
+      [ -n "${CFG_a11y_highcontrast:-}" ] && gset org.gnome.desktop.a11y.interface high-contrast "$CFG_a11y_highcontrast" ;;
+    *) mark_manual "accessibility" "set accessibility options in your DE settings" ;;
+  esac
+}
+
+apply_timezone_timesync() {
+  [ -z "${CFG_timezone:-}${CFG_ntp_server:-}" ] && return 0
+  log "Timezone & time synchronization"
+  if [ -n "${CFG_timezone:-}" ] && [ "$CFG_timezone" != "unknown" ] && have_cmd timedatectl; then
+    local curtz; curtz="$(timedatectl show -p Timezone --value 2>/dev/null)"
+    if [ "$curtz" = "$CFG_timezone" ]; then mark_skip "timezone" "already $CFG_timezone"
+    elif capture timedatectl set-timezone "$CFG_timezone"; then mark_set "timezone = $CFG_timezone"
+    else mark_fail "timezone" "${LAST_ERR:-timedatectl set-timezone failed for $CFG_timezone}"; fi
+  fi
+  # Time synchronization with a non-Microsoft NTP server.
+  local ntp="${CFG_ntp_server:-}"
+  case "$ntp" in *time.windows.com*|"") ntp="pool.ntp.org" ;; esac
+  have_cmd timedatectl && { capture timedatectl set-ntp true >/dev/null 2>&1 || true; }
+  local conf=/etc/systemd/timesyncd.conf
+  if [ -f "$conf" ] || systemctl list-unit-files 2>/dev/null | grep -q '^systemd-timesyncd'; then
+    if [ -f "$conf" ] && grep -qE "^NTP=${ntp}( |$)" "$conf"; then
+      mark_skip "ntp server" "already $ntp"
+    else
+      if [ -f "$conf" ] && grep -qE '^[#[:space:]]*NTP=' "$conf"; then
+        sed -i -E "s|^[#[:space:]]*NTP=.*|NTP=${ntp}|" "$conf" 2>/dev/null
+      elif [ -f "$conf" ] && grep -qE '^\[Time\]' "$conf"; then
+        sed -i -E "s|^\[Time\]|[Time]\nNTP=${ntp}|" "$conf" 2>/dev/null
+      else
+        printf '[Time]\nNTP=%s\n' "$ntp" >> "$conf" 2>/dev/null
+      fi
+      systemctl restart systemd-timesyncd 2>/dev/null || true
+      mark_set "ntp server = $ntp (systemd-timesyncd)"
+    fi
+  elif have_cmd chronyd || have_cmd chronyc; then
+    mark_manual "ntp server" "chrony present: add 'server $ntp iburst' to /etc/chrony.conf and restart chrony"
+  else
+    if ask_install_addition "time synchronization" "chrony" "synchronize the clock with $ntp"; then
+      mark_manual "ntp server" "add 'server $ntp iburst' to /etc/chrony.conf and restart chrony"
+    else
+      mark_skip "ntp server" "no time-sync service available"
+    fi
+  fi
+}
+
+apply_wifi() {
+  [ -z "$(printf '%s' "$WIFI_DATA" | tr -d '[:space:]')" ] && return 0
+  log "WiFi known networks"
+  if ! have_cmd nmcli; then
+    mark_manual "wifi networks" "NetworkManager (nmcli) not present; import WiFi profiles manually"; return 0
+  fi
+  # If any entry carries an encrypted key, ask once for the password to decrypt them.
+  local has_enc=0 wifikey=""
+  printf '%s\n' "$WIFI_DATA" | awk -F'\t' '$4=="enc"{f=1} END{exit !f}' && has_enc=1
+  if [ "$has_enc" = "1" ]; then
+    have_cmd openssl || ask_install_addition "wifi passwords" "openssl" "decrypt the exported WiFi passwords" || true
+    if have_cmd openssl && [ -r /dev/tty ]; then
+      printf '  Enter the password used to encrypt the WiFi keys (empty to import profiles WITHOUT saved passwords): ' > /dev/tty
+      read -r wifikey < /dev/tty || wifikey=""
+    fi
+  fi
+  local ssid auth secret sectype psk
+  while IFS="$(printf '\t')" read -r ssid auth secret sectype; do
+    [ -z "$ssid" ] && continue
+    # Idempotent: skip if a connection profile of this name already exists.
+    if nmcli -t -g NAME connection show 2>/dev/null | grep -qxF "$ssid"; then
+      mark_skip "wifi: $ssid" "connection already exists"; continue
+    fi
+    # Open networks have no key: add them straight away (no password needed).
+    case "$(printf '%s' "$auth" | tr '[:upper:]' '[:lower:]')" in
+      open|none|"")
+        if capture nmcli connection add type wifi con-name "$ssid" ssid "$ssid" connection.autoconnect yes; then
+          mark_set "wifi: $ssid (open network)"
+        else mark_fail "wifi: $ssid" "${LAST_ERR:-nmcli could not add the connection}"; fi
+        continue ;;
+    esac
+    psk=""
+    case "$sectype" in
+      enc) if [ -n "$wifikey" ] && have_cmd openssl; then
+             psk="$(printf '%s' "$secret" | openssl enc -d -aes-256-cbc -pbkdf2 -salt -base64 -A -pass pass:"$wifikey" 2>/dev/null)" || psk=""
+           fi ;;
+      plain) psk="$secret" ;;
+    esac
+    if [ -n "$psk" ]; then
+      if capture nmcli connection add type wifi con-name "$ssid" ssid "$ssid" \
+           wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$psk" connection.autoconnect yes; then
+        mark_set "wifi: $ssid (with saved password)"
+      else mark_fail "wifi: $ssid" "${LAST_ERR:-nmcli could not add the connection}"; fi
+    else
+      if capture nmcli connection add type wifi con-name "$ssid" ssid "$ssid" connection.autoconnect yes; then
+        mark_manual "wifi: $ssid" "profile added WITHOUT password - enter the WiFi password to connect"
+      else mark_fail "wifi: $ssid" "${LAST_ERR:-nmcli could not add the connection}"; fi
+    fi
+  done <<EOF
+$(printf '%s\n' "$WIFI_DATA")
+EOF
+}
+
+apply_firewall() {
+  [ -z "$(printf '%s' "$FIREWALL_DATA" | tr -d '[:space:]')" ] && return 0
+  log "Firewall rules"
+  local backend="" enablecmd=""
+  if have_cmd ufw; then backend="ufw"; enablecmd="ufw enable"
+  elif have_cmd firewall-cmd; then backend="firewalld"; enablecmd="systemctl enable --now firewalld"
+  else
+    local pkg=""; case "$FAMILY" in debian) pkg="ufw" ;; *) pkg="firewalld" ;; esac
+    if ask_install_addition "firewall rules" "$pkg" "create the migrated firewall rules"; then
+      if have_cmd ufw; then backend="ufw"; enablecmd="ufw enable"
+      elif have_cmd firewall-cmd; then backend="firewalld"; enablecmd="systemctl enable --now firewalld"; fi
+    fi
+    [ -z "$backend" ] && { mark_manual "firewall rules" "no ufw/firewalld available"; return 0; }
+  fi
+
+  local name dir action enabled proto port lproto dirl
+  while IFS="$(printf '\t')" read -r name dir action enabled proto port; do
+    [ -z "$name" ] && continue
+    lproto="$(printf '%s' "$proto" | tr '[:upper:]' '[:lower:]')"
+    dirl="$(printf '%s' "$dir" | tr '[:upper:]' '[:lower:]')"
+    # Only rules with a concrete TCP/UDP port map cleanly; app/service rules don't.
+    case "$lproto" in tcp|udp) ;; *) mark_manual "fw: $name" "not portable to $backend (proto='${proto:-?}' port='${port:-?}')"; continue ;; esac
+    [ -z "$port" ] && { mark_manual "fw: $name" "no local port; not portable to $backend"; continue; }
+    case "$backend" in
+      ufw)
+        if [ "$enabled" != "True" ]; then mark_skip "fw: $name" "disabled rule (ufw cannot store disabled rules)"; continue; fi
+        local verb="allow"; [ "$action" = "Block" ] && verb="deny"
+        local dirflag="in"; case "$dirl" in *out*) dirflag="out" ;; esac
+        if capture ufw "$verb" "$dirflag" "${port}/${lproto}"; then mark_set "fw: $name ($verb $dirflag ${port}/${lproto})"
+        else mark_fail "fw: $name" "${LAST_ERR:-ufw rejected the rule}"; fi ;;
+      firewalld)
+        local fwaction="accept"; [ "$action" = "Block" ] && fwaction="reject"
+        local rich="rule family=\"ipv4\" port port=\"${port}\" protocol=\"${lproto}\" ${fwaction}"
+        if firewall-cmd --permanent --query-rich-rule="$rich" >/dev/null 2>&1; then
+          mark_skip "fw: $name" "already present"; continue
+        fi
+        if capture firewall-cmd --permanent --add-rich-rule="$rich"; then
+          [ "$enabled" = "True" ] || info "  (Windows had this rule disabled; it is present in firewalld - remove it if unwanted)"
+          mark_set "fw: $name (${fwaction} ${port}/${lproto})"
+        else mark_fail "fw: $name" "${LAST_ERR:-firewall-cmd rejected the rule}"; fi ;;
+    esac
+  done <<EOF
+$(printf '%s\n' "$FIREWALL_DATA")
+EOF
+
+  # Reload so the transferred rules take effect regardless of the prompt below.
+  case "$backend" in
+    ufw)       ufw reload >/dev/null 2>&1 || true ;;
+    firewalld) firewall-cmd --reload >/dev/null 2>&1 || true ;;
+  esac
+
+  # Ask (in yellow) whether to enable + start the firewall now.
+  if [ -r /dev/tty ]; then
+    warn "Firewall rules transferred. Do you want to enable and start firewall now?"
+    warn "If you feel it might brake something you can skip it now."
+    warn "You can always do that by executing sudo $enablecmd (y/n)"
+    local ans; printf '  (y/n): ' > /dev/tty; read -r ans < /dev/tty || ans="n"
+    case "$ans" in
+      [Yy]*) if capture sh -c "$enablecmd"; then mark_set "firewall enabled ($enablecmd)"
+             else mark_fail "firewall enable" "${LAST_ERR:-$enablecmd failed}"; fi ;;
+      *)     info "firewall left disabled; enable later with: sudo $enablecmd" ;;
+    esac
+  fi
+}
+
+# =============================================================================
+#  POST-INSTALL phase  (runs AFTER apps are installed)
+# =============================================================================
+# Where C_detect staged the user's personal files. apply_settings.sh lives in
+# submodules/, so its grandparent dir is "Execute on Linux!" -> migrated_user_data.
+MIGRATE_STAGE="${MIGRATE_STAGE:-$(dirname "$(cd "$(dirname "$0")" && pwd)")/migrated_user_data}"
+
+# Find an installed app's .desktop id by matching a Windows shortcut name / exe base.
+# Echoes the .desktop basename (e.g. "org.videolan.VLC.desktop") or nothing.
+resolve_desktop() {  # resolve_desktop "Display Name" "exebase"
+  local disp="$1" exe="$2" d f base nlow
+  local dirs="/usr/share/applications /var/lib/flatpak/exports/share/applications $TARGET_HOME/.local/share/applications"
+  # 1) exe base name maps most reliably (e.g. "vlc" -> .../vlc.desktop).
+  for d in $dirs; do
+    [ -d "$d" ] || continue
+    [ -n "$exe" ] || break
+    for f in "$d/"*"${exe}"*.desktop; do
+      [ -f "$f" ] && { basename "$f"; return 0; }
+    done
+  done
+  # 2) fall back to a case-insensitive match on the desktop file's Name= field.
+  nlow="$(printf '%s' "$disp" | tr '[:upper:]' '[:lower:]')"
+  [ -n "$nlow" ] || return 1
+  for d in $dirs; do
+    [ -d "$d" ] || continue
+    for f in "$d/"*.desktop; do
+      [ -f "$f" ] || continue
+      if grep -iqE "^Name=.*${nlow}" "$f" 2>/dev/null; then basename "$f"; return 0; fi
+    done
+  done
+  return 1
+}
+
+# Append a .desktop id to the GNOME favourites list, idempotently.
+add_favorite() {  # add_favorite "app.desktop"
+  local id="$1" cur
+  case "$DE" in gnome|cinnamon) ;; *) mark_manual "favourite: $id" "pin it in your DE manually"; return 0 ;; esac
+  run_as_user gsettings list-keys org.gnome.shell 2>/dev/null | grep -qx favorite-apps || {
+    mark_skip "favourite: $id" "org.gnome.shell favorite-apps not available on $DE"; return 0; }
+  cur="$(run_as_user gsettings get org.gnome.shell favorite-apps 2>/dev/null)"   # e.g. ['a.desktop', 'b.desktop']
+  case "$cur" in *"'$id'"*) mark_skip "favourite: $id" "already pinned"; return 0 ;; esac
+  # An empty list is reported as "[]" OR (typed) "@as []"; strip the annotation + spaces.
+  local newlist stripped
+  stripped="$(printf '%s' "$cur" | sed 's/^@as //; s/[[:space:]]//g')"
+  if [ -z "$cur" ] || [ "$stripped" = "[]" ]; then
+    newlist="['$id']"
+  else
+    newlist="$(printf '%s' "$cur" | sed "s/]$/, '$id']/")"
+  fi
+  if capture run_as_user gsettings set org.gnome.shell favorite-apps "$newlist"; then mark_set "favourite pinned: $id"
+  else mark_fail "favourite: $id" "${LAST_ERR:-could not update favorite-apps}"; fi
+}
+
+apply_shortcuts() {
+  [ -z "$(printf '%s' "$SHORTCUTS_DATA" | tr -d '[:space:]')" ] && return 0
+  log "Shortcuts (Quick Launch / Start menu / Desktop) -> installed apps"
+  local appdir="$TARGET_HOME/.local/share/applications" kind disp exe did
+  while IFS="$(printf '\t')" read -r kind disp exe; do
+    [ -z "$disp$exe" ] && continue
+    did="$(resolve_desktop "$disp" "$exe")" || { mark_skip "shortcut: ${disp:-$exe}" "no installed equivalent (skipped to avoid a broken link)"; continue; }
+    case "$kind" in
+      desktop)
+        local src=""
+        for d in /usr/share/applications /var/lib/flatpak/exports/share/applications "$appdir"; do
+          [ -f "$d/$did" ] && { src="$d/$did"; break; }
+        done
+        [ -z "$src" ] && { mark_skip "desktop shortcut: $disp" "resolved app file not found"; continue; }
+        mkdir -p "$TARGET_HOME/Desktop"
+        if cp -f "$src" "$TARGET_HOME/Desktop/$did" 2>/dev/null; then
+          chown "$TARGET_USER":"$TARGET_USER" "$TARGET_HOME/Desktop/$did" 2>/dev/null || true
+          chmod +x "$TARGET_HOME/Desktop/$did" 2>/dev/null || true
+          run_as_user gio set "$TARGET_HOME/Desktop/$did" metadata::trusted true >/dev/null 2>&1 || true
+          mark_set "desktop shortcut: $disp -> $did"
+        else mark_fail "desktop shortcut: $disp" "could not write to ~/Desktop"; fi ;;
+      quicklaunch|startmenu) add_favorite "$did" ;;
+      *) mark_skip "shortcut: $disp" "unknown kind '$kind'" ;;
+    esac
+  done <<EOF
+$(printf '%s\n' "$SHORTCUTS_DATA")
+EOF
+}
+
+# Record a note ONLY in the results log file -- not on screen, not in the printed
+# summary (print_* ignores the NOTE status). Used for startup items / services with
+# no Linux equivalent: harmless misses the user said "do not and cannot matter".
+log_note() { record_line NOTE "$1" "${2:-}"; }
+
+# Startup items -> XDG autostart, but ONLY when they resolve to an installed app.
+# Scope is preserved: Windows machine-wide -> /etc/xdg/autostart (system); current
+# user -> ~/.config/autostart (user). Non-resolving items are recorded log-only.
+apply_startup_items() {
+  [ -z "$(printf '%s' "$STARTUP_DATA" | tr -d '[:space:]')" ] && return 0
+  log "Startup items -> autostart (resolved apps only)"
+  local scope name exe did src d dest
+  while IFS="$(printf '\t')" read -r scope name exe; do
+    [ -z "$name$exe" ] && continue
+    did="$(resolve_desktop "$name" "$exe")" || { log_note "startup: ${name:-$exe}" "no installed equivalent (left out; harmless)"; continue; }
+    src=""
+    for d in /usr/share/applications /var/lib/flatpak/exports/share/applications "$TARGET_HOME/.local/share/applications"; do
+      [ -f "$d/$did" ] && { src="$d/$did"; break; }
+    done
+    [ -z "$src" ] && { log_note "startup: $name" "resolved app file not found"; continue; }
+    case "$scope" in
+      system) dest="/etc/xdg/autostart/$did" ;;
+      *)      dest="$TARGET_HOME/.config/autostart/$did" ;;
+    esac
+    [ -e "$dest" ] && { mark_skip "startup: $name" "already in autostart"; continue; }
+    mkdir -p "$(dirname "$dest")"
+    if cp -f "$src" "$dest" 2>/dev/null; then
+      [ "$scope" = "system" ] || chown "$TARGET_USER":"$TARGET_USER" "$dest" 2>/dev/null || true
+      mark_set "startup ($scope): $name -> autostart"
+    else mark_fail "startup: $name" "could not write autostart entry"; fi
+  done <<EOF
+$(printf '%s\n' "$STARTUP_DATA")
+EOF
+}
+
+# Auto-start Windows services -> enable the systemd unit ONLY when a unit whose base
+# name clearly matches exists (services are system scope). No match -> log-only note.
+enable_services() {
+  [ -z "$(printf '%s' "$SERVICES_DATA" | tr -d '[:space:]')" ] && return 0
+  log "Auto-start services -> systemd (clear name matches only)"
+  if ! have_cmd systemctl; then log_note "services" "systemctl not available"; return 0; fi
+  local units disp name key unit
+  units="$(systemctl list-unit-files --type=service --no-legend --no-pager 2>/dev/null | awk '{print $1}')"
+  while IFS="$(printf '\t')" read -r disp name; do
+    [ -z "$disp$name" ] && continue
+    # Normalize the Windows service name to a bare alpha token (drop arch/version/punct).
+    key="$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]' | sed -E 's/x64|x86|amd64//g; s/[0-9]+//g; s/[^a-z]//g')"
+    [ -z "$key" ] && { log_note "service: ${disp:-$name}" "no comparable name"; continue; }
+    unit="$(printf '%s\n' "$units" | grep -iE "^${key}\.service$" | head -n1)"
+    [ -z "$unit" ] && { log_note "service: ${disp:-$name}" "no clearly-matching systemd unit"; continue; }
+    if systemctl is-enabled "$unit" >/dev/null 2>&1; then mark_skip "service: $disp" "$unit already enabled"; continue; fi
+    if capture systemctl enable --now "$unit"; then mark_set "service: $disp -> enabled $unit"
+    else mark_fail "service: $disp" "${LAST_ERR:-could not enable $unit}"; fi
+  done <<EOF
+$(printf '%s\n' "$SERVICES_DATA")
+EOF
+}
+
+# C_detect packs the user's personal files into ONE encrypted archive next to the
+# staging dir: "<migrated_user_data>.tar.enc" (AES-256-CBC / PBKDF2, same transfer
+# password as WiFi). Decrypt + extract it ONCE into a private temp dir; copy_ssh and
+# copy_contacts then read from there. STAGE_DIR is the dir they read; STAGE_TMP is
+# cleaned up afterwards. If no archive but a plaintext staging dir exists (standalone
+# / legacy), use that directly.
+STAGE_DIR=""; STAGE_TMP=""
+unpack_stage() {
+  local archive="${MIGRATE_STAGE}.tar.enc"
+  if [ ! -f "$archive" ]; then
+    [ -d "$MIGRATE_STAGE" ] && [ -n "$(ls -A "$MIGRATE_STAGE" 2>/dev/null)" ] && STAGE_DIR="$MIGRATE_STAGE"
+    return 0
+  fi
+  if ! have_cmd openssl; then ask_install_addition "personal data" "openssl" "decrypt your transferred SSH keys and Contacts" || { mark_skip "personal data" "openssl unavailable to decrypt the archive"; return 0; }; fi
+  if ! have_cmd tar; then mark_skip "personal data" "tar unavailable to extract the archive"; return 0; fi
+  local key=""
+  if [ -r /dev/tty ]; then
+    printf '  Enter the password used to encrypt your transferred personal data (SSH keys / Contacts; same as WiFi; empty to skip): ' > /dev/tty
+    read -r key < /dev/tty || key=""
+  fi
+  [ -z "$key" ] && { mark_skip "personal data" "no decryption password given (SSH/Contacts skipped)"; return 0; }
+  STAGE_TMP="$(mktemp -d 2>/dev/null || echo /tmp/mtl_stage.$$)"; mkdir -p "$STAGE_TMP"
+  if openssl enc -d -aes-256-cbc -pbkdf2 -salt -pass pass:"$key" -in "$archive" 2>/dev/null | tar -xf - -C "$STAGE_TMP" 2>/dev/null; then
+    STAGE_DIR="$STAGE_TMP"
+  else
+    rm -rf "$STAGE_TMP" 2>/dev/null || true; STAGE_TMP=""
+    mark_fail "personal data" "could not decrypt the archive (wrong password?) - SSH/Contacts skipped"
+  fi
+}
+
+cleanup_stage() {
+  [ -n "$STAGE_TMP" ] && rm -rf "$STAGE_TMP" 2>/dev/null || true
+}
+
+copy_ssh() {
+  local src="$STAGE_DIR/ssh"
+  [ -n "$STAGE_DIR" ] && [ -d "$src" ] && [ -n "$(ls -A "$src" 2>/dev/null)" ] || return 0
+  log "SSH keys / config -> ~/.ssh"
+  local dest="$TARGET_HOME/.ssh" f base out
+  mkdir -p "$dest"; chmod 700 "$dest" 2>/dev/null || true
+  for f in "$src"/*; do
+    [ -f "$f" ] || continue
+    base="$(basename "$f")"
+    out="$dest/$base"
+    [ -e "$out" ] && { mark_skip "ssh: $base" "already exists (left untouched)"; continue; }
+    if cp -f "$f" "$out" 2>/dev/null; then
+      chown "$TARGET_USER":"$TARGET_USER" "$out" 2>/dev/null || true
+      case "$base" in *.pub|config|known_hosts|authorized_keys) chmod 644 "$out" 2>/dev/null || true ;; *) chmod 600 "$out" 2>/dev/null || true ;; esac
+      mark_set "ssh file: $base"
+    else mark_fail "ssh: $base" "could not copy into ~/.ssh"; fi
+  done
+  chown "$TARGET_USER":"$TARGET_USER" "$dest" 2>/dev/null || true
+}
+
+copy_contacts() {
+  local src="$STAGE_DIR/contacts"
+  [ -n "$STAGE_DIR" ] && [ -d "$src" ] && [ -n "$(ls -A "$src" 2>/dev/null)" ] || return 0
+  log "Contacts -> ~/Contacts"
+  local dest="$TARGET_HOME/Contacts"
+  mkdir -p "$dest"
+  if cp -rn "$src"/. "$dest"/ 2>/dev/null; then
+    chown -R "$TARGET_USER":"$TARGET_USER" "$dest" 2>/dev/null || true
+    mark_set "contacts copied to ~/Contacts (.contact files are XML - import into your address book)"
+  else
+    mark_fail "contacts" "could not copy into ~/Contacts"
+  fi
+}
+
+run_pre() {
+  apply_display_scaling
+  apply_resolution
+  apply_mouse
+  apply_lock_timeout
+  apply_keyboard_layout
+  apply_accessibility
+  disable_telemetry_location
+  apply_timezone_timesync
+  apply_wifi
+  apply_firewall
+  apply_lid_behavior
+  info "Note: keyboard shortcuts (copy/paste/screenshot/etc.) map to your DE's"
+  info "      defaults on Linux; review System Settings > Keyboard if needed."
+}
+
+run_post() {
+  apply_shortcuts
+  apply_startup_items
+  enable_services
+  unpack_stage
+  copy_ssh
+  copy_contacts
+  cleanup_stage
+}
+
 main() {
   require_root
   detect_distro
   detect_arch
   detect_de
   MODULE="Config settings"
-  log "Migrate to Linux  --  Apply Settings"
+  # Phase: pre (before apps), post (after apps), or all (standalone). Default all.
+  local phase="${1:-all}"
+  log "Migrate to Linux  --  Apply Settings (${phase})"
   info "Distribution : ${DISTRO_NAME}"
   info "Desktop env  : ${DE}"
 
-  apply_display_scaling
-  apply_lock_timeout
-  apply_keyboard_layout
-  disable_telemetry_location
-  apply_lid_behavior
+  case "$phase" in
+    pre)  run_pre ;;
+    post) run_post ;;
+    *)    run_pre; run_post ;;
+  esac
 
-  info "Note: keyboard shortcuts (copy/paste/screenshot/etc.) map to your DE's"
-  info "      defaults on Linux; review System Settings > Keyboard if needed."
   print_summary
 }
 

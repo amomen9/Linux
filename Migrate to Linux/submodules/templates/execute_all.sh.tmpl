@@ -5,7 +5,8 @@
 #
 #  Single entry point. Asks the stage questions UP FRONT (each question and its
 #  options are shown), runs the chosen stages UNATTENDED in this order:
-#    drivers -> config settings -> applications -> manual downloads -> docker
+#    drivers -> settings(pre) -> applications -> manual downloads -> settings(post) -> docker
+#  settings(post) recreates shortcuts/pins, ~/.ssh and Contacts after apps exist.
 #  Manual downloads place each file, then 'done'/'skip'; docker rebuild is optional.
 #  Usage:  sudo ./execute_all.sh
 # =============================================================================
@@ -164,11 +165,11 @@ show_unmatched_warning() {
   MODULE="$prev"
 }
 
-run_stage() {  # run_stage script.sh  (helper scripts live in submodules/)
-  local step="$1"
+run_stage() {  # run_stage script.sh [args...]  (helper scripts live in submodules/)
+  local step="$1"; shift
   if [ -f "$here/submodules/$step" ]; then
-    log "=== Running $step ==="
-    bash "$here/submodules/$step" || warn "$step reported errors (continuing)"
+    log "=== Running $step $* ==="
+    bash "$here/submodules/$step" "$@" || warn "$step reported errors (continuing)"
   else
     warn "missing: submodules/$step"
   fi
@@ -337,6 +338,8 @@ main() {
   export LEDGER="${LEDGER:-/tmp/migrate_to_linux_ledger.tsv}"
   : > "$LEDGER" 2>/dev/null || true
   export MIGRATE_KEEP_RESULTS=1
+  # Where C_detect staged the user's personal files (used by the post settings phase).
+  export MIGRATE_STAGE="${MIGRATE_STAGE:-$here/migrated_user_data}"
 
   log "Migrate to Linux  --  Run All"
   info "Distribution : ${DISTRO_NAME}"
@@ -397,12 +400,16 @@ main() {
     [ "$do_apps" -eq 1 ] && install_manual_apps
     info "Dry-run: device-driver, settings and docker stages are not simulated."
   else
-    # Order: drivers -> settings -> apps
+    # Order: drivers -> settings(pre) -> apps -> manual -> settings(post) -> docker.
+    # Settings split into two phases: "pre" before apps, then "post" (shortcuts/pins,
+    # ~/.ssh, Contacts) after apps+manual so it can resolve installed-app equivalents.
     [ "$do_drivers"  -eq 1 ] && run_stage install_device_drivers.sh
-    [ "$do_settings" -eq 1 ] && run_stage apply_settings.sh
+    [ "$do_settings" -eq 1 ] && run_stage apply_settings.sh pre
     [ "$do_apps"     -eq 1 ] && run_stage install_must_have_software.sh
     # ---- Manual downloads (part of the apps stage) ----
     [ "$do_apps" -eq 1 ] && install_manual_apps
+    # ---- Post-install settings: shortcuts/favourites, ~/.ssh, Contacts ----
+    [ "$do_settings" -eq 1 ] && run_stage apply_settings.sh post
     # ---- Docker rebuild last (needs Docker, which the apps stage installs) ----
     if [ "$do_docker" -eq 1 ]; then
       log "=== Running docker_rebuild.sh ==="

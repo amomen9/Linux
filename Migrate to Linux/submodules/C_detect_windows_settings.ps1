@@ -4,18 +4,41 @@
     C_windows_configs.csv for later application on Linux.
 
 .DESCRIPTION
-    Extracts six categories of settings:
+    Extracts user-facing settings and writes them to C_windows_configs.csv:
       1. Power settings  -  what closing the lid does (on battery / on AC)
       2. Display resolution & scaling
-      3. Keyboard layout (language) and common shortcuts
+      3. Keyboard layout, repeat speed and NumLock state
       4. Telemetry level and location-service state
       5. (placeholder) scheduled auto-update service/timer mapping
       6. Lock-screen / blank timeout (secure screensaver or display-off idle)
+      7. Mouse pointer size, speed and acceleration
+      8. Accessibility (sticky/slow/mouse keys, high contrast, magnifier)
+      9. Timezone and time synchronization (non-Microsoft NTP server)
+     10. WiFi known networks + profiles (passwords optionally encrypted)
+     11. Firewall rules (all rules, for ufw/firewalld on Linux)
+    POST-INSTALL items (Phase=post; applied AFTER apps are installed):
+     12. Shortcuts (Quick Launch / Start-menu pinned / Desktop) -> installed apps
+     13. Startup items (-> autostart) + auto-start third-party services
+     14. ~/.ssh (all files) + 15. Contacts folder
+
+    The personal files for 14-15 are bundled into ONE encrypted archive
+    "Execute on Linux!/migrated_user_data.tar.enc" (tar + OpenSSL AES-256-CBC/PBKDF2
+    using the transfer password); the clear-text staging dir is then deleted, so no
+    unencrypted personal data is ever left on disk.
+
+    Every row carries a Phase (pre|post) and Scope (User|System) column. Personal
+    files for the post items are staged into "Execute on Linux!/migrated_user_data/".
 
     Output is written to C_windows_configs.csv (UTF-8, -NoTypeInformation).
 
-    This script does NOT require admin rights. It reads current-user
-    settings directly from the registry and WMI.
+    WiFi password export prompts for an optional encryption password; when given
+    (and OpenSSL is available, installed on demand) each key is AES-256-CBC /
+    PBKDF2 encrypted in OpenSSL's salted format so apply_settings.sh can decrypt
+    it. Without it, WiFi networks are exported WITHOUT passwords.
+
+    This script reads current-user settings from the registry/WMI and does not
+    strictly require admin rights, though firewall export and OpenSSL install are
+    more complete when run elevated.
 
 .PARAMETER OutputPath
     CSV path. Default: C_windows_configs.csv beside this script.
@@ -36,6 +59,134 @@ if (-not $OutputPath) {
     $OutputPath = Join-Path $scriptDir 'C_windows_configs.csv'
 }
 
+# =======================================================================
+#  PROJECT MEGA-TITLE -- printed FIRST, before anything else.
+# =======================================================================
+Write-Host ''
+Write-Host '  ###########################################################' -ForegroundColor Cyan
+Write-Host '  ##                                                       ##' -ForegroundColor Cyan
+Write-Host '  ##            M I G R A T E   T O   L I N U X             ##' -ForegroundColor Cyan
+Write-Host '  ##        Windows  ->  Linux   Migration  Toolkit         ##' -ForegroundColor Cyan
+Write-Host '  ##                                                       ##' -ForegroundColor Cyan
+Write-Host '  ###########################################################' -ForegroundColor Cyan
+Write-Host ''
+
+# =======================================================================
+#  TRANSFER-PASSWORD PROMPT -- the SECOND thing shown (right after the title).
+#  One password protects every exported secret (WiFi passwords AND SSH private
+#  keys / the personal-data archive). 15-second IDLE timeout (resets on each
+#  keystroke); a timeout -- or an empty answer -- counts as SKIPPED: WiFi is
+#  exported without passwords and personal data is not migrated.
+# =======================================================================
+
+# Locate openssl on Windows so secrets can be encrypted in the exact OpenSSL
+# "Salted__"/PBKDF2 format that apply_settings.sh decrypts (install on demand).
+function Resolve-OpenSSL {
+    $c = Get-Command openssl -ErrorAction SilentlyContinue
+    if ($c) { return $c.Source }
+    foreach ($p in @(
+        "$env:ProgramFiles\Git\usr\bin\openssl.exe",
+        "$env:ProgramFiles\Git\mingw64\bin\openssl.exe",
+        "${env:ProgramFiles(x86)}\Git\usr\bin\openssl.exe")) {
+        if (Test-Path $p) { return $p }
+    }
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        foreach ($id in @('ShiningLight.OpenSSL.Light', 'FireDaemon.OpenSSL')) {
+            try {
+                Write-Host "  Installing OpenSSL ($id) via winget so exported secrets can be encrypted ..." -ForegroundColor Yellow
+                winget install --id $id -e --accept-source-agreements --accept-package-agreements --silent 2>$null | Out-Null
+            } catch {}
+            $c = Get-Command openssl -ErrorAction SilentlyContinue
+            if ($c) { return $c.Source }
+        }
+    }
+    return $null
+}
+
+# Read a line with an IDLE timeout and a LIVE on-screen countdown bar (the timer
+# sits on its own line above the prompt and updates every second; it resets on
+# every keystroke). Returns '' on timeout, on empty input, or when there is no
+# interactive console (redirected input / -NonInteractive).
+$Script:ShowTimer = {
+    param([int]$secs, [int]$row, [int]$total)
+    $cl = [Console]::CursorLeft; $ct = [Console]::CursorTop
+    try {
+        [Console]::SetCursorPosition(0, $row)
+        $w = [math]::Min($total, 30)
+        $fill = [int][math]::Round($secs / [double]$total * $w)
+        $bar = ('#' * $fill).PadRight($w, '-')
+        $col = if ($secs -le 5) { 'Red' } else { 'DarkYellow' }
+        Write-Host -NoNewline ("  Time left: {0,2}s  [{1}]   " -f $secs, $bar) -ForegroundColor $col
+        [Console]::SetCursorPosition($cl, $ct)
+    } catch {}
+}
+$Script:ClearTimer = {
+    param([int]$row)
+    $cl = [Console]::CursorLeft; $ct = [Console]::CursorTop
+    try {
+        [Console]::SetCursorPosition(0, $row)
+        Write-Host -NoNewline (' ' * ([Console]::WindowWidth - 1))
+        [Console]::SetCursorPosition($cl, $ct)
+    } catch {}
+}
+function Read-HostTimed {
+    param([string]$Prompt, [int]$TimeoutSec = 15)
+    # No interactive console (redirected / -NonInteractive) -> skip immediately.
+    try { $null = [Console]::KeyAvailable } catch {
+        Write-Host -NoNewline $Prompt; Write-Host ''
+        Write-Host '  (non-interactive: no password entered -> treated as empty / skipped)' -ForegroundColor Yellow
+        return ''
+    }
+    $sb = New-Object System.Text.StringBuilder
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    $lastShown = -1
+    Write-Host ''                          # this blank line becomes the live countdown
+    $timerRow = [Console]::CursorTop - 1
+    Write-Host -NoNewline $Prompt
+    while ($true) {
+        $remaining = [int][math]::Ceiling((($deadline) - (Get-Date)).TotalSeconds)
+        if ($remaining -lt 0) { $remaining = 0 }
+        if ($remaining -ne $lastShown) { & $Script:ShowTimer $remaining $timerRow $TimeoutSec; $lastShown = $remaining }
+        if ($remaining -le 0) {
+            & $Script:ClearTimer $timerRow; Write-Host ''
+            Write-Host '  (no input within the time limit -> treated as empty / skipped)' -ForegroundColor Yellow
+            return ''
+        }
+        if ([Console]::KeyAvailable) {
+            $k = [Console]::ReadKey($true)
+            $deadline = (Get-Date).AddSeconds($TimeoutSec)   # idle timer resets on each keystroke
+            if ($k.Key -eq 'Enter') { & $Script:ClearTimer $timerRow; Write-Host ''; return $sb.ToString() }
+            elseif ($k.Key -eq 'Backspace') {
+                if ($sb.Length -gt 0) { [void]$sb.Remove($sb.Length - 1, 1); Write-Host -NoNewline "`b `b" }
+            }
+            elseif ($k.KeyChar) { [void]$sb.Append($k.KeyChar); Write-Host -NoNewline $k.KeyChar }
+        } else {
+            Start-Sleep -Milliseconds 100
+        }
+    }
+}
+
+$xferPwd = Read-HostTimed -Prompt "Enter a password to ENCRYPT exported secrets -- WiFi passwords and SSH private keys (Enter to skip; auto-skips after 15s idle): " -TimeoutSec 15
+$opensslExe = $null
+if ($xferPwd) {
+    $opensslExe = Resolve-OpenSSL
+    if (-not $opensslExe) {
+        Write-Host "OpenSSL not available and could not be installed - WiFi exported WITHOUT passwords and SSH private keys will be skipped." -ForegroundColor Yellow
+    }
+}
+
+# Encrypt one secret (WiFi key) into OpenSSL salted/PBKDF2 base64.
+function Protect-Secret { param([string]$Plain, [string]$Passphrase, [string]$OpenSsl)
+    if (-not $Plain -or -not $Passphrase -or -not $OpenSsl) { return $null }
+    $tmp = [System.IO.Path]::GetTempFileName()
+    try {
+        [System.IO.File]::WriteAllText($tmp, $Plain, (New-Object System.Text.UTF8Encoding($false)))
+        $enc = & $OpenSsl enc -aes-256-cbc -pbkdf2 -salt -base64 -A -pass "pass:$Passphrase" -in $tmp 2>$null
+        if ($LASTEXITCODE -eq 0 -and $enc) { return ([string]$enc).Trim() }
+    } catch {} finally { Remove-Item $tmp -Force -ErrorAction SilentlyContinue }
+    return $null
+}
+
 # Safely access a property that may not exist.
 function Safe-Property { param($Obj, [string] $Name, $Default = $null); try { $Obj.$Name } catch { $Default } }
 
@@ -45,13 +196,18 @@ function Safe-Property { param($Obj, [string] $Name, $Default = $null); try { $O
 $configRows = [System.Collections.Generic.List[pscustomobject]]::new()
 
 function Add-Row {
-    param([string]$Category, [string]$ConfigKey, [string]$WindowsValue, [string]$LinuxCommand, [string]$Notes = '')
+    # Phase = pre|post  -> whether the setting is applied BEFORE or AFTER app installation.
+    # Scope = User|System -> whose settings these are. Both columns are always non-empty.
+    param([string]$Category, [string]$ConfigKey, [string]$WindowsValue, [string]$LinuxCommand,
+          [string]$Notes = '', [string]$Phase = 'pre', [string]$Scope = 'User')
     $configRows.Add([pscustomobject]@{
         Category      = $Category
         ConfigKey     = $ConfigKey
         WindowsValue  = $WindowsValue
         LinuxCommand  = $LinuxCommand
         Notes         = $Notes
+        Phase         = $Phase
+        Scope         = $Scope
     })
 }
 
@@ -101,8 +257,8 @@ $winToLinuxLid = @{
     'unknown'          = 'suspend'
 }
 
-Add-Row 'Power' 'lid_close_on_ac'      $acAction '' "logind.conf: HandleLidSwitchExternalPower=$($winToLinuxLid[$acAction])"
-Add-Row 'Power' 'lid_close_on_battery' $dcAction '' "logind.conf: HandleLidSwitch=$($winToLinuxLid[$dcAction])"
+Add-Row 'Power' 'lid_close_on_ac'      $acAction '' "logind.conf: HandleLidSwitchExternalPower=$($winToLinuxLid[$acAction])" -Scope 'System'
+Add-Row 'Power' 'lid_close_on_battery' $dcAction '' "logind.conf: HandleLidSwitch=$($winToLinuxLid[$dcAction])" -Scope 'System'
 
 # -----------------------------------------------------------------------
 # 2. DISPLAY RESOLUTION & SCALING
@@ -239,7 +395,7 @@ Add-Row 'Telemetry' 'location_service' $locationEnabled '' "Disable location: sy
 # -----------------------------------------------------------------------
 Write-Host "Auto-update: will install system_update.service + system_update.timer from repo"
 
-Add-Row 'AutoUpdate' 'install_service_files' 'system_update' '' 'Install system_update.service + system_update.timer from the repo (see Scheduled systemd Automatic Update/Debian/service files/)'
+Add-Row 'AutoUpdate' 'install_service_files' 'system_update' '' 'Install system_update.service + system_update.timer from the repo (see Scheduled systemd Automatic Update/Debian/service files/)' -Scope 'System'
 
 # -----------------------------------------------------------------------
 # 6. LOCK SCREEN TIMEOUT - how long before the screen locks / blanks.
@@ -280,6 +436,365 @@ if ($null -ne $lockTimeoutSec -and $lockTimeoutSec -gt 0) {
 Write-Host "Screen: lock timeout = $lockValue"
 
 Add-Row 'Screen' 'lock_screen_timeout' $lockValue '' 'GNOME (system-wide dconf, all users): session idle-delay + screensaver lock-enabled; "never" => disable lock & blanking'
+
+# -----------------------------------------------------------------------
+# 7. MOUSE - pointer size, speed, acceleration
+# -----------------------------------------------------------------------
+$mouseSize = ''; $mouseSpeed = ''; $mouseAccel = ''
+try {
+    $m = Get-ItemProperty -Path 'HKCU:\Control Panel\Mouse' -ErrorAction SilentlyContinue
+    # Sensitivity 1..20 (default 10)  ->  GNOME peripherals.mouse speed -1..1 (default 0).
+    $sens = [int](Safe-Property $m 'MouseSensitivity' 10)
+    if ($sens -lt 1) { $sens = 10 }
+    $mouseSpeed = ([math]::Round((($sens - 10) / 10.0), 2)).ToString([System.Globalization.CultureInfo]::InvariantCulture)
+    # MouseSpeed 0 = no pointer acceleration ("flat"); >0 = Windows "enhance precision".
+    $accelRaw = [int](Safe-Property $m 'MouseSpeed' 1)
+    $mouseAccel = if ($accelRaw -eq 0) { 'flat' } else { 'default' }
+} catch {}
+try {
+    $cur = Get-ItemProperty -Path 'HKCU:\Control Panel\Cursors' -ErrorAction SilentlyContinue
+    $base = [int](Safe-Property $cur 'CursorBaseSize' 0)
+    if ($base -gt 0) { $mouseSize = [string]$base }
+} catch {}
+
+Write-Host "Mouse: pointer size = $mouseSize ; speed = $mouseSpeed ; accel = $mouseAccel"
+Add-Row 'Mouse' 'mouse_size'  $mouseSize  '' 'GNOME org.gnome.desktop.interface cursor-size'
+Add-Row 'Mouse' 'mouse_speed' $mouseSpeed '' 'GNOME org.gnome.desktop.peripherals.mouse speed (-1..1)'
+Add-Row 'Mouse' 'mouse_accel' $mouseAccel '' 'GNOME org.gnome.desktop.peripherals.mouse accel-profile'
+
+# -----------------------------------------------------------------------
+# 8. ACCESSIBILITY - sticky/slow/mouse keys, high contrast, magnifier
+# -----------------------------------------------------------------------
+# Each Windows "...\Flags" value is a string bitmask; bit 0 (value -band 1) = feature on.
+function Test-AccFlag { param([string]$Path)
+    try {
+        $p = Get-ItemProperty -Path $Path -Name 'Flags' -ErrorAction SilentlyContinue
+        if ($p -and $null -ne $p.Flags) { return ([int]$p.Flags -band 1) -eq 1 }
+    } catch {}
+    return $false
+}
+# Accessibility values are 'true'/'false' literals (gsettings boolean form).
+$a11yStick = if (Test-AccFlag 'HKCU:\Control Panel\Accessibility\StickyKeys')       { 'true' } else { 'false' }
+$a11ySlow  = if (Test-AccFlag 'HKCU:\Control Panel\Accessibility\Keyboard Response') { 'true' } else { 'false' }
+$a11yMouse = if (Test-AccFlag 'HKCU:\Control Panel\Accessibility\MouseKeys')         { 'true' } else { 'false' }
+$a11yHC    = if (Test-AccFlag 'HKCU:\Control Panel\Accessibility\HighContrast')      { 'true' } else { 'false' }
+$a11yMag   = 'false'
+try {
+    $mag = Get-ItemProperty -Path 'HKCU:\Software\Microsoft\ScreenMagnifier' -Name 'RunningState' -ErrorAction SilentlyContinue
+    if ($mag -and [int]$mag.RunningState -eq 1) { $a11yMag = 'true' }
+} catch {}
+
+Write-Host "Accessibility: sticky=$a11yStick slow=$a11ySlow mousekeys=$a11yMouse highcontrast=$a11yHC magnifier=$a11yMag"
+Add-Row 'Accessibility' 'a11y_stickykeys'   $a11yStick '' 'GNOME a11y.keyboard stickykeys-enable'
+Add-Row 'Accessibility' 'a11y_slowkeys'     $a11ySlow  '' 'GNOME a11y.keyboard slowkeys-enable'
+Add-Row 'Accessibility' 'a11y_mousekeys'    $a11yMouse '' 'GNOME a11y.keyboard mousekeys-enable'
+Add-Row 'Accessibility' 'a11y_highcontrast' $a11yHC    '' 'GNOME a11y.interface high-contrast'
+Add-Row 'Accessibility' 'a11y_magnifier'    $a11yMag   '' 'GNOME a11y.applications screen-magnifier-enabled'
+
+# -----------------------------------------------------------------------
+# 9. KEYBOARD repeat speed + NumLock state
+# -----------------------------------------------------------------------
+$kbDelayMs = ''; $kbRateMs = ''; $numlock = ''
+try {
+    $kb = Get-ItemProperty -Path 'HKCU:\Control Panel\Keyboard' -ErrorAction SilentlyContinue
+    # KeyboardDelay 0..3  ->  250/500/750/1000 ms before auto-repeat.
+    $kd = [int](Safe-Property $kb 'KeyboardDelay' 1)
+    if ($kd -lt 0) { $kd = 1 }; if ($kd -gt 3) { $kd = 3 }
+    $kbDelayMs = [string](($kd + 1) * 250)
+    # KeyboardSpeed 0..31 (chars/sec ~2.5..30)  ->  ms BETWEEN repeats (GNOME repeat-interval).
+    $ks = [int](Safe-Property $kb 'KeyboardSpeed' 31)
+    if ($ks -lt 0) { $ks = 0 }; if ($ks -gt 31) { $ks = 31 }
+    $cps = 2.5 + ($ks / 31.0) * 27.5
+    $kbRateMs = [string]([math]::Round(1000.0 / $cps))
+    # InitialKeyboardIndicators: NumLock flag = 0x2.
+    $ind = Safe-Property $kb 'InitialKeyboardIndicators' '0'
+    $numlock = if (([int64]$ind -band 2) -eq 2) { 'true' } else { 'false' }
+} catch {}
+
+Write-Host "Keyboard: repeat-delay=${kbDelayMs}ms repeat-interval=${kbRateMs}ms numlock=$numlock"
+Add-Row 'Keyboard' 'key_repeat_delay' $kbDelayMs '' 'GNOME peripherals.keyboard delay (uint32 ms)'
+Add-Row 'Keyboard' 'key_repeat_rate'  $kbRateMs  '' 'GNOME peripherals.keyboard repeat-interval (uint32 ms)'
+Add-Row 'Keyboard' 'numlock'          $numlock   '' 'GNOME peripherals.keyboard numlock-state'
+
+# -----------------------------------------------------------------------
+# 10. TIMEZONE + TIME SYNCHRONIZATION (non-Microsoft NTP)
+# -----------------------------------------------------------------------
+$ianaTz = 'unknown'
+try {
+    $winTz = [System.TimeZoneInfo]::Local.Id
+    $tmp = ''
+    # .NET 6+ (PowerShell 7) can convert directly; Windows PowerShell 5.1 cannot.
+    if ([System.TimeZoneInfo].GetMethod('TryConvertWindowsIdToIanaId', [type[]]@([string], [string].MakeByRefType()))) {
+        if ([System.TimeZoneInfo]::TryConvertWindowsIdToIanaId($winTz, [ref]$tmp)) { $ianaTz = $tmp }
+    }
+    if ($ianaTz -eq 'unknown') {
+        $tzMap = @{
+            'Iran Standard Time'        = 'Asia/Tehran'
+            'GMT Standard Time'         = 'Europe/London'
+            'Central Europe Standard Time' = 'Europe/Budapest'
+            'W. Europe Standard Time'   = 'Europe/Berlin'
+            'Romance Standard Time'     = 'Europe/Paris'
+            'Eastern Standard Time'     = 'America/New_York'
+            'Central Standard Time'     = 'America/Chicago'
+            'Pacific Standard Time'     = 'America/Los_Angeles'
+            'UTC'                       = 'Etc/UTC'
+            'Arabian Standard Time'     = 'Asia/Dubai'
+            'India Standard Time'       = 'Asia/Kolkata'
+            'Tokyo Standard Time'       = 'Asia/Tokyo'
+            'China Standard Time'       = 'Asia/Shanghai'
+            'AUS Eastern Standard Time' = 'Australia/Sydney'
+        }
+        if ($tzMap.ContainsKey($winTz)) { $ianaTz = $tzMap[$winTz] }
+    }
+} catch {}
+
+$ntpServer = 'pool.ntp.org'
+try {
+    $w32 = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\W32Time\Parameters' -Name 'NtpServer' -ErrorAction SilentlyContinue
+    if ($w32 -and $w32.NtpServer) {
+        $first = (([string]$w32.NtpServer) -split '\s+')[0]    # e.g. "time.windows.com,0x9"
+        $first = ($first -split ',')[0]
+        if ($first -and $first -notmatch 'time\.windows\.com|microsoft') { $ntpServer = $first }
+    }
+} catch {}
+
+Write-Host "Timezone: $ianaTz ; NTP server: $ntpServer"
+Add-Row 'Time' 'timezone'   $ianaTz    '' 'Linux: timedatectl set-timezone' -Scope 'System'
+Add-Row 'Time' 'ntp_server' $ntpServer '' 'Linux: systemd-timesyncd NTP= (non-Microsoft)' -Scope 'System'
+
+# -----------------------------------------------------------------------
+# 11. WIFI known networks + (optionally encrypted) passwords
+#     (the transfer password + openssl were prompted/resolved at the top.)
+# -----------------------------------------------------------------------
+$wifiCount = 0
+try {
+    $profOut = netsh wlan show profiles 2>$null
+    $names = $profOut | Select-String 'All User Profile\s*:\s*(.+)$' | ForEach-Object { $_.Matches[0].Groups[1].Value.Trim() }
+    foreach ($n in $names) {
+        if (-not $n) { continue }
+        $detail = netsh wlan show profile name="$n" key=clear 2>$null
+        $ssid = ($detail | Select-String 'SSID name\s*:\s*"?(.*?)"?\s*$' | Select-Object -First 1).Matches[0].Groups[1].Value
+        if (-not $ssid) { $ssid = $n }
+        $authLine = ($detail | Select-String 'Authentication\s*:\s*(.+)$' | Select-Object -First 1)
+        $authRaw = if ($authLine) { $authLine.Matches[0].Groups[1].Value.Trim() } else { '' }
+        $auth = if ($authRaw -match 'Open') { 'open' } else { 'wpa' }
+        $keyLine = ($detail | Select-String 'Key Content\s*:\s*(.+)$' | Select-Object -First 1)
+        $key = if ($keyLine) { $keyLine.Matches[0].Groups[1].Value.Trim() } else { '' }
+
+        $secret = ''; $sectype = 'none'
+        if ($auth -ne 'open' -and $key) {
+            $enc = Protect-Secret -Plain $key -Passphrase $xferPwd -OpenSsl $opensslExe
+            if ($enc) { $secret = $enc; $sectype = 'enc' }
+        }
+        # Pipe-pack the fields (strip embedded '|' so the delimiter stays unambiguous).
+        $packed = (@($ssid, $auth, $secret, $sectype) | ForEach-Object { ([string]$_ -replace '\|', ' ') }) -join '|'
+        Add-Row 'Wifi' 'wifi_profile' $packed '' 'Linux: nmcli connection add type wifi' -Scope 'System'
+        $wifiCount++
+    }
+} catch {}
+if ($wifiCount -eq 0) { Add-Row 'Wifi' 'wifi_profile' '' '' 'No WiFi profiles found (category placeholder)' -Scope 'System' }
+$wifiMode = if ($opensslExe) { 'with encrypted passwords' } else { 'without passwords' }
+Write-Host "WiFi: $wifiCount profile(s) exported ($wifiMode)"
+
+# -----------------------------------------------------------------------
+# 12. FIREWALL rules (all rules; mapped to ufw/firewalld on Linux)
+# -----------------------------------------------------------------------
+$fwCount = 0
+try {
+    $rules = Get-NetFirewallRule -ErrorAction SilentlyContinue
+    foreach ($r in $rules) {
+        $pf = $null
+        try { $pf = $r | Get-NetFirewallPortFilter -ErrorAction SilentlyContinue } catch {}
+        $proto = if ($pf) { [string]$pf.Protocol } else { '' }
+        $port  = if ($pf -and $pf.LocalPort) { (@($pf.LocalPort) -join ',') } else { '' }
+        $packed = (@($r.DisplayName, $r.Direction, $r.Action, $r.Enabled, $proto, $port) | ForEach-Object { ([string]$_ -replace '\|', ' ') }) -join '|'
+        Add-Row 'Firewall' 'fw_rule' $packed '' 'Linux: ufw / firewalld' -Scope 'System'
+        $fwCount++
+    }
+} catch {}
+if ($fwCount -eq 0) { Add-Row 'Firewall' 'fw_rule' '' '' 'No firewall rules found (category placeholder)' -Scope 'System' }
+Write-Host "Firewall: $fwCount rule(s) exported"
+
+# =======================================================================
+#  POST-INSTALL items (Phase=post): applied AFTER apps are installed.
+#  Personal files travel to Linux inside "Execute on Linux!/migrated_user_data/"
+#  (the folder the user copies over). C_detect runs before the generator, and the
+#  generator does not wipe that folder, so the staged files survive.
+# =======================================================================
+$projRoot = $null
+if ($PSScriptRoot) { $projRoot = Split-Path -Parent $PSScriptRoot }
+if (-not $projRoot) { $projRoot = Split-Path -Parent (Split-Path -Parent $OutputPath) }  # documents\.. = root
+$stageRoot = Join-Path $projRoot 'Execute on Linux!\migrated_user_data'
+try { New-Item -ItemType Directory -Force -Path $stageRoot | Out-Null } catch {}
+
+# -----------------------------------------------------------------------
+# 13. SHORTCUTS - Quick Launch (taskbar pinned), Start-menu pinned, Desktop.
+#     Each resolves to an installed Linux app ON THE LINUX SIDE; here we only
+#     record the display name + target exe base name.
+# -----------------------------------------------------------------------
+$wshell = $null
+try { $wshell = New-Object -ComObject WScript.Shell } catch {}
+function Get-LnkTargetBase { param([string]$Lnk)
+    if (-not $wshell) { return '' }
+    try {
+        $t = $wshell.CreateShortcut($Lnk).TargetPath
+        if ($t) { return [System.IO.Path]::GetFileNameWithoutExtension($t) }
+    } catch {}
+    return ''
+}
+$shortcutSources = @(
+    @{ Kind = 'quicklaunch'; Path = (Join-Path $env:APPDATA 'Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar') },
+    @{ Kind = 'startmenu';   Path = (Join-Path $env:APPDATA 'Microsoft\Internet Explorer\Quick Launch\User Pinned\StartMenu') },
+    @{ Kind = 'desktop';     Path = [Environment]::GetFolderPath('Desktop') },
+    @{ Kind = 'desktop';     Path = [Environment]::GetFolderPath('CommonDesktopDirectory') }
+)
+$scCount = 0
+foreach ($src in $shortcutSources) {
+    if (-not $src.Path -or -not (Test-Path $src.Path)) { continue }
+    try {
+        Get-ChildItem -Path $src.Path -Filter '*.lnk' -File -ErrorAction SilentlyContinue | ForEach-Object {
+            $disp = [System.IO.Path]::GetFileNameWithoutExtension($_.Name)
+            $exe  = Get-LnkTargetBase $_.FullName
+            $packed = (@($disp, $exe) | ForEach-Object { ([string]$_ -replace '\|', ' ') }) -join '|'
+            Add-Row 'Shortcuts' $src.Kind $packed '' 'Linux: resolve to an installed .desktop (favourite / desktop file)' -Phase 'post' -Scope 'User'
+            $scCount++
+        }
+    } catch {}
+}
+if ($scCount -eq 0) { Add-Row 'Shortcuts' 'desktop' '' '' 'No transferable shortcuts found (category placeholder)' -Phase 'post' -Scope 'User' }
+Write-Host "Shortcuts: $scCount transferable shortcut(s) recorded"
+
+# -----------------------------------------------------------------------
+# 13b. STARTUP ITEMS + auto-start SERVICES (Phase=post). Scope is preserved:
+#      Windows machine-wide (HKLM Run / Common Startup / services) -> System on
+#      Linux; current-user (HKCU Run / user Startup) -> User. The Linux side only
+#      acts on items that resolve to an installed app / matching systemd unit;
+#      everything else is recorded log-only and harmless.
+# -----------------------------------------------------------------------
+$startupCount = 0
+function Get-ExeBaseFromCommand { param([string]$Cmd)
+    if (-not $Cmd) { return '' }
+    $c = $Cmd.Trim()
+    if ($c.StartsWith('"')) { $end = $c.IndexOf('"', 1); if ($end -gt 0) { $c = $c.Substring(1, $end - 1) } }
+    else { $c = ($c -split '\s+')[0] }
+    try { return [System.IO.Path]::GetFileNameWithoutExtension($c) } catch { return '' }
+}
+function Add-StartupRows { param([string]$RegPath, [string]$FolderPath, [string]$Scope)
+    if ($RegPath) {
+        try {
+            $k = Get-ItemProperty -Path $RegPath -ErrorAction SilentlyContinue
+            if ($k) {
+                foreach ($p in $k.PSObject.Properties) {
+                    if ($p.Name -match '^PS(Path|ParentPath|ChildName|Drive|Provider)$') { continue }
+                    $exe = Get-ExeBaseFromCommand ([string]$p.Value)
+                    $packed = (@($p.Name, $exe) | ForEach-Object { ([string]$_ -replace '\|', ' ') }) -join '|'
+                    Add-Row 'Startup' 'startup_item' $packed '' 'Linux: autostart if it resolves to an installed app' -Phase 'post' -Scope $Scope
+                    $script:startupCount++
+                }
+            }
+        } catch {}
+    }
+    if ($FolderPath -and (Test-Path $FolderPath)) {
+        Get-ChildItem -Path $FolderPath -Filter '*.lnk' -File -ErrorAction SilentlyContinue | ForEach-Object {
+            $name = [System.IO.Path]::GetFileNameWithoutExtension($_.Name)
+            $exe  = Get-LnkTargetBase $_.FullName
+            $packed = (@($name, $exe) | ForEach-Object { ([string]$_ -replace '\|', ' ') }) -join '|'
+            Add-Row 'Startup' 'startup_item' $packed '' 'Linux: autostart if it resolves to an installed app' -Phase 'post' -Scope $Scope
+            $script:startupCount++
+        }
+    }
+}
+Add-StartupRows -RegPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -FolderPath ([Environment]::GetFolderPath('Startup')) -Scope 'User'
+Add-StartupRows -RegPath 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Run' -FolderPath ([Environment]::GetFolderPath('CommonStartup')) -Scope 'System'
+Add-StartupRows -RegPath 'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Run' -FolderPath $null -Scope 'System'
+if ($startupCount -eq 0) { Add-Row 'Startup' 'startup_item' '' '' 'No startup items found (placeholder)' -Phase 'post' -Scope 'User' }
+Write-Host "Startup items: $startupCount recorded"
+
+# Auto-start, third-party services (exclude C:\Windows\ OS services that can never map).
+$svcCount = 0
+try {
+    Get-CimInstance Win32_Service -ErrorAction SilentlyContinue | Where-Object {
+        $_.StartMode -eq 'Auto' -and $_.PathName -and ($_.PathName -notmatch '(?i)\\Windows\\')
+    } | ForEach-Object {
+        $packed = (@($_.DisplayName, $_.Name) | ForEach-Object { ([string]$_ -replace '\|', ' ') }) -join '|'
+        Add-Row 'Services' 'service' $packed '' 'Linux: systemctl enable if a clearly-matching unit exists' -Phase 'post' -Scope 'System'
+        $svcCount++
+    }
+} catch {}
+if ($svcCount -eq 0) { Add-Row 'Services' 'service' '' '' 'No auto-start third-party services found (placeholder)' -Phase 'post' -Scope 'System' }
+Write-Host "Services: $svcCount auto-start third-party service(s) recorded"
+
+# -----------------------------------------------------------------------
+# 14. SSH - stage the whole ~/.ssh verbatim (private keys included). The entire
+#     migrated_user_data folder is encrypted into one archive below (section 16),
+#     so nothing personal is ever left on disk in the clear.
+# -----------------------------------------------------------------------
+$sshSrc = Join-Path $env:USERPROFILE '.ssh'
+$sshStaged = 0
+if (Test-Path $sshSrc) {
+    $sshDst = Join-Path $stageRoot 'ssh'
+    try { New-Item -ItemType Directory -Force -Path $sshDst | Out-Null } catch {}
+    Get-ChildItem -Path $sshSrc -File -ErrorAction SilentlyContinue | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $sshDst $_.Name) -Force -ErrorAction SilentlyContinue
+        $sshStaged++
+    }
+    Add-Row 'SSH' 'ssh_dir' 'staged: migrated_user_data (encrypted archive)' '' 'Linux: decrypt the archive, copy into ~/.ssh; perms 600/700' -Phase 'post' -Scope 'User'
+} else {
+    Add-Row 'SSH' 'ssh_dir' '' '' 'No ~/.ssh found (category placeholder)' -Phase 'post' -Scope 'User'
+}
+Write-Host "SSH: $sshStaged file(s) staged"
+
+# -----------------------------------------------------------------------
+# 15. CONTACTS - stage %USERPROFILE%\Contacts verbatim.
+# -----------------------------------------------------------------------
+$contactsSrc = Join-Path $env:USERPROFILE 'Contacts'
+$contactsCount = 0
+if (Test-Path $contactsSrc) {
+    $contactsDst = Join-Path $stageRoot 'contacts'
+    try {
+        New-Item -ItemType Directory -Force -Path $contactsDst | Out-Null
+        Copy-Item -Path (Join-Path $contactsSrc '*') -Destination $contactsDst -Recurse -Force -ErrorAction SilentlyContinue
+        $contactsCount = @(Get-ChildItem -Path $contactsDst -Recurse -File -ErrorAction SilentlyContinue).Count
+    } catch {}
+    Add-Row 'Contacts' 'contacts_dir' 'staged: migrated_user_data (encrypted archive)' '' 'Linux: decrypt the archive, copy into ~/Contacts (.contact files are XML)' -Phase 'post' -Scope 'User'
+} else {
+    Add-Row 'Contacts' 'contacts_dir' '' '' 'No Contacts folder found (category placeholder)' -Phase 'post' -Scope 'User'
+}
+Write-Host "Contacts: $contactsCount file(s) staged"
+
+# -----------------------------------------------------------------------
+# 16. ENCRYPT the staged personal data into ONE archive and remove the clear copy.
+#     migrated_user_data/  --(tar)-->  .tar  --(openssl AES-256-CBC/PBKDF2)-->
+#     migrated_user_data.tar.enc   (decrypted on Linux by apply_settings.sh).
+#     Uses the SAME transfer password as WiFi. No password / no openssl / no tar
+#     => the clear staging dir is DELETED and personal data is not migrated (we
+#     never leave it unencrypted on disk).
+# -----------------------------------------------------------------------
+$stagedAnything = (Test-Path $stageRoot) -and (@(Get-ChildItem -Path $stageRoot -Recurse -File -ErrorAction SilentlyContinue).Count -gt 0)
+$archivePath = Join-Path $projRoot 'Execute on Linux!\migrated_user_data.tar.enc'
+if (Test-Path $archivePath) { Remove-Item -LiteralPath $archivePath -Force -ErrorAction SilentlyContinue }
+if ($stagedAnything) {
+    $tarExe = (Get-Command tar -ErrorAction SilentlyContinue).Source
+    if ($xferPwd -and $opensslExe -and $tarExe) {
+        $tarTmp = [System.IO.Path]::GetTempFileName()
+        try {
+            # Archive the CONTENTS of the staging dir (so it extracts as ssh/ contacts/...).
+            & $tarExe -cf $tarTmp -C $stageRoot . 2>$null
+            if ((Test-Path $tarTmp) -and ((Get-Item $tarTmp).Length -gt 0)) {
+                & $opensslExe enc -aes-256-cbc -pbkdf2 -salt -pass "pass:$xferPwd" -in $tarTmp -out $archivePath 2>$null
+            }
+        } catch {} finally { Remove-Item $tarTmp -Force -ErrorAction SilentlyContinue }
+        if (Test-Path $archivePath) {
+            Write-Host "Personal data encrypted -> Execute on Linux!\migrated_user_data.tar.enc" -ForegroundColor Green
+        } else {
+            Write-Host "Could not create the encrypted archive - personal data NOT migrated." -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "No transfer password / OpenSSL / tar available - personal data NOT migrated (left unencrypted nowhere)." -ForegroundColor Yellow
+    }
+}
+# Always remove the clear-text staging dir: encrypted into the archive, or intentionally dropped.
+if (Test-Path $stageRoot) { Remove-Item -LiteralPath $stageRoot -Recurse -Force -ErrorAction SilentlyContinue }
 
 # -----------------------------------------------------------------------
 # EXPORT CSV
