@@ -2174,7 +2174,7 @@
                                                       "downloadUrl":  "https://ollama.com/"
                                                   }
                                               ],
-                             "installedVersion":  "149.0.4022.80",
+                             "installedVersion":  "149.0.4022.94",
                              "installedEdition":  ""
                          },
                          {
@@ -3190,7 +3190,7 @@
                                                       "downloadUrl":  "apt install sublime-merge"
                                                   }
                                               ],
-                             "installedVersion":  "3.5.12",
+                             "installedVersion":  "3.6.1",
                              "installedEdition":  ""
                          },
                          {
@@ -3339,7 +3339,7 @@
                                                       "downloadUrl":  "https://vivaldi.com/download/"
                                                   }
                                               ],
-                             "installedVersion":  "149.0.7827.196",
+                             "installedVersion":  "149.0.7827.197",
                              "installedEdition":  ""
                          },
                          {
@@ -4892,7 +4892,7 @@
                                                       "downloadUrl":  "https://www.freeoffice.com/en/download"
                                                   }
                                               ],
-                             "installedVersion":  "19.2606.48051.0",
+                             "installedVersion":  "19.2606.50021.0",
                              "installedEdition":  "en-us, fa-ir, fr-fr, Apps for enterprise"
                          },
                          {
@@ -5052,7 +5052,7 @@
                                                       "downloadUrl":  "https://onedrive.live.com"
                                                   }
                                               ],
-                             "installedVersion":  "26098.524.4.0",
+                             "installedVersion":  "26106.603.3.0",
                              "installedEdition":  ""
                          },
                          {
@@ -5764,7 +5764,7 @@
                                                       "downloadUrl":  "https://librewolf.net/installation/"
                                                   }
                                               ],
-                             "installedVersion":  "152.0.1",
+                             "installedVersion":  "152.0.3",
                              "installedEdition":  "x64 en-US"
                          },
                          {
@@ -7025,7 +7025,7 @@
                                                       "downloadUrl":  "https://github.com/huginn/huginn"
                                                   }
                                               ],
-                             "installedVersion":  "1.0.2094.0",
+                             "installedVersion":  "1.0.2107.0",
                              "installedEdition":  ""
                          },
                          {
@@ -7246,7 +7246,7 @@
                                                       "downloadUrl":  "apt install gnome-shortcuts-overlay-(shortcut-guide)"
                                                   }
                                               ],
-                             "installedVersion":  "0.100.0",
+                             "installedVersion":  "0.100.2",
                              "installedEdition":  ""
                          },
                          {
@@ -9673,7 +9673,7 @@
                                                       "downloadUrl":  "https://snapcraft.io/store"
                                                   }
                                               ],
-                             "installedVersion":  "22605.1401.12.0",
+                             "installedVersion":  "22605.1401.13.0",
                              "installedEdition":  ""
                          },
                          {

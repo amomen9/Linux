@@ -526,6 +526,26 @@ WINE (WINDOWS EMULATOR) - OPTIONAL, FOR NON-CROSS-PLATFORM APPS
   * After install, force Wine DPI to 240 (LogPixels = 0xF0, i.e. 2.5x of the 96 default)
     via `wine reg add`, run as $SUDO_USER, so fonts/UI are readable. Generate .desktop
     launchers for any Start-Menu .lnk shortcuts the installer created.
+  * FIRST-LAUNCH APPEARANCE TUNING (interactive; `wine_tune_appearance`, only with a tty):
+    immediately after a successful install, with one blank line first, print in PURPLE
+    "Now we launch the installed <app> for the first time for testing", LAUNCH the app
+    (its main Start-Menu .lnk, via run_wine_gui so DISPLAY/Wayland is forwarded), then in
+    PURPLE "According to what you see for the appearance of the app, adjust the following
+    visual settings or press enter to leave the default values:". Then prompt for EACH
+    adjustable visual factor in the form
+      "enter new value for <param> in the format <fmt> (Current:<value reproducing the
+       present look>) or enter to leave it unchanged"
+    The factors are: font scaling (DPI) [whole number 96-480; Current:240] and window
+    size [(width,height) or "off"; Current:off]. Each value is VALIDATED before use;
+    an invalid entry prints a RED error and re-asks the SAME prompt. Then CLOSE the app
+    (wineserver -k), apply the changes (LogPixels + Wine\Explorer virtual-desktop regkeys),
+    RE-LAUNCH it, and ask in PURPLE
+      'Is the current appearance what you would expect? "a" applies same configurations
+       to all upcoming wine installations. (y=yes / a=yes all / r=start over)'
+    r = start over (re-collect values in a loop, ending only on y or a); a = remember the
+    values and apply them SILENTLY to every later wine install (no launch/prompt);
+    y = accept. Then close the app and continue the script. No tty -> skip tuning, keep
+    the 2.5x default. STRICTLY additive: nothing else in the wine flow changes.
   * Wine is INDEPENDENT of the alternatives count: with alternatives > 0 the native
     alternative(s) AND the Wine app are installed; with 0, only the Wine app is.
   * The native Linux alternatives (e.g. notepadqq/geany for Notepad++; p7zip for WinRAR)
