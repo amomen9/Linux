@@ -103,17 +103,15 @@ function Resolve-OpenSSL {
     return $null
 }
 
-# Read a line with an IDLE timeout and a LIVE on-screen countdown bar (the timer
-# sits on its own line above the prompt and updates every second; it resets on
-# every keystroke). Returns '' on timeout, on empty input, or when there is no
-# interactive console (redirected input / -NonInteractive).
+# Live countdown bar: own line above the prompt, updates each second, resets on every
+# keystroke. Twice as big -- 2 '#' per second (two are removed each second).
 $Script:ShowTimer = {
     param([int]$secs, [int]$row, [int]$total)
     $cl = [Console]::CursorLeft; $ct = [Console]::CursorTop
     try {
         [Console]::SetCursorPosition(0, $row)
-        $w = [math]::Min($total, 30)
-        $fill = [int][math]::Round($secs / [double]$total * $w)
+        $w = $total * 2
+        $fill = [math]::Max(0, [math]::Min($w, $secs * 2))
         $bar = ('#' * $fill).PadRight($w, '-')
         $col = if ($secs -le 5) { 'Red' } else { 'DarkYellow' }
         Write-Host -NoNewline ("  Time left: {0,2}s  [{1}]   " -f $secs, $bar) -ForegroundColor $col
@@ -129,13 +127,13 @@ $Script:ClearTimer = {
         [Console]::SetCursorPosition($cl, $ct)
     } catch {}
 }
+# Read a masked ('*') line with an IDLE timeout + live countdown. Returns a hashtable
+# @{ Value; Status } where Status is 'ok' | 'empty' | 'timeout' | 'noconsole'.
 function Read-HostTimed {
     param([string]$Prompt, [int]$TimeoutSec = 15)
-    # No interactive console (redirected / -NonInteractive) -> skip immediately.
     try { $null = [Console]::KeyAvailable } catch {
         Write-Host -NoNewline $Prompt; Write-Host ''
-        Write-Host '  (non-interactive: no password entered -> treated as empty / skipped)' -ForegroundColor Yellow
-        return ''
+        return @{ Value = ''; Status = 'noconsole' }
     }
     $sb = New-Object System.Text.StringBuilder
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
@@ -149,24 +147,62 @@ function Read-HostTimed {
         if ($remaining -ne $lastShown) { & $Script:ShowTimer $remaining $timerRow $TimeoutSec; $lastShown = $remaining }
         if ($remaining -le 0) {
             & $Script:ClearTimer $timerRow; Write-Host ''
-            Write-Host '  (no input within the time limit -> treated as empty / skipped)' -ForegroundColor Yellow
-            return ''
+            return @{ Value = ''; Status = 'timeout' }
         }
         if ([Console]::KeyAvailable) {
             $k = [Console]::ReadKey($true)
             $deadline = (Get-Date).AddSeconds($TimeoutSec)   # idle timer resets on each keystroke
-            if ($k.Key -eq 'Enter') { & $Script:ClearTimer $timerRow; Write-Host ''; return $sb.ToString() }
+            if ($k.Key -eq 'Enter') {
+                & $Script:ClearTimer $timerRow; Write-Host ''
+                $v = $sb.ToString()
+                if ($v -eq '') { return @{ Value = ''; Status = 'empty' } }
+                return @{ Value = $v; Status = 'ok' }
+            }
             elseif ($k.Key -eq 'Backspace') {
                 if ($sb.Length -gt 0) { [void]$sb.Remove($sb.Length - 1, 1); Write-Host -NoNewline "`b `b" }
             }
-            elseif ($k.KeyChar) { [void]$sb.Append($k.KeyChar); Write-Host -NoNewline $k.KeyChar }
+            elseif ($k.KeyChar) { [void]$sb.Append($k.KeyChar); Write-Host -NoNewline '*' }   # masked
         } else {
             Start-Sleep -Milliseconds 100
         }
     }
 }
 
-$xferPwd = Read-HostTimed -Prompt "Enter a password to ENCRYPT exported secrets -- WiFi passwords and SSH private keys (Enter to skip; auto-skips after 15s idle): " -TimeoutSec 15
+# Prompt for the transfer password: HIDDEN entry + a "Confirm password:" re-entry,
+# with the idle timeout/countdown. Prints the right Warning! for each skip reason and
+# returns '' when skipped (empty / timeout / non-interactive).
+function Get-XferPassword {
+    param([int]$TimeoutSec = 15)
+    $first = Read-HostTimed -Prompt "Enter a password to ENCRYPT exported sensitive data -- Ex: Known WiFi Networks passwords, SSH private keys, etc.`n(Enter to skip; auto-skips after 15s idle): " -TimeoutSec $TimeoutSec
+    switch ($first.Status) {
+        'empty' {
+            Write-Host '  (empty password -> skipped)'
+            Write-Host '  Warning! You skipped entering a password. Sensitive data (WiFi, ssh pvt keys, etc) will not be migrated.' -ForegroundColor Yellow
+            return '' }
+        'timeout' {
+            Write-Host '  (no input within the time limit -> treated as empty / skipped)'
+            Write-Host '  Warning! Password entry timed out. Sensitive data (WiFi, ssh pvt keys, etc) will not be migrated.' -ForegroundColor Yellow
+            return '' }
+        'noconsole' {
+            Write-Host '  (non-interactive: no password entered -> treated as empty / skipped)'
+            Write-Host '  Warning! no password could be entered. Sensitive data (WiFi, ssh pvt keys, etc) will not be migrated.' -ForegroundColor Yellow
+            return '' }
+    }
+    while ($true) {
+        $confirm = Read-HostTimed -Prompt "Confirm password: " -TimeoutSec $TimeoutSec
+        if ($confirm.Status -eq 'ok' -and $confirm.Value -eq $first.Value) { return $first.Value }
+        switch ($confirm.Status) {
+            'timeout' {
+                Write-Host '  (no input within the time limit -> treated as empty / skipped)'
+                Write-Host '  Warning! Password entry timed out. Sensitive data (WiFi, ssh pvt keys, etc) will not be migrated.' -ForegroundColor Yellow
+                return '' }
+            'noconsole' { return '' }
+            default { Write-Host '  Passwords did not match -- please confirm again.' -ForegroundColor Yellow }
+        }
+    }
+}
+
+$xferPwd = Get-XferPassword -TimeoutSec 15
 $opensslExe = $null
 if ($xferPwd) {
     $opensslExe = Resolve-OpenSSL
@@ -189,6 +225,30 @@ function Protect-Secret { param([string]$Plain, [string]$Passphrase, [string]$Op
 
 # Safely access a property that may not exist.
 function Safe-Property { param($Obj, [string] $Name, $Default = $null); try { $Obj.$Name } catch { $Default } }
+
+# --verbose / -v (the built-in CmdletBinding -Verbose switch) -> list every item's
+# name per category; otherwise just print the count + a hint. (Task 15)
+$Script:IsVerbose = ($VerbosePreference -ne 'SilentlyContinue')
+# ...then silence cmdlet verbose so -Verbose lists OUR items, not CIM/WMI chatter.
+$VerbosePreference = 'SilentlyContinue'
+function Write-ExportSummary { param([string]$Title, $Names)
+    $arr = @($Names | Where-Object { $_ })
+    Write-Host ''
+    Write-Host ("{0}:" -f $Title)
+    if ($Script:IsVerbose) {
+        Write-Host ("  {0} items exported:" -f $arr.Count)
+        foreach ($n in $arr) { Write-Host "    - $n" }
+    } else {
+        Write-Host ("  {0} items exported (Re-run the script with --verbose to see the list)" -f $arr.Count)
+    }
+}
+# Per-category name lists (populated during detection, printed via Write-ExportSummary).
+$fwNames = New-Object System.Collections.Generic.List[string]
+$qlNames = New-Object System.Collections.Generic.List[string]
+$smNames = New-Object System.Collections.Generic.List[string]
+$dtNames = New-Object System.Collections.Generic.List[string]
+$startNames = New-Object System.Collections.Generic.List[string]
+$svcNames = New-Object System.Collections.Generic.List[string]
 
 # -----------------------------------------------------------------------
 # 1. POWER SETTINGS - lid-close action (battery / AC)
@@ -609,11 +669,12 @@ try {
         $port  = if ($pf -and $pf.LocalPort) { (@($pf.LocalPort) -join ',') } else { '' }
         $packed = (@($r.DisplayName, $r.Direction, $r.Action, $r.Enabled, $proto, $port) | ForEach-Object { ([string]$_ -replace '\|', ' ') }) -join '|'
         Add-Row 'Firewall' 'fw_rule' $packed '' 'Linux: ufw / firewalld' -Scope 'System'
+        $fwNames.Add([string]$r.DisplayName)
         $fwCount++
     }
 } catch {}
 if ($fwCount -eq 0) { Add-Row 'Firewall' 'fw_rule' '' '' 'No firewall rules found (category placeholder)' -Scope 'System' }
-Write-Host "Firewall: $fwCount rule(s) exported"
+Write-ExportSummary 'Firewall Rules export' $fwNames
 
 # =======================================================================
 #  POST-INSTALL items (Phase=post): applied AFTER apps are installed.
@@ -657,12 +718,15 @@ foreach ($src in $shortcutSources) {
             $exe  = Get-LnkTargetBase $_.FullName
             $packed = (@($disp, $exe) | ForEach-Object { ([string]$_ -replace '\|', ' ') }) -join '|'
             Add-Row 'Shortcuts' $src.Kind $packed '' 'Linux: resolve to an installed .desktop (favourite / desktop file)' -Phase 'post' -Scope 'User'
+            switch ($src.Kind) { 'quicklaunch' { $qlNames.Add($disp) } 'startmenu' { $smNames.Add($disp) } 'desktop' { $dtNames.Add($disp) } }
             $scCount++
         }
     } catch {}
 }
 if ($scCount -eq 0) { Add-Row 'Shortcuts' 'desktop' '' '' 'No transferable shortcuts found (category placeholder)' -Phase 'post' -Scope 'User' }
-Write-Host "Shortcuts: $scCount transferable shortcut(s) recorded"
+Write-ExportSummary 'Shortcuts / Quick Launch export' $qlNames
+Write-ExportSummary 'Shortcuts / Start Menu export'   $smNames
+Write-ExportSummary 'Shortcuts / Desktop export'      $dtNames
 
 # -----------------------------------------------------------------------
 # 13b. STARTUP ITEMS + auto-start SERVICES (Phase=post). Scope is preserved:
@@ -689,6 +753,7 @@ function Add-StartupRows { param([string]$RegPath, [string]$FolderPath, [string]
                     $exe = Get-ExeBaseFromCommand ([string]$p.Value)
                     $packed = (@($p.Name, $exe) | ForEach-Object { ([string]$_ -replace '\|', ' ') }) -join '|'
                     Add-Row 'Startup' 'startup_item' $packed '' 'Linux: autostart if it resolves to an installed app' -Phase 'post' -Scope $Scope
+                    $script:startNames.Add([string]$p.Name)
                     $script:startupCount++
                 }
             }
@@ -700,6 +765,7 @@ function Add-StartupRows { param([string]$RegPath, [string]$FolderPath, [string]
             $exe  = Get-LnkTargetBase $_.FullName
             $packed = (@($name, $exe) | ForEach-Object { ([string]$_ -replace '\|', ' ') }) -join '|'
             Add-Row 'Startup' 'startup_item' $packed '' 'Linux: autostart if it resolves to an installed app' -Phase 'post' -Scope $Scope
+            $script:startNames.Add([string]$name)
             $script:startupCount++
         }
     }
@@ -708,7 +774,7 @@ Add-StartupRows -RegPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -
 Add-StartupRows -RegPath 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Run' -FolderPath ([Environment]::GetFolderPath('CommonStartup')) -Scope 'System'
 Add-StartupRows -RegPath 'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Run' -FolderPath $null -Scope 'System'
 if ($startupCount -eq 0) { Add-Row 'Startup' 'startup_item' '' '' 'No startup items found (placeholder)' -Phase 'post' -Scope 'User' }
-Write-Host "Startup items: $startupCount recorded"
+Write-ExportSummary 'Startup Items export' $startNames
 
 # Auto-start, third-party services (exclude C:\Windows\ OS services that can never map).
 $svcCount = 0
@@ -718,11 +784,56 @@ try {
     } | ForEach-Object {
         $packed = (@($_.DisplayName, $_.Name) | ForEach-Object { ([string]$_ -replace '\|', ' ') }) -join '|'
         Add-Row 'Services' 'service' $packed '' 'Linux: systemctl enable if a clearly-matching unit exists' -Phase 'post' -Scope 'System'
+        $svcNames.Add([string]$_.DisplayName)
         $svcCount++
     }
 } catch {}
 if ($svcCount -eq 0) { Add-Row 'Services' 'service' '' '' 'No auto-start third-party services found (placeholder)' -Phase 'post' -Scope 'System' }
-Write-Host "Services: $svcCount auto-start third-party service(s) recorded"
+Write-ExportSummary 'Services export' $svcNames
+
+# -----------------------------------------------------------------------
+# 13c. SCHEDULED TASKS (manually created; Phase=post). Only non-Microsoft, enabled
+#      tasks are considered. Scope follows the task principal (SYSTEM/service ->
+#      System; otherwise User). The Linux side turns each into a cron entry IF its
+#      program resolves to an installed app; non-resolving ones are log-only.
+#      Packed: name|scope|schedule|exeBase   (schedule uses commas, not '|').
+# -----------------------------------------------------------------------
+$taskCount = 0
+try {
+    Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object {
+        $_.TaskPath -notmatch '^\\Microsoft\\' -and $_.State -ne 'Disabled'
+    } | ForEach-Object {
+        $t = $_
+        # Scope: SYSTEM / service accounts -> System; otherwise the current user.
+        $scope = 'User'
+        try {
+            $uid = [string]$t.Principal.UserId; $lt = [string]$t.Principal.LogonType
+            if ($uid -match '(?i)system|S-1-5-18|S-1-5-19|S-1-5-20|LocalService|NetworkService' -or $lt -match '(?i)ServiceAccount') { $scope = 'System' }
+        } catch {}
+        # First exec action -> the program to run.
+        $act = $t.Actions | Where-Object { $_.Execute } | Select-Object -First 1
+        $exePath = if ($act) { [string]$act.Execute } else { '' }
+        $exeBase = if ($exePath) { [System.IO.Path]::GetFileNameWithoutExtension(($exePath -replace '"', '')) } else { '' }
+        # First trigger -> a portable schedule string.
+        $trig = $t.Triggers | Select-Object -First 1
+        $cls  = if ($trig) { [string]$trig.CimClass.CimClassName } else { '' }
+        $hh = ''; $mm = ''
+        try { if ($trig.StartBoundary) { $dt = [datetime]$trig.StartBoundary; $hh = $dt.ToString('HH'); $mm = $dt.ToString('mm') } } catch {}
+        $sched = 'unsupported'
+        switch -Wildcard ($cls) {
+            '*DailyTrigger'  { $sched = "daily,$hh,$mm" }
+            '*TimeTrigger'   { $sched = "daily,$hh,$mm" }
+            '*WeeklyTrigger' { $mask = 0; try { $mask = [int]$trig.DaysOfWeek } catch {}; $sched = "weekly,$mask,$hh,$mm" }
+            '*LogonTrigger'  { $sched = 'onlogon' }
+            '*BootTrigger'   { $sched = 'onstart' }
+        }
+        $packed = (@($t.TaskName, $scope, $sched, $exeBase) | ForEach-Object { ([string]$_ -replace '\|', ' ') }) -join '|'
+        Add-Row 'ScheduledTasks' 'task' $packed '' 'Linux: cron entry if the program resolves to an installed app' -Phase 'post' -Scope $scope
+        $taskCount++
+    }
+} catch {}
+if ($taskCount -eq 0) { Add-Row 'ScheduledTasks' 'task' '' '' 'No user-created scheduled tasks found (placeholder)' -Phase 'post' -Scope 'User' }
+Write-Host "Scheduled tasks: $taskCount recorded"
 
 # -----------------------------------------------------------------------
 # 14. SSH - stage the whole ~/.ssh verbatim (private keys included). The entire

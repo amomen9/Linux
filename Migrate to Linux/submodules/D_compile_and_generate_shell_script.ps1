@@ -523,6 +523,7 @@ $fwLines   = New-Object System.Collections.Generic.List[string]
 $scLines   = New-Object System.Collections.Generic.List[string]
 $startLines = New-Object System.Collections.Generic.List[string]
 $svcLines   = New-Object System.Collections.Generic.List[string]
+$taskLines  = New-Object System.Collections.Generic.List[string]
 function ConvertTo-TsvLine { param([string] $PipeValue)
     if ($null -eq $PipeValue) { return '' }
     $fields = $PipeValue -split '\|'
@@ -558,6 +559,10 @@ if (Test-Path $ConfigCsv) {
             $line = ConvertTo-TsvLine ([string]$row.WindowsValue)   # display<TAB>name
             if (([string]$row.WindowsValue).Trim()) { $svcLines.Add($line) }
         }
+        elseif ($cat -eq 'ScheduledTasks' -and $key -eq 'task') {
+            $line = ConvertTo-TsvLine ([string]$row.WindowsValue)   # name<TAB>scope<TAB>schedule<TAB>exeBase
+            if (([string]$row.WindowsValue).Trim()) { $taskLines.Add($line) }
+        }
     }
 }
 if ($settingsLines.Count -eq 0) { $settingsLines.Add('# (no mappable settings found in C_windows_configs.csv)') }
@@ -567,7 +572,8 @@ $fwData       = ($fwLines -join "`n")
 $scData       = ($scLines -join "`n")
 $startData    = ($startLines -join "`n")
 $svcData      = ($svcLines -join "`n")
-Write-Host ("  settings: {0} scalar; wifi: {1}; firewall: {2}; shortcuts: {3}; startup: {4}; services: {5}" -f ($settingsLines.Count), $wifiLines.Count, $fwLines.Count, $scLines.Count, $startLines.Count, $svcLines.Count) -ForegroundColor Green
+$taskData     = ($taskLines -join "`n")
+Write-Host ("  settings: {0} scalar; wifi: {1}; firewall: {2}; shortcuts: {3}; startup: {4}; services: {5}; tasks: {6}" -f ($settingsLines.Count), $wifiLines.Count, $fwLines.Count, $scLines.Count, $startLines.Count, $svcLines.Count, $taskLines.Count) -ForegroundColor Green
 
 # ---------------------------------------------------------------------------
 # 3. DRIVERS  (from A_installed_windows_drivers.csv) - reference list
@@ -603,7 +609,7 @@ $subDir = Join-Path $OutputDir 'submodules'
 if (-not (Test-Path $subDir -PathType Container)) { New-Item -ItemType Directory -Path $subDir -Force | Out-Null }
 $map = @{
     'install_must_have_software.sh.tmpl' = @{ apps = $appsData }
-    'apply_settings.sh.tmpl'             = @{ settings = $settingsData; wifi = $wifiData; firewall = $fwData; shortcuts = $scData; startup = $startData; services = $svcData }
+    'apply_settings.sh.tmpl'             = @{ settings = $settingsData; wifi = $wifiData; firewall = $fwData; shortcuts = $scData; startup = $startData; services = $svcData; tasks = $taskData }
     'install_device_drivers.sh.tmpl'     = @{ drivers = $driversData }
     'execute_all.sh.tmpl'                = @{ manual = $manualData; unmatched = $unmatchedData }
 }
@@ -621,6 +627,7 @@ foreach ($tmplName in $map.Keys) {
     if ($map[$tmplName].ContainsKey('shortcuts')){ $content = $content.Replace('### __SHORTCUTS_DATA__ ###', $map[$tmplName].shortcuts) }
     if ($map[$tmplName].ContainsKey('startup'))  { $content = $content.Replace('### __STARTUP_DATA__ ###', $map[$tmplName].startup) }
     if ($map[$tmplName].ContainsKey('services')) { $content = $content.Replace('### __SERVICES_DATA__ ###', $map[$tmplName].services) }
+    if ($map[$tmplName].ContainsKey('tasks'))    { $content = $content.Replace('### __SCHEDTASKS_DATA__ ###', $map[$tmplName].tasks) }
     if ($map[$tmplName].ContainsKey('drivers'))  { $content = $content.Replace('### __DRIVERS_DATA__ ###', $map[$tmplName].drivers) }
     if ($map[$tmplName].ContainsKey('manual'))   { $content = $content.Replace('### __MANUAL_APPS__ ###', $map[$tmplName].manual) }
     if ($map[$tmplName].ContainsKey('unmatched')){ $content = $content.Replace('### __UNMATCHED_APPS__ ###', $map[$tmplName].unmatched) }

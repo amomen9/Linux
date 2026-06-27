@@ -405,14 +405,20 @@ function Invoke-Step {
         [string] $StepLabel,
         [string] $ScriptPath,
         [string] $OutputPath,
-        [scriptblock] $ExtraArgs
+        [scriptblock] $ExtraArgs,
+        # Step 1 (Config) prints the project mega-title + the encryption-password prompt
+        # itself, which MUST be the very first thing on screen -- so its step banner is
+        # suppressed (otherwise the banner would appear before the title/prompt).
+        [switch] $SuppressBanner
     )
-    $border = '=' * 70
-    Write-Host "`n$border" -ForegroundColor Cyan
-    Write-Host "  STEP: $StepLabel" -ForegroundColor Yellow
-    Write-Host "  Script: $ScriptPath" -ForegroundColor Gray
-    Write-Host "$border" -ForegroundColor Cyan
-    Write-Host ""
+    if (-not $SuppressBanner) {
+        $border = '=' * 70
+        Write-Host "`n$border" -ForegroundColor Cyan
+        Write-Host "  STEP: $StepLabel" -ForegroundColor Yellow
+        Write-Host "  Script: $ScriptPath" -ForegroundColor Gray
+        Write-Host "$border" -ForegroundColor Cyan
+        Write-Host ""
+    }
 
     $childTokens = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $ScriptPath, '-OutputPath', $OutputPath)
 
@@ -461,7 +467,9 @@ if (-not $SkipDetection) {
     $configOutput = Join-Path $OutputDir 'C_windows_configs.csv'
     Invoke-Step -StepLabel '1/5  Config (Windows settings extraction)' `
                 -ScriptPath $scriptConfig `
-                -OutputPath $configOutput
+                -OutputPath $configOutput `
+                -SuppressBanner `
+                -ExtraArgs { if ($VerbosePreference -eq 'Continue') { '-Verbose' } }
 
     # -----------------------------------------------------------------------
     # 2. SOFTWARE  - B_detect_installed_windows_software.ps1

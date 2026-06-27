@@ -1293,24 +1293,24 @@ CFG_ntp_server="pool.ntp.org"
 WIFI_DATA="$(cat <<'__WIFI_EOF__'
 eduroam	wpa		none
 somenet	open		none
-V.momen	wpa		none
+V.momen	wpa	U2FsdGVkX19m/pW7H3yj3Cx8lOu77JjJ742r5aX7j5c=	enc
 Tbilisi Loves You	open		none
 Tbilisi Airport Free	open		none
 Simorgh-WiFi	open		none
-Shatel	wpa		none
-SHAW-48EE	wpa		none
-Redmi Note 10 Pro Max	wpa		none
-Parsway	wpa		none
-NZT9930134C	wpa		none
+Shatel	wpa	U2FsdGVkX1+tgtfmpXcMBu5DVYU4vOdSbbgsrFD2WEw=	enc
+SHAW-48EE	wpa	U2FsdGVkX19oZuE7KvRSGFz6qdx+w5C/J+6Sl3b3eGk=	enc
+Redmi Note 10 Pro Max	wpa	U2FsdGVkX1/lrci/Ep47yZYO+mkWRyYMnFpvi5vMx6w=	enc
+Parsway	wpa	U2FsdGVkX19pKHpM8P1w6alqhM7VhKeQVVyArp+I1Aw=	enc
+NZT9930134C	wpa	U2FsdGVkX19fuOwLG+gWRiFPQ63Tdiw4lVseSTpMu08=	enc
 Mofid-GoHyper!	open		none
-Jobvision-WiFi	wpa		none
-JobVision_DLink	wpa		none
-JobVision-3rd	wpa		none
-JobVision	wpa		none
-Galaxy A51	wpa		none
-Fatemeh's Galaxy A71	wpa		none
-AndroidAPA50	wpa		none
-DivorceHousing	wpa		none
+Jobvision-WiFi	wpa	U2FsdGVkX19XA3IQyE7uPpuH1PSqYjgrhFr1ohm+spk=	enc
+JobVision_DLink	wpa	U2FsdGVkX1+GGwVL6Hl4ZCrM8nyBwWpe3gCTjKV8UGc=	enc
+JobVision-3rd	wpa	U2FsdGVkX1+ng/YrXZvc51LlYyeXHL0HFK8yAklwjeI=	enc
+JobVision	wpa	U2FsdGVkX1+UBlUr0T6S5LZKtV6HuCi/o5GhjtiZXC8=	enc
+Galaxy A51	wpa	U2FsdGVkX1/2Osc9PnSiQNirN0KVzVND3i6NiKMPLTs=	enc
+Fatemeh's Galaxy A71	wpa	U2FsdGVkX18rqDsRv1sPKdE2/zamY2JYwoAUU6osdB8=	enc
+AndroidAPA50	wpa	U2FsdGVkX187DcrCTajjca2by5F+Z5NFWOuIk4Fh95o=	enc
+DivorceHousing	wpa	U2FsdGVkX1/oYcPjYeTUZxO/3doBLYm4iQDLa7+7Rz14aeAY+GuLkQmlkr+u7JNs	enc
 __WIFI_EOF__
 )"
 
@@ -2214,6 +2214,8 @@ Microsoft 365 Copilot	Inbound	Allow	True	Any	Any
 PowerToys.MouseWithoutBorders	Inbound	Allow	True	Any	Any
 PowerToys.SparseApp	Outbound	Allow	True	Any	Any
 Microsoft Edge (mDNS-In)	Inbound	Allow	True	UDP	5353
+NordVPN Meshnet Service	Inbound	Allow	True	UDP	Any
+NordVPN Meshnet Service	Outbound	Allow	True	UDP	Any
 __FW_EOF__
 )"
 
@@ -2312,6 +2314,29 @@ nordvpn-service	nordvpn-service
 nordsec-threatprotection-service	nordsec-threatprotection-service
 Intel® Graphics Software	IntelGraphicsSoftwareService
 __SV_EOF__
+)"
+
+# Manually-created Windows scheduled tasks, one per line:
+#   name<TAB>scope<TAB>schedule<TAB>exeBase   (scope=user|system; schedule uses commas)
+SCHEDTASKS_DATA="$(cat <<'__TK_EOF__'
+ASC_PerformanceMonitor	User	onlogon	Monitor
+ASC_SkipUac_Ali	User	unsupported	ASC
+CreateExplorerShellUnelevatedTask	User	unsupported	explorer
+oCamTask	User	onlogon	oCamTask
+OneDrive Per-Machine Standalone Update Task	System	daily,23,00	OneDriveStandaloneUpdater
+OneDrive Reporting Task-S-1-5-21-134476807-1998891258-1216728456-1001	User	daily,00,52	OneDriveStandaloneUpdater
+OneDrive Startup Task-S-1-5-21-134476807-1998891258-1216728456-1001	User	onlogon	OneDriveLauncher
+RPCServiceHealthCheck	User	daily,00,45	RPCDownloader
+update-S-1-5-21-134476807-1998891258-1216728456-1001	User	daily,15,45	Updater
+Quick Share Relaunch	User	daily,22,10	nearby_share_launcher
+RunPlatformExperienceHelper_Daily	User	daily,10,44	platform_experience_helper
+RunPlatformExperienceHelper_Metrics	User	daily,11,20	platform_experience_helper
+Lenovo Professional Ultraslim Wireless Combo Gen2 OSD task	User	onlogon	UltraslimOSD
+Firefox Default Browser Agent 308046B0AF4A39CB	User	daily,13,49	default-browser-agent
+Autorun for Ali	User	onlogon	PowerToys
+SoftLandingCreativeManagementTask	User	unsupported	
+SoftLandingDeferralTask-{b2c0abde-7201-4e71-821c-1f9ede688522}	User	daily,12,32	
+__TK_EOF__
 )"
 
 DE="unknown"
@@ -2555,7 +2580,8 @@ apply_wifi() {
   if ! have_cmd nmcli; then
     mark_manual "wifi networks" "NetworkManager (nmcli) not present; import WiFi profiles manually"; return 0
   fi
-  # If any entry carries an encrypted key, ask once for the password to decrypt them.
+  # If any entry carries an encrypted key, a transfer password WAS provided on
+  # Windows: ask once to decrypt the keys.
   local has_enc=0 wifikey=""
   printf '%s\n' "$WIFI_DATA" | awk -F'\t' '$4=="enc"{f=1} END{exit !f}' && has_enc=1
   if [ "$has_enc" = "1" ]; then
@@ -2563,6 +2589,21 @@ apply_wifi() {
     if have_cmd openssl && [ -r /dev/tty ]; then
       printf '  Enter the password used to encrypt the WiFi keys (empty to import profiles WITHOUT saved passwords): ' > /dev/tty
       read -r wifikey < /dev/tty || wifikey=""
+    fi
+  else
+    # No transfer password was provided on Windows (or it timed out): there may be
+    # password-protected networks with no stored key. Ask whether to import them
+    # anyway (manual password entry per network). "No" skips WiFi entirely.
+    local has_prot=0
+    printf '%s\n' "$WIFI_DATA" | awk -F'\t' '$1!="" && tolower($2)!="open" && tolower($2)!="none" && $4!="enc"{f=1} END{exit !f}' && has_prot=1
+    if [ "$has_prot" = "1" ] && [ -r /dev/tty ]; then
+      local YEL=$'\033[1;33m' RST=$'\033[0m' wans
+      printf '\n  You %sdid not%s provide a %spassword%s for sensitive data encryption while exporting your data on Windows (or providing a %spassword%s was %stimed out%s).\n' "$YEL" "$RST" "$YEL" "$RST" "$YEL" "$RST" "$YEL" "$RST" >&3
+      printf '  Do you still want to transfer WiFi networks without their passwords?\n' >&3
+      printf '  (if "yes", manual password entry for each password-protected one is required)\n' >&3
+      printf '  If you %sdid not%s intend for this, you can go over to Windows and export your data again with providing the encryption pass this time. (y/n)\n' "$YEL" "$RST" >&3
+      printf '  (y/n): ' > /dev/tty; read -r wans < /dev/tty || wans="y"
+      case "$wans" in [Nn]*) mark_skip "wifi networks" "skipped (no transfer password provided on Windows)"; return 0 ;; esac
     fi
   fi
   local ssid auth secret sectype psk
@@ -2807,6 +2848,58 @@ $(printf '%s\n' "$SERVICES_DATA")
 EOF
 }
 
+# Windows DaysOfWeek bitmask (Sun=1,Mon=2,...,Sat=64) -> cron day-of-week list (Sun=0..Sat=6).
+win_mask_to_cron_dow() {  # win_mask_to_cron_dow MASK
+  local m="$1" out="" dow
+  case "$m" in ''|*[!0-9]*) printf '*'; return 0 ;; esac
+  for dow in 0 1 2 3 4 5 6; do
+    [ $(( m & (1 << dow) )) -ne 0 ] && out="${out:+$out,}$dow"
+  done
+  printf '%s' "${out:-*}"
+}
+
+# Manually-created Windows scheduled tasks -> cron, ONLY when the task's program
+# resolves to an installed Linux app/binary. Scope: user task -> the user's crontab;
+# system task -> root's crontab. Non-resolving / non-portable tasks are log-only.
+apply_scheduled_tasks() {
+  [ -z "$(printf '%s' "$SCHEDTASKS_DATA" | tr -d '[:space:]')" ] && return 0
+  log "Scheduled tasks -> cron (resolved programs only)"
+  if ! have_cmd crontab; then log_note "scheduled tasks" "crontab not available"; return 0; fi
+  local name scope sched exe cmd cronexpr who did dir marker cur hh mm mask hm rest
+  while IFS="$(printf '\t')" read -r name scope sched exe; do
+    [ -z "$name$exe" ] && continue
+    # Resolve a runnable command: a binary on PATH, else the resolved app's Exec.
+    cmd=""
+    if [ -n "$exe" ] && have_cmd "$exe"; then cmd="$exe"
+    elif did="$(resolve_desktop "$name" "$exe")"; then
+      for dir in /usr/share/applications /var/lib/flatpak/exports/share/applications "$TARGET_HOME/.local/share/applications"; do
+        [ -f "$dir/$did" ] && { cmd="$(grep -m1 '^Exec=' "$dir/$did" 2>/dev/null | sed 's/^Exec=//; s/ *%[a-zA-Z].*//')"; break; }
+      done
+    fi
+    [ -z "$cmd" ] && { log_note "scheduled task: $name" "no installed program to run (skipped)"; continue; }
+    # Build the cron schedule (10# forces base-10 so 08/09 don't read as bad octal).
+    case "$sched" in
+      daily,*)
+        hm="${sched#daily,}"; hh="${hm%%,*}"; mm="${hm##*,}"
+        cronexpr="$((10#${mm:-0})) $((10#${hh:-0})) * * *" ;;
+      weekly,*)
+        rest="${sched#weekly,}"; mask="${rest%%,*}"; hm="${rest#*,}"; hh="${hm%%,*}"; mm="${hm##*,}"
+        cronexpr="$((10#${mm:-0})) $((10#${hh:-0})) * * $(win_mask_to_cron_dow "$mask")" ;;
+      onstart|onlogon) cronexpr="@reboot" ;;
+      *) log_note "scheduled task: $name" "trigger '$sched' not portable to cron (skipped)"; continue ;;
+    esac
+    case "$scope" in system) who="root" ;; *) who="$TARGET_USER" ;; esac
+    marker="# migrated-task: $name"
+    cur="$(crontab -u "$who" -l 2>/dev/null)"
+    if printf '%s\n' "$cur" | grep -qF "$marker"; then mark_skip "scheduled task: $name" "already in $who crontab"; continue; fi
+    if printf '%s\n%s\n%s %s\n' "$cur" "$marker" "$cronexpr" "$cmd" | crontab -u "$who" - 2>/dev/null; then
+      mark_set "scheduled task ($scope): $name -> cron [$cronexpr] $cmd"
+    else mark_fail "scheduled task: $name" "could not update $who crontab"; fi
+  done <<EOF
+$(printf '%s\n' "$SCHEDTASKS_DATA")
+EOF
+}
+
 # C_detect packs the user's personal files into ONE encrypted archive next to the
 # staging dir: "<migrated_user_data>.tar.enc" (AES-256-CBC / PBKDF2, same transfer
 # password as WiFi). Decrypt + extract it ONCE into a private temp dir; copy_ssh and
@@ -2895,6 +2988,7 @@ run_post() {
   apply_shortcuts
   apply_startup_items
   enable_services
+  apply_scheduled_tasks
   unpack_stage
   copy_ssh
   copy_contacts
