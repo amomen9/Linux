@@ -472,16 +472,17 @@ apply_wifi() {
       case "$wans" in [Nn]*) mark_skip "wifi networks" "skipped (no transfer password provided on Windows)"; return 0 ;; esac
     fi
   fi
-  local ssid auth secret sectype psk
+  local ssid auth secret sectype psk exists
   while IFS="$(printf '\t')" read -r ssid auth secret sectype; do
     [ -z "$ssid" ] && continue
-    # Idempotent: skip if a connection profile of this name already exists.
-    if nmcli -t -g NAME connection show 2>/dev/null | grep -qxF "$ssid"; then
-      mark_skip "wifi: $ssid" "connection already exists"; continue
-    fi
+    # Does a connection profile of this name already exist? Networks WITH a password
+    # update the existing profile's password (below); others are left as-is / skipped.
+    exists=0
+    if nmcli -t -g NAME connection show 2>/dev/null | grep -qxF "$ssid"; then exists=1; fi
     # Open networks have no key: add them straight away (no password needed).
     case "$(printf '%s' "$auth" | tr '[:upper:]' '[:lower:]')" in
       open|none|"")
+        if [ "$exists" = "1" ]; then mark_skip "wifi: $ssid" "connection already exists"; continue; fi
         if capture nmcli connection add type wifi con-name "$ssid" ssid "$ssid" connection.autoconnect yes; then
           mark_set "wifi: $ssid (open network)"
         else mark_fail "wifi: $ssid" "${LAST_ERR:-nmcli could not add the connection}"; fi
@@ -495,11 +496,17 @@ apply_wifi() {
       plain) psk="$secret" ;;
     esac
     if [ -n "$psk" ]; then
-      if capture nmcli connection add type wifi con-name "$ssid" ssid "$ssid" \
+      if [ "$exists" = "1" ]; then
+        # Already present: update its saved password rather than skipping.
+        if capture nmcli connection modify "$ssid" wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$psk"; then
+          mark_set "wifi: $ssid (password updated)"
+        else mark_fail "wifi: $ssid" "${LAST_ERR:-nmcli could not update the password}"; fi
+      elif capture nmcli connection add type wifi con-name "$ssid" ssid "$ssid" \
            wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$psk" connection.autoconnect yes; then
         mark_set "wifi: $ssid (with saved password)"
       else mark_fail "wifi: $ssid" "${LAST_ERR:-nmcli could not add the connection}"; fi
     else
+      if [ "$exists" = "1" ]; then mark_skip "wifi: $ssid" "connection already exists"; continue; fi
       if capture nmcli connection add type wifi con-name "$ssid" ssid "$ssid" connection.autoconnect yes; then
         mark_manual "wifi: $ssid" "profile added WITHOUT password - enter the WiFi password to connect"
       else mark_fail "wifi: $ssid" "${LAST_ERR:-nmcli could not add the connection}"; fi

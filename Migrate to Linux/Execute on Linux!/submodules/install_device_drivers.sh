@@ -73,13 +73,29 @@ have_cmd() { command -v "$1" >/dev/null 2>&1; }
 # files for "manual" apps under $MIGRATE_MANUAL_DIR/<slug>/ using the SAME slug.
 slugify() { printf '%s' "$1" | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9-_'; }
 
+# The non-root user we should install Flatpak apps / write desktop files for,
+# even though the script itself runs under sudo. logname is the original login
+# name of the session and is more reliable than $SUDO_USER (which is empty when
+# the script is not entered through sudo, and can be stale across su/sudo chains).
+TARGET_USER="$(logname 2>/dev/null || true)"
+{ [ -z "$TARGET_USER" ] || [ "$TARGET_USER" = "root" ]; } && TARGET_USER="${SUDO_USER:-$(id -un)}"
+TARGET_HOME="$(getent passwd "$TARGET_USER" 2>/dev/null | cut -d: -f6)"
+[ -z "$TARGET_HOME" ] && TARGET_HOME="$HOME"
+
 # ----------------------------- bookkeeping -----------------------------------
-RESULTS="${RESULTS:-/tmp/migrate_to_linux_results.tsv}"
+# The results log is created on the logname user's Desktop (and owned by them) so it is
+# easy to find after the run; it falls back to a temp file if that is not writable.
+RESULTS="${RESULTS:-$TARGET_HOME/Desktop/migrate_to_linux_results.tsv}"
 # execute_all sets MIGRATE_KEEP_RESULTS so the per-stage child scripts APPEND to one
 # shared log instead of truncating it, which lets execute_all print a combined
 # summary of every operation at the very end. Run standalone, a script truncates.
 if [ -z "${MIGRATE_KEEP_RESULTS:-}" ]; then
-  : > "$RESULTS" 2>/dev/null || RESULTS="$(mktemp)"
+  mkdir -p "$(dirname "$RESULTS")" 2>/dev/null || true
+  if : > "$RESULTS" 2>/dev/null; then
+    chown "$TARGET_USER":"$TARGET_USER" "$RESULTS" 2>/dev/null || true
+  else
+    RESULTS="$(mktemp)"
+  fi
 fi
 # Containers launched by the docker install method are recorded here (one TSV row per
 # container: winapp \t image \t container \t how-to) so the end-of-run summary can print
@@ -241,15 +257,6 @@ require_root() {
     exit 1
   fi
 }
-
-# The non-root user we should install Flatpak apps / write desktop files for,
-# even though the script itself runs under sudo. logname is the original login
-# name of the session and is more reliable than $SUDO_USER (which is empty when
-# the script is not entered through sudo, and can be stale across su/sudo chains).
-TARGET_USER="$(logname 2>/dev/null || true)"
-{ [ -z "$TARGET_USER" ] || [ "$TARGET_USER" = "root" ]; } && TARGET_USER="${SUDO_USER:-$(id -un)}"
-TARGET_HOME="$(getent passwd "$TARGET_USER" 2>/dev/null | cut -d: -f6)"
-[ -z "$TARGET_HOME" ] && TARGET_HOME="$HOME"
 
 # ----------------------------- optional additions ----------------------------
 # Some migrated settings (e.g. firewall rules, display resolution, NTP) need a

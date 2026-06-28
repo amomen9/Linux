@@ -72,13 +72,29 @@ have_cmd() { command -v "$1" >/dev/null 2>&1; }
 # files for "manual" apps under $MIGRATE_MANUAL_DIR/<slug>/ using the SAME slug.
 slugify() { printf '%s' "$1" | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9-_'; }
 
+# The non-root user we should install Flatpak apps / write desktop files for,
+# even though the script itself runs under sudo. logname is the original login
+# name of the session and is more reliable than $SUDO_USER (which is empty when
+# the script is not entered through sudo, and can be stale across su/sudo chains).
+TARGET_USER="$(logname 2>/dev/null || true)"
+{ [ -z "$TARGET_USER" ] || [ "$TARGET_USER" = "root" ]; } && TARGET_USER="${SUDO_USER:-$(id -un)}"
+TARGET_HOME="$(getent passwd "$TARGET_USER" 2>/dev/null | cut -d: -f6)"
+[ -z "$TARGET_HOME" ] && TARGET_HOME="$HOME"
+
 # ----------------------------- bookkeeping -----------------------------------
-RESULTS="${RESULTS:-/tmp/migrate_to_linux_results.tsv}"
+# The results log is created on the logname user's Desktop (and owned by them) so it is
+# easy to find after the run; it falls back to a temp file if that is not writable.
+RESULTS="${RESULTS:-$TARGET_HOME/Desktop/migrate_to_linux_results.tsv}"
 # execute_all sets MIGRATE_KEEP_RESULTS so the per-stage child scripts APPEND to one
 # shared log instead of truncating it, which lets execute_all print a combined
 # summary of every operation at the very end. Run standalone, a script truncates.
 if [ -z "${MIGRATE_KEEP_RESULTS:-}" ]; then
-  : > "$RESULTS" 2>/dev/null || RESULTS="$(mktemp)"
+  mkdir -p "$(dirname "$RESULTS")" 2>/dev/null || true
+  if : > "$RESULTS" 2>/dev/null; then
+    chown "$TARGET_USER":"$TARGET_USER" "$RESULTS" 2>/dev/null || true
+  else
+    RESULTS="$(mktemp)"
+  fi
 fi
 # Containers launched by the docker install method are recorded here (one TSV row per
 # container: winapp \t image \t container \t how-to) so the end-of-run summary can print
@@ -240,15 +256,6 @@ require_root() {
     exit 1
   fi
 }
-
-# The non-root user we should install Flatpak apps / write desktop files for,
-# even though the script itself runs under sudo. logname is the original login
-# name of the session and is more reliable than $SUDO_USER (which is empty when
-# the script is not entered through sudo, and can be stale across su/sudo chains).
-TARGET_USER="$(logname 2>/dev/null || true)"
-{ [ -z "$TARGET_USER" ] || [ "$TARGET_USER" = "root" ]; } && TARGET_USER="${SUDO_USER:-$(id -un)}"
-TARGET_HOME="$(getent passwd "$TARGET_USER" 2>/dev/null | cut -d: -f6)"
-[ -z "$TARGET_HOME" ] && TARGET_HOME="$HOME"
 
 # ----------------------------- optional additions ----------------------------
 # Some migrated settings (e.g. firewall rules, display resolution, NTP) need a
@@ -1339,24 +1346,24 @@ CFG_default_browser="edge"
 WIFI_DATA="$(cat <<'__WIFI_EOF__'
 eduroam	wpa		none
 somenet	open		none
-V.momen	wpa	U2FsdGVkX1/QGGLrSRLENSNZ9BcUafCLWpn98VSKAlI=	enc
+V.momen	wpa	U2FsdGVkX19+zYtknBSuPezZPKsGQFxo71erqDt6aWU=	enc
 Tbilisi Loves You	open		none
 Tbilisi Airport Free	open		none
 Simorgh-WiFi	open		none
-Shatel	wpa	U2FsdGVkX1/O+O1RpmGMNqf6ROvtY0ajJC3UwsLSUTg=	enc
-SHAW-48EE	wpa	U2FsdGVkX1+V8xrFN1nyKrOhwJ6PdvtLtiJTFBARCkQ=	enc
-Redmi Note 10 Pro Max	wpa	U2FsdGVkX1/C07VMgjGy7VvXnm1tX1nEHrolmeb/xN0=	enc
-Parsway	wpa	U2FsdGVkX1/iUE5tj8WVUd7LZ5wohHtQnLDsgCOB/L4=	enc
-NZT9930134C	wpa	U2FsdGVkX1+zzrM5VRT4DgkUHGYKkOEGkE0fbR68gZU=	enc
+Shatel	wpa	U2FsdGVkX19hLIMKS5RqJIr2Md650Ro9tb36eOXEm24=	enc
+SHAW-48EE	wpa	U2FsdGVkX1/qVQpAYdYD0XotxEyPI+Hlqh2vZC/bBZI=	enc
+Redmi Note 10 Pro Max	wpa	U2FsdGVkX1+JQFTtQldDlisQyANbGQcWont3t97Xfa8=	enc
+Parsway	wpa	U2FsdGVkX19ZSTwnpNvRv+T9PiS4cAz1xGztKJ5elkM=	enc
+NZT9930134C	wpa	U2FsdGVkX1+IPHz5CT7WvfuVeSZfjwd/dFpakBVIJlY=	enc
 Mofid-GoHyper!	open		none
-Jobvision-WiFi	wpa	U2FsdGVkX18HLSpskPYL/krk3yrd7UHacgtJCJQVjko=	enc
-JobVision_DLink	wpa	U2FsdGVkX186SYKWv2gTsgcl0MFltgJYkK/i1IsTe78=	enc
-JobVision-3rd	wpa	U2FsdGVkX1/UjGiGgr151PJXdjAsKQAA2vCtmBuVnDI=	enc
-JobVision	wpa	U2FsdGVkX1+f6qo52z2t05TeCIvEvI2MyA2fopSRxkA=	enc
-Galaxy A51	wpa	U2FsdGVkX1+unS3qr1wqaDG0yWZm8aULua0ia5Cnnhk=	enc
-Fatemeh's Galaxy A71	wpa	U2FsdGVkX18JTPwY8WacmAgcpreHecrQEBrsU1oCEDo=	enc
-AndroidAPA50	wpa	U2FsdGVkX19Q3RD9DLKixvccQDkyLQ34gvIuS/U6rBM=	enc
-DivorceHousing	wpa	U2FsdGVkX19SQh19Cyz4qBNlL9+cnkhDlrcVe9Y1ippm6RYc/SbFvGsWGjqByUTc	enc
+Jobvision-WiFi	wpa	U2FsdGVkX19+QWxi9+cKOuY7QAO0eaWtQpz9v0Z8SQQ=	enc
+JobVision_DLink	wpa	U2FsdGVkX19xr/ZedC3+Q2KSaMibpkw0QeDoJ/BKwUo=	enc
+JobVision-3rd	wpa	U2FsdGVkX19UkaIsKlci/965cZILEnGiuvRAYifAh3o=	enc
+JobVision	wpa	U2FsdGVkX1/PoPgjxUAt78lR9p/7JsZY5SOA2rOq0fY=	enc
+Galaxy A51	wpa	U2FsdGVkX1+bLyUqClnNQvlb3zo3z2Dj9PnfPppODuI=	enc
+Fatemeh's Galaxy A71	wpa	U2FsdGVkX18JuxgwyWnzpqHF1JqRuS47m0G+6i/E0+w=	enc
+AndroidAPA50	wpa	U2FsdGVkX18hWq8bSfOtlO/KyqyLiOde6c5e0OffyK8=	enc
+DivorceHousing	wpa	U2FsdGVkX181NAB5t9hhAM+HYfYpMDAD+H5huNbv3T12Q/hTkcHXg2u3CWxxvu4C	enc
 __WIFI_EOF__
 )"
 
@@ -2817,16 +2824,17 @@ apply_wifi() {
       case "$wans" in [Nn]*) mark_skip "wifi networks" "skipped (no transfer password provided on Windows)"; return 0 ;; esac
     fi
   fi
-  local ssid auth secret sectype psk
+  local ssid auth secret sectype psk exists
   while IFS="$(printf '\t')" read -r ssid auth secret sectype; do
     [ -z "$ssid" ] && continue
-    # Idempotent: skip if a connection profile of this name already exists.
-    if nmcli -t -g NAME connection show 2>/dev/null | grep -qxF "$ssid"; then
-      mark_skip "wifi: $ssid" "connection already exists"; continue
-    fi
+    # Does a connection profile of this name already exist? Networks WITH a password
+    # update the existing profile's password (below); others are left as-is / skipped.
+    exists=0
+    if nmcli -t -g NAME connection show 2>/dev/null | grep -qxF "$ssid"; then exists=1; fi
     # Open networks have no key: add them straight away (no password needed).
     case "$(printf '%s' "$auth" | tr '[:upper:]' '[:lower:]')" in
       open|none|"")
+        if [ "$exists" = "1" ]; then mark_skip "wifi: $ssid" "connection already exists"; continue; fi
         if capture nmcli connection add type wifi con-name "$ssid" ssid "$ssid" connection.autoconnect yes; then
           mark_set "wifi: $ssid (open network)"
         else mark_fail "wifi: $ssid" "${LAST_ERR:-nmcli could not add the connection}"; fi
@@ -2840,11 +2848,17 @@ apply_wifi() {
       plain) psk="$secret" ;;
     esac
     if [ -n "$psk" ]; then
-      if capture nmcli connection add type wifi con-name "$ssid" ssid "$ssid" \
+      if [ "$exists" = "1" ]; then
+        # Already present: update its saved password rather than skipping.
+        if capture nmcli connection modify "$ssid" wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$psk"; then
+          mark_set "wifi: $ssid (password updated)"
+        else mark_fail "wifi: $ssid" "${LAST_ERR:-nmcli could not update the password}"; fi
+      elif capture nmcli connection add type wifi con-name "$ssid" ssid "$ssid" \
            wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$psk" connection.autoconnect yes; then
         mark_set "wifi: $ssid (with saved password)"
       else mark_fail "wifi: $ssid" "${LAST_ERR:-nmcli could not add the connection}"; fi
     else
+      if [ "$exists" = "1" ]; then mark_skip "wifi: $ssid" "connection already exists"; continue; fi
       if capture nmcli connection add type wifi con-name "$ssid" ssid "$ssid" connection.autoconnect yes; then
         mark_manual "wifi: $ssid" "profile added WITHOUT password - enter the WiFi password to connect"
       else mark_fail "wifi: $ssid" "${LAST_ERR:-nmcli could not add the connection}"; fi
