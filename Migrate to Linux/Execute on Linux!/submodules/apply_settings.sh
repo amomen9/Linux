@@ -36,6 +36,36 @@ err()  { printf '\033[1;31m%s\033[0m\n' "$*" >&3; }
 # appearance-tuning prompts so they stand out from ordinary install chatter.
 purple() { printf '\033[1;35m%s\033[0m\n' "$*" >&3; }
 
+# Project banner -- printed ONCE at the very start of a run, mirroring the PowerShell
+# Show-MegaTitle that run_project.ps1 shows on the Windows side. Green.
+mega_title() {
+  local g=$'\033[1;32m' r=$'\033[0m'
+  printf '%s\n' '' >&3
+  printf '%s  ###########################################################%s\n' "$g" "$r" >&3
+  printf '%s  ##                                                       ##%s\n' "$g" "$r" >&3
+  printf '%s  ##            M I G R A T E   T O   L I N U X             ##%s\n' "$g" "$r" >&3
+  printf '%s  ##        Windows  ->  Linux   Migration  Toolkit         ##%s\n' "$g" "$r" >&3
+  printf '%s  ##                                                       ##%s\n' "$g" "$r" >&3
+  printf '%s  ###########################################################%s\n' "$g" "$r" >&3
+  printf '%s\n' '' >&3
+}
+
+# Sensitive data exported on Windows (WiFi passwords, SSH private keys, Contacts,
+# wallpaper) is OpenSSL-encrypted with ONE shared password. Ask for it ONCE, up front,
+# and cache it in MIGRATE_XFER_PWD so each consumer (apply_wifi, unpack_stage) reuses the
+# same answer instead of prompting again mid-run. Idempotent; the flag and the answer are
+# exported so child stages launched by execute_all inherit them and never re-ask.
+XFER_PWD_ASKED="${XFER_PWD_ASKED:-0}"
+ask_xfer_password() {
+  [ "$XFER_PWD_ASKED" = "1" ] && return 0
+  XFER_PWD_ASKED=1; export XFER_PWD_ASKED
+  if [ -r /dev/tty ]; then
+    printf '  Enter the password used on Windows to encrypt your sensitive data (WiFi passwords, SSH keys, Contacts, wallpaper). Leave empty to skip restoring it: ' > /dev/tty
+    read -r MIGRATE_XFER_PWD < /dev/tty || MIGRATE_XFER_PWD=""
+  fi
+  export MIGRATE_XFER_PWD
+}
+
 have_cmd() { command -v "$1" >/dev/null 2>&1; }
 
 # Filesystem-safe slug from an app name. execute_all.sh stages user-supplied
@@ -1309,24 +1339,24 @@ CFG_default_browser="edge"
 WIFI_DATA="$(cat <<'__WIFI_EOF__'
 eduroam	wpa		none
 somenet	open		none
-V.momen	wpa	U2FsdGVkX19lafuGd1LTHl9wX9f2K739MkIR8VhXIiE=	enc
+V.momen	wpa	U2FsdGVkX1/QGGLrSRLENSNZ9BcUafCLWpn98VSKAlI=	enc
 Tbilisi Loves You	open		none
 Tbilisi Airport Free	open		none
 Simorgh-WiFi	open		none
-Shatel	wpa	U2FsdGVkX1/4SjbblAgZ0DePfPyG74JefOzSD19dsp0=	enc
-SHAW-48EE	wpa	U2FsdGVkX180FZQ62gp1YM2/G667UOfoHKRdLShWX+0=	enc
-Redmi Note 10 Pro Max	wpa	U2FsdGVkX18uXENcfPodXuijYYuZSEzLYgJJTNg6jP0=	enc
-Parsway	wpa	U2FsdGVkX19jmG9BYCDtuUUh+B+8KKzEesS5fnQxOp0=	enc
-NZT9930134C	wpa	U2FsdGVkX19udNTSXQnwrVb8SsaRlrnUzanzr8RBkQU=	enc
+Shatel	wpa	U2FsdGVkX1/O+O1RpmGMNqf6ROvtY0ajJC3UwsLSUTg=	enc
+SHAW-48EE	wpa	U2FsdGVkX1+V8xrFN1nyKrOhwJ6PdvtLtiJTFBARCkQ=	enc
+Redmi Note 10 Pro Max	wpa	U2FsdGVkX1/C07VMgjGy7VvXnm1tX1nEHrolmeb/xN0=	enc
+Parsway	wpa	U2FsdGVkX1/iUE5tj8WVUd7LZ5wohHtQnLDsgCOB/L4=	enc
+NZT9930134C	wpa	U2FsdGVkX1+zzrM5VRT4DgkUHGYKkOEGkE0fbR68gZU=	enc
 Mofid-GoHyper!	open		none
-Jobvision-WiFi	wpa	U2FsdGVkX1+Fo0tJKfdGBddF3aByB3HLlhyjiJeWjC4=	enc
-JobVision_DLink	wpa	U2FsdGVkX1+mygIO85KFET1QdbjPwggwtZDjFFqzeGY=	enc
-JobVision-3rd	wpa	U2FsdGVkX1832xhNWDRhp9qAu7TVFfHKIVfTFj78dcI=	enc
-JobVision	wpa	U2FsdGVkX18Qkc5gm5cgAqpCsoCcaCfFQ9snqebLcu8=	enc
-Galaxy A51	wpa	U2FsdGVkX199qHla9//zu5E0Z68PAx0jxXz6zhIXmnI=	enc
-Fatemeh's Galaxy A71	wpa	U2FsdGVkX1+Yzu1EIDIXanzU2ttlCI8u3mHnSy4rc1c=	enc
-AndroidAPA50	wpa	U2FsdGVkX1/cMzt4MNayxzcQhk7Scd0tINhi3b4kIu4=	enc
-DivorceHousing	wpa	U2FsdGVkX1/uGEe9IQjCL2pwoS3i5rfYiNrbkxKIHzyrgz+7Y23zLr+j8YqkEIU1	enc
+Jobvision-WiFi	wpa	U2FsdGVkX18HLSpskPYL/krk3yrd7UHacgtJCJQVjko=	enc
+JobVision_DLink	wpa	U2FsdGVkX186SYKWv2gTsgcl0MFltgJYkK/i1IsTe78=	enc
+JobVision-3rd	wpa	U2FsdGVkX1/UjGiGgr151PJXdjAsKQAA2vCtmBuVnDI=	enc
+JobVision	wpa	U2FsdGVkX1+f6qo52z2t05TeCIvEvI2MyA2fopSRxkA=	enc
+Galaxy A51	wpa	U2FsdGVkX1+unS3qr1wqaDG0yWZm8aULua0ia5Cnnhk=	enc
+Fatemeh's Galaxy A71	wpa	U2FsdGVkX18JTPwY8WacmAgcpreHecrQEBrsU1oCEDo=	enc
+AndroidAPA50	wpa	U2FsdGVkX19Q3RD9DLKixvccQDkyLQ34gvIuS/U6rBM=	enc
+DivorceHousing	wpa	U2FsdGVkX19SQh19Cyz4qBNlL9+cnkhDlrcVe9Y1ippm6RYc/SbFvGsWGjqByUTc	enc
 __WIFI_EOF__
 )"
 
@@ -2769,10 +2799,8 @@ apply_wifi() {
   printf '%s\n' "$WIFI_DATA" | awk -F'\t' '$4=="enc"{f=1} END{exit !f}' && has_enc=1
   if [ "$has_enc" = "1" ]; then
     have_cmd openssl || ask_install_addition "wifi passwords" "openssl" "decrypt the exported WiFi passwords" || true
-    if have_cmd openssl && [ -r /dev/tty ]; then
-      printf '  Enter the password used to encrypt the WiFi keys (empty to import profiles WITHOUT saved passwords): ' > /dev/tty
-      read -r wifikey < /dev/tty || wifikey=""
-    fi
+    # The decryption password was collected once, up front (ask_xfer_password); reuse it.
+    have_cmd openssl && wifikey="$MIGRATE_XFER_PWD"
   else
     # No transfer password was provided on Windows (or it timed out): there may be
     # password-protected networks with no stored key. Ask whether to import them
@@ -2867,13 +2895,13 @@ apply_firewall() {
         if capture ufw "$verb" "$dirflag" "${port}/${lproto}"; then mark_set "fw: $name ($verb $dirflag ${port}/${lproto})"
         else mark_fail "fw: $name" "${LAST_ERR:-ufw rejected the rule}"; fi ;;
       firewalld)
+        if [ "$enabled" != "True" ]; then mark_skip "fw: $name" "disabled on Windows - not migrated (logged only)"; continue; fi
         local fwaction="accept"; [ "$action" = "Block" ] && fwaction="reject"
         local rich="rule family=\"ipv4\" port port=\"${port}\" protocol=\"${lproto}\" ${fwaction}"
         if firewall-cmd --permanent --query-rich-rule="$rich" >/dev/null 2>&1; then
           mark_skip "fw: $name" "already present"; continue
         fi
         if capture firewall-cmd --permanent --add-rich-rule="$rich"; then
-          [ "$enabled" = "True" ] || info "  (Windows had this rule disabled; it is present in firewalld - remove it if unwanted)"
           mark_set "fw: $name (${fwaction} ${port}/${lproto})"
         else mark_fail "fw: $name" "${LAST_ERR:-firewall-cmd rejected the rule}"; fi ;;
     esac
@@ -3108,11 +3136,8 @@ unpack_stage() {
   fi
   if ! have_cmd openssl; then ask_install_addition "personal data" "openssl" "decrypt your transferred SSH keys / Contacts / wallpaper" || { mark_skip "personal data" "openssl unavailable to decrypt the archive"; return 0; }; fi
   if ! have_cmd tar; then mark_skip "personal data" "tar unavailable to extract the archive"; return 0; fi
-  local key=""
-  if [ -r /dev/tty ]; then
-    printf '  Enter the password used to encrypt your transferred personal data (SSH keys / Contacts / wallpaper; same as WiFi; empty to skip): ' > /dev/tty
-    read -r key < /dev/tty || key=""
-  fi
+  # The decryption password was collected once, up front (ask_xfer_password); reuse it.
+  local key="$MIGRATE_XFER_PWD"
   [ -z "$key" ] && { mark_skip "personal data" "no decryption password given (personal data skipped)"; return 0; }
   STAGE_TMP="$(mktemp -d 2>/dev/null || echo /tmp/mtl_stage.$$)"; mkdir -p "$STAGE_TMP"
   if openssl enc -d -aes-256-cbc -pbkdf2 -salt -pass pass:"$key" -in "$archive" 2>/dev/null | tar -xf - -C "$STAGE_TMP" 2>/dev/null; then
@@ -3301,6 +3326,11 @@ main() {
   log "Migrate to Linux  --  Apply Settings (${phase})"
   info "Distribution : ${DISTRO_NAME}"
   info "Desktop env  : ${DE}"
+
+  # Decryption password for sensitive exported data (WiFi/SSH/Contacts/wallpaper) shares
+  # one answer; ask once up front. In an orchestrated run execute_all already asked and
+  # exported it, so this is a no-op there.
+  ask_xfer_password
 
   case "$phase" in
     pre)  run_pre ;;

@@ -316,6 +316,7 @@ print_combined_summary() {
 
 main() {
   clear 2>/dev/null || printf '\033[2J\033[3J\033[H'
+  mega_title
   # Report-only mode: --dry-run / --report-only / -n (or MIGRATE_DRY_RUN=yes) prints the
   # plan and makes no changes; it does not need root.
   local arg
@@ -347,6 +348,10 @@ main() {
   info "Architecture : ${ARCH}"
 
   show_unmatched_warning
+
+  # Decryption password for sensitive exported data: ask ONCE, up front, before the
+  # setup questions. The WiFi/SSH/Contacts restore steps reuse it (MIGRATE_XFER_PWD).
+  ask_xfer_password
 
   # ---- Configuration: from the saved config file, or by asking each question ----
   local do_drivers=0 do_apps=0 do_settings=0 do_docker=0

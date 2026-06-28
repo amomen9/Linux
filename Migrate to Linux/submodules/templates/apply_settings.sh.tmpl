@@ -454,10 +454,8 @@ apply_wifi() {
   printf '%s\n' "$WIFI_DATA" | awk -F'\t' '$4=="enc"{f=1} END{exit !f}' && has_enc=1
   if [ "$has_enc" = "1" ]; then
     have_cmd openssl || ask_install_addition "wifi passwords" "openssl" "decrypt the exported WiFi passwords" || true
-    if have_cmd openssl && [ -r /dev/tty ]; then
-      printf '  Enter the password used to encrypt the WiFi keys (empty to import profiles WITHOUT saved passwords): ' > /dev/tty
-      read -r wifikey < /dev/tty || wifikey=""
-    fi
+    # The decryption password was collected once, up front (ask_xfer_password); reuse it.
+    have_cmd openssl && wifikey="$MIGRATE_XFER_PWD"
   else
     # No transfer password was provided on Windows (or it timed out): there may be
     # password-protected networks with no stored key. Ask whether to import them
@@ -552,13 +550,13 @@ apply_firewall() {
         if capture ufw "$verb" "$dirflag" "${port}/${lproto}"; then mark_set "fw: $name ($verb $dirflag ${port}/${lproto})"
         else mark_fail "fw: $name" "${LAST_ERR:-ufw rejected the rule}"; fi ;;
       firewalld)
+        if [ "$enabled" != "True" ]; then mark_skip "fw: $name" "disabled on Windows - not migrated (logged only)"; continue; fi
         local fwaction="accept"; [ "$action" = "Block" ] && fwaction="reject"
         local rich="rule family=\"ipv4\" port port=\"${port}\" protocol=\"${lproto}\" ${fwaction}"
         if firewall-cmd --permanent --query-rich-rule="$rich" >/dev/null 2>&1; then
           mark_skip "fw: $name" "already present"; continue
         fi
         if capture firewall-cmd --permanent --add-rich-rule="$rich"; then
-          [ "$enabled" = "True" ] || info "  (Windows had this rule disabled; it is present in firewalld - remove it if unwanted)"
           mark_set "fw: $name (${fwaction} ${port}/${lproto})"
         else mark_fail "fw: $name" "${LAST_ERR:-firewall-cmd rejected the rule}"; fi ;;
     esac
@@ -793,11 +791,8 @@ unpack_stage() {
   fi
   if ! have_cmd openssl; then ask_install_addition "personal data" "openssl" "decrypt your transferred SSH keys / Contacts / wallpaper" || { mark_skip "personal data" "openssl unavailable to decrypt the archive"; return 0; }; fi
   if ! have_cmd tar; then mark_skip "personal data" "tar unavailable to extract the archive"; return 0; fi
-  local key=""
-  if [ -r /dev/tty ]; then
-    printf '  Enter the password used to encrypt your transferred personal data (SSH keys / Contacts / wallpaper; same as WiFi; empty to skip): ' > /dev/tty
-    read -r key < /dev/tty || key=""
-  fi
+  # The decryption password was collected once, up front (ask_xfer_password); reuse it.
+  local key="$MIGRATE_XFER_PWD"
   [ -z "$key" ] && { mark_skip "personal data" "no decryption password given (personal data skipped)"; return 0; }
   STAGE_TMP="$(mktemp -d 2>/dev/null || echo /tmp/mtl_stage.$$)"; mkdir -p "$STAGE_TMP"
   if openssl enc -d -aes-256-cbc -pbkdf2 -salt -pass pass:"$key" -in "$archive" 2>/dev/null | tar -xf - -C "$STAGE_TMP" 2>/dev/null; then
@@ -986,6 +981,11 @@ main() {
   log "Migrate to Linux  --  Apply Settings (${phase})"
   info "Distribution : ${DISTRO_NAME}"
   info "Desktop env  : ${DE}"
+
+  # Decryption password for sensitive exported data (WiFi/SSH/Contacts/wallpaper) shares
+  # one answer; ask once up front. In an orchestrated run execute_all already asked and
+  # exported it, so this is a no-op there.
+  ask_xfer_password
 
   case "$phase" in
     pre)  run_pre ;;

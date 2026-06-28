@@ -36,6 +36,36 @@ err()  { printf '\033[1;31m%s\033[0m\n' "$*" >&3; }
 # appearance-tuning prompts so they stand out from ordinary install chatter.
 purple() { printf '\033[1;35m%s\033[0m\n' "$*" >&3; }
 
+# Project banner -- printed ONCE at the very start of a run, mirroring the PowerShell
+# Show-MegaTitle that run_project.ps1 shows on the Windows side. Green.
+mega_title() {
+  local g=$'\033[1;32m' r=$'\033[0m'
+  printf '%s\n' '' >&3
+  printf '%s  ###########################################################%s\n' "$g" "$r" >&3
+  printf '%s  ##                                                       ##%s\n' "$g" "$r" >&3
+  printf '%s  ##            M I G R A T E   T O   L I N U X             ##%s\n' "$g" "$r" >&3
+  printf '%s  ##        Windows  ->  Linux   Migration  Toolkit         ##%s\n' "$g" "$r" >&3
+  printf '%s  ##                                                       ##%s\n' "$g" "$r" >&3
+  printf '%s  ###########################################################%s\n' "$g" "$r" >&3
+  printf '%s\n' '' >&3
+}
+
+# Sensitive data exported on Windows (WiFi passwords, SSH private keys, Contacts,
+# wallpaper) is OpenSSL-encrypted with ONE shared password. Ask for it ONCE, up front,
+# and cache it in MIGRATE_XFER_PWD so each consumer (apply_wifi, unpack_stage) reuses the
+# same answer instead of prompting again mid-run. Idempotent; the flag and the answer are
+# exported so child stages launched by execute_all inherit them and never re-ask.
+XFER_PWD_ASKED="${XFER_PWD_ASKED:-0}"
+ask_xfer_password() {
+  [ "$XFER_PWD_ASKED" = "1" ] && return 0
+  XFER_PWD_ASKED=1; export XFER_PWD_ASKED
+  if [ -r /dev/tty ]; then
+    printf '  Enter the password used on Windows to encrypt your sensitive data (WiFi passwords, SSH keys, Contacts, wallpaper). Leave empty to skip restoring it: ' > /dev/tty
+    read -r MIGRATE_XFER_PWD < /dev/tty || MIGRATE_XFER_PWD=""
+  fi
+  export MIGRATE_XFER_PWD
+}
+
 have_cmd() { command -v "$1" >/dev/null 2>&1; }
 
 # Filesystem-safe slug from an app name. execute_all.sh stages user-supplied
