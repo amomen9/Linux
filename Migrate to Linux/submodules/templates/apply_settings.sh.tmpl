@@ -864,7 +864,7 @@ install_fonts() {
   info "     and every .ttf/.otf/.ttc font found is installed into ~/.local/share/fonts."
   mkdir -p "$dest"
   while :; do
-    printf "  Font directory ('path' to install / 'done' when finished / 'skip' to skip fonts): " > /dev/tty
+    printf "  Font directory ('path' to install / d=done when finished / s=skip to skip fonts): " > /dev/tty
     read -r ans < /dev/tty || ans="skip"
     case "$ans" in
       [Ss]|[Ss][Kk][Ii][Pp]) [ "$total" -eq 0 ] && mark_skip "fonts" "user skipped"; break ;;

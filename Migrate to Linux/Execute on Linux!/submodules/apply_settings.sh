@@ -852,7 +852,7 @@ manual_fallback() {  # manual_fallback NAME [ALT] [NOTE] [URL] [LAUNCH]
   info "Any valid installer extension works (.deb/.rpm/.sh/.run/.bin/.bundle/.AppImage/.tar.gz/.zip/...); 'skip' to skip this app, or 'skip all' to skip this and every remaining manual app."
   if [ ! -r /dev/tty ]; then mark_manual "${alt:-$name}" "no package manager route - needs manual download"; return 0; fi
   while :; do
-    printf "  %s ('installer path'/skip/skip all): " "$disp" > /dev/tty
+    printf "  %s ('installer path'/s=skip/a=skip all): " "$disp" > /dev/tty
     read -r ans < /dev/tty || ans="skip"
     case "$ans" in
       [Aa]|[Aa][Ll][Ll]|[Ss][Kk][Ii][Pp][Aa][Ll][Ll]|'skip all'|'Skip all'|'Skip All'|'SKIP ALL')
@@ -1044,7 +1044,7 @@ wine_app() {  # wine_app NAME [WINDOWS_INSTALLER_URL] [NOT_RECOMMENDED_REASON] [
     info "Any valid installer extension works (.exe, .msi, .bat, etc.); 'skip' to skip this app, or 'skip all' to skip every remaining wine (Windows emulator) install."
     [ -n "$nrreason" ] && warn "Not recommended: ${nrreason}${nraction:+  Recommended: ${nraction}}"
     while :; do
-      printf "  %s ('installer path'/skip/skip all): " "$name" > /dev/tty
+      printf "  %s ('installer path'/s=skip/a=skip all): " "$name" > /dev/tty
       read -r ans < /dev/tty || ans="skip"
       case "$ans" in
         [Aa]|[Aa][Ll][Ll]|[Ss][Kk][Ii][Pp][Aa][Ll][Ll]|'skip all'|'Skip all'|'Skip All'|'SKIP ALL')
@@ -1309,24 +1309,24 @@ CFG_default_browser="edge"
 WIFI_DATA="$(cat <<'__WIFI_EOF__'
 eduroam	wpa		none
 somenet	open		none
-V.momen	wpa	U2FsdGVkX18twkr4cTfaSLRFH0NTTEBVSUsJwz7rQGA=	enc
+V.momen	wpa	U2FsdGVkX19lafuGd1LTHl9wX9f2K739MkIR8VhXIiE=	enc
 Tbilisi Loves You	open		none
 Tbilisi Airport Free	open		none
 Simorgh-WiFi	open		none
-Shatel	wpa	U2FsdGVkX19uUFRiLRPPxiKdIgA71W+YTolghENKdcY=	enc
-SHAW-48EE	wpa	U2FsdGVkX19KIgKWRzP1lHf0Cx8kHiSemfdxBjtzgbY=	enc
-Redmi Note 10 Pro Max	wpa	U2FsdGVkX18FJG2/dPN4u2zBF2GGq3JZjVMHVEBTi2Y=	enc
-Parsway	wpa	U2FsdGVkX18CHWO+QvbRWS1JKoOUThoqI5juxcM9I6Q=	enc
-NZT9930134C	wpa	U2FsdGVkX18s/P+hDuznFBIShq1UI33OWVLyx+fCmNA=	enc
+Shatel	wpa	U2FsdGVkX1/4SjbblAgZ0DePfPyG74JefOzSD19dsp0=	enc
+SHAW-48EE	wpa	U2FsdGVkX180FZQ62gp1YM2/G667UOfoHKRdLShWX+0=	enc
+Redmi Note 10 Pro Max	wpa	U2FsdGVkX18uXENcfPodXuijYYuZSEzLYgJJTNg6jP0=	enc
+Parsway	wpa	U2FsdGVkX19jmG9BYCDtuUUh+B+8KKzEesS5fnQxOp0=	enc
+NZT9930134C	wpa	U2FsdGVkX19udNTSXQnwrVb8SsaRlrnUzanzr8RBkQU=	enc
 Mofid-GoHyper!	open		none
-Jobvision-WiFi	wpa	U2FsdGVkX1+drlYA0O6eGw65dvl3O58wGOEceuqh2Ig=	enc
-JobVision_DLink	wpa	U2FsdGVkX1++mnVcD7qlxCOMaFj9UEajieo9K3qKH2E=	enc
-JobVision-3rd	wpa	U2FsdGVkX1+EXieOUQ4ouagYIiuOiiFMJHyUxAQAsjM=	enc
-JobVision	wpa	U2FsdGVkX19/AXGfHg0WcL/s5qN2NJQdkI8xgmtDrLI=	enc
-Galaxy A51	wpa	U2FsdGVkX18IKvXSISVBSKLvyVE/1JHko33RJxCj+Sc=	enc
-Fatemeh's Galaxy A71	wpa	U2FsdGVkX1+gLndfLT844JYptLvONhdFBvbNuiGnVfQ=	enc
-AndroidAPA50	wpa	U2FsdGVkX1816kgvYrQkF2VJEhwCH5EKTgEKxP4n8L4=	enc
-DivorceHousing	wpa	U2FsdGVkX19t1i2cIF5MQj5qNZFkW3kso1h8OpBWgeqLTS8o1w8J/1HJab/jERg2	enc
+Jobvision-WiFi	wpa	U2FsdGVkX1+Fo0tJKfdGBddF3aByB3HLlhyjiJeWjC4=	enc
+JobVision_DLink	wpa	U2FsdGVkX1+mygIO85KFET1QdbjPwggwtZDjFFqzeGY=	enc
+JobVision-3rd	wpa	U2FsdGVkX1832xhNWDRhp9qAu7TVFfHKIVfTFj78dcI=	enc
+JobVision	wpa	U2FsdGVkX18Qkc5gm5cgAqpCsoCcaCfFQ9snqebLcu8=	enc
+Galaxy A51	wpa	U2FsdGVkX199qHla9//zu5E0Z68PAx0jxXz6zhIXmnI=	enc
+Fatemeh's Galaxy A71	wpa	U2FsdGVkX1+Yzu1EIDIXanzU2ttlCI8u3mHnSy4rc1c=	enc
+AndroidAPA50	wpa	U2FsdGVkX1/cMzt4MNayxzcQhk7Scd0tINhi3b4kIu4=	enc
+DivorceHousing	wpa	U2FsdGVkX1/uGEe9IQjCL2pwoS3i5rfYiNrbkxKIHzyrgz+7Y23zLr+j8YqkEIU1	enc
 __WIFI_EOF__
 )"
 
@@ -2350,7 +2350,7 @@ Lenovo Professional Ultraslim Wireless Combo Gen2 OSD task	User	onlogon	Ultrasli
 Firefox Default Browser Agent 308046B0AF4A39CB	User	daily,13,49	default-browser-agent
 Autorun for Ali	User	onlogon	PowerToys
 SoftLandingCreativeManagementTask	User	unsupported	
-SoftLandingDeferralTask-{71575cbf-db55-4a73-b13f-ce73b7964e58}	User	daily,02,32	
+SoftLandingDeferralTask-{9c75ee9b-db2a-4e74-a6c5-eef0cbaf7b12}	User	daily,12,32	
 __TK_EOF__
 )"
 
@@ -3179,7 +3179,7 @@ install_fonts() {
   info "     and every .ttf/.otf/.ttc font found is installed into ~/.local/share/fonts."
   mkdir -p "$dest"
   while :; do
-    printf "  Font directory ('path' to install / 'done' when finished / 'skip' to skip fonts): " > /dev/tty
+    printf "  Font directory ('path' to install / d=done when finished / s=skip to skip fonts): " > /dev/tty
     read -r ans < /dev/tty || ans="skip"
     case "$ans" in
       [Ss]|[Ss][Kk][Ii][Pp]) [ "$total" -eq 0 ] && mark_skip "fonts" "user skipped"; break ;;

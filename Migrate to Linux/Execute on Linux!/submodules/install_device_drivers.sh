@@ -853,7 +853,7 @@ manual_fallback() {  # manual_fallback NAME [ALT] [NOTE] [URL] [LAUNCH]
   info "Any valid installer extension works (.deb/.rpm/.sh/.run/.bin/.bundle/.AppImage/.tar.gz/.zip/...); 'skip' to skip this app, or 'skip all' to skip this and every remaining manual app."
   if [ ! -r /dev/tty ]; then mark_manual "${alt:-$name}" "no package manager route - needs manual download"; return 0; fi
   while :; do
-    printf "  %s ('installer path'/skip/skip all): " "$disp" > /dev/tty
+    printf "  %s ('installer path'/s=skip/a=skip all): " "$disp" > /dev/tty
     read -r ans < /dev/tty || ans="skip"
     case "$ans" in
       [Aa]|[Aa][Ll][Ll]|[Ss][Kk][Ii][Pp][Aa][Ll][Ll]|'skip all'|'Skip all'|'Skip All'|'SKIP ALL')
@@ -1045,7 +1045,7 @@ wine_app() {  # wine_app NAME [WINDOWS_INSTALLER_URL] [NOT_RECOMMENDED_REASON] [
     info "Any valid installer extension works (.exe, .msi, .bat, etc.); 'skip' to skip this app, or 'skip all' to skip every remaining wine (Windows emulator) install."
     [ -n "$nrreason" ] && warn "Not recommended: ${nrreason}${nraction:+  Recommended: ${nraction}}"
     while :; do
-      printf "  %s ('installer path'/skip/skip all): " "$name" > /dev/tty
+      printf "  %s ('installer path'/s=skip/a=skip all): " "$name" > /dev/tty
       read -r ans < /dev/tty || ans="skip"
       case "$ans" in
         [Aa]|[Aa][Ll][Ll]|[Ss][Kk][Ii][Pp][Aa][Ll][Ll]|'skip all'|'Skip all'|'Skip All'|'SKIP ALL')

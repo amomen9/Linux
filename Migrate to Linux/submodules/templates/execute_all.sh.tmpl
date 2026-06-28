@@ -219,7 +219,7 @@ install_manual_apps() {
     info "'skip' to skip this app, or 'skip all' to skip this and every remaining manual app."
     if [ ! -r /dev/tty ]; then mark_skip "${alt:-$name}" "no tty for manual prompt"; continue; fi
     while :; do
-      printf "  %s ('installer path'/skip/skip all): " "${alt:-$name}" > /dev/tty
+      printf "  %s ('installer path'/s=skip/a=skip all): " "${alt:-$name}" > /dev/tty
       read -r ans < /dev/tty || ans="skip"
       case "$ans" in
         [Aa]|[Aa][Ll][Ll]|[Ss][Kk][Ii][Pp][Aa][Ll][Ll]|'skip all'|'Skip all'|'Skip All'|'SKIP ALL')
