@@ -472,6 +472,22 @@ open_url() {  # open_url URL
   fi
 }
 
+# Build a web-search URL for QUERY (percent-encoded). Used as a fallback "download page"
+# when no explicit download URL is known, so the user is still pointed at the right place
+# to fetch an installer.
+web_search_url() {  # web_search_url QUERY
+  local q="$1" out="" c i
+  for (( i=0; i<${#q}; i++ )); do
+    c="${q:i:1}"
+    case "$c" in
+      [A-Za-z0-9.~_-]) out="$out$c" ;;
+      ' ')             out="$out+" ;;
+      *)               out="$out$(printf '%%%02X' "'$c")" ;;
+    esac
+  done
+  printf 'https://duckduckgo.com/?q=%s' "$out"
+}
+
 # Run a command as the logged-in desktop user with their D-Bus session / runtime dir wired
 # up (per-user things like gsettings/dconf need this). Mirrors apply_settings.sh's helper
 # so install_app's post-install commands can touch the user's desktop. No-op of escalation
@@ -974,7 +990,12 @@ manual_fallback() {  # manual_fallback NAME [ALT] [NOTE] [URL] [LAUNCH]
   if is_dry_run; then mark_plan "${alt:-$name}" "manual installer (you would provide its path)"; return 0; fi
   local ans f disp="${alt:-$name}"
   [ -n "$mnote" ] && info "$mnote"
-  if [ -n "$murl" ]; then info "Download page: $murl"; info "(opening it in your default browser ...)"; open_url "$murl"; fi
+  # Always point the user at a download page and open it in their browser: the provided
+  # URL when present, otherwise a web search for the app so they are still guided to it.
+  local dlurl="$murl"
+  if [ -n "$dlurl" ]; then info "Download page: $dlurl"
+  else dlurl="$(web_search_url "$disp download")"; info "No download URL on file -- opening a web search for $disp:"; info "  $dlurl"; fi
+  info "(opening it in your default browser ...)"; open_url "$dlurl"
   info "Download the installer yourself (unzip it first if it is zipped)."
   info "Then type its path in single quotes -- either a full path, or one relative to ${TARGET_HOME}/Downloads."
   info "Any valid installer extension works (.deb/.rpm/.sh/.run/.bin/.bundle/.AppImage/.tar.gz/.zip/...); 'skip' to skip this app, or 'skip all' to skip this and every remaining manual app."
@@ -1166,7 +1187,13 @@ wine_app() {  # wine_app NAME [WINDOWS_INSTALLER_URL] [NOT_RECOMMENDED_REASON] [
   # 2) manual fallback: ask for the installer path in single quotes.
   if [ -z "$winpath" ]; then
     if [ ! -r /dev/tty ]; then mark_manual "$name (wine - Windows emulator)" "provide a Windows installer to run under wine"; return 0; fi
-    if [ -n "$winurl" ]; then info "Download page: $winurl"; info "(opening it in your default browser ...)"; open_url "$winurl"; fi
+    # Always point the user at a download page and open it in their browser: the
+    # manifest-provided Windows-installer URL when present, otherwise a web search for the
+    # app's official Windows installer so the wine flow guides them just like manual apps.
+    local dlurl="$winurl"
+    if [ -n "$dlurl" ]; then info "Download page: $dlurl"
+    else dlurl="$(web_search_url "$name Windows installer download")"; info "No download URL on file -- opening a web search for the $name Windows installer:"; info "  $dlurl"; fi
+    info "(opening it in your default browser ...)"; open_url "$dlurl"
     info "Download the Windows installer for $name (unzip it first if it is zipped)."
     info "Then type its path in single quotes -- either a full path, or one relative to ${TARGET_HOME}/Downloads."
     info "Any valid installer extension works (.exe, .msi, .bat, etc.); 'skip' to skip this app, or 'skip all' to skip every remaining wine (Windows emulator) install."
@@ -1446,24 +1473,24 @@ CFG_default_browser="edge"
 WIFI_DATA="$(cat <<'__WIFI_EOF__'
 eduroam	wpa		none
 somenet	open		none
-V.momen	wpa	U2FsdGVkX1/hL+ZCCDrDSqkfw6xu0SqhI653lg8PN1o=	enc
+V.momen	wpa	U2FsdGVkX1/C9WQ4d+Dvx6hCTKAZhYgH758CFnhmiPA=	enc
 Tbilisi Loves You	open		none
 Tbilisi Airport Free	open		none
 Simorgh-WiFi	open		none
-Shatel	wpa	U2FsdGVkX1+U3OwJHzc9Rw+gKIaELSQf/3Osz3kDxIM=	enc
-SHAW-48EE	wpa	U2FsdGVkX1/3VPAkSzpow/ORz5M8fsLbejiH9ruLk04=	enc
-Redmi Note 10 Pro Max	wpa	U2FsdGVkX18A/+KYYj0SOeYNbbbOtryxLWuhfNqHnwU=	enc
-Parsway	wpa	U2FsdGVkX18ObQaSgKX+mXVAne+Enf32Rqy9O/QQv10=	enc
-NZT9930134C	wpa	U2FsdGVkX1+MHtynZYf6hO0y36f8MSkc8R8QsO6ZVlo=	enc
+Shatel	wpa	U2FsdGVkX1+egepRHY+2psFXS7U9Dd31s+OidOUaG4c=	enc
+SHAW-48EE	wpa	U2FsdGVkX1+yqHNMvQBQd9dMTktFqx0KoVDnAJmQmVs=	enc
+Redmi Note 10 Pro Max	wpa	U2FsdGVkX1/2AeRfK5VkSO2Fgy/TTHHl3zZESacbWx8=	enc
+Parsway	wpa	U2FsdGVkX19kyLh6hLNK/ZYVgC+dMjEx1l0dZ3ocx8k=	enc
+NZT9930134C	wpa	U2FsdGVkX1/L7zVwSovYJkmQB8+pr0y55MTf45MaVwo=	enc
 Mofid-GoHyper!	open		none
-Jobvision-WiFi	wpa	U2FsdGVkX19+6W4w4Qngu0d6W4gg9irB04wUSircfvM=	enc
-JobVision_DLink	wpa	U2FsdGVkX1+789s1BqKaUxPKxoJohdwFrJqq9aco5FE=	enc
-JobVision-3rd	wpa	U2FsdGVkX18huMTurTLw9ZgzIKzyTXj3ZjF/YOKD9dI=	enc
-JobVision	wpa	U2FsdGVkX1/61BpSajSoWGlA4gax+KTklpZAs9kHpXg=	enc
-Galaxy A51	wpa	U2FsdGVkX180a23Dj7uji5Xv50urOA/EQd16VKkOKOk=	enc
-Fatemeh's Galaxy A71	wpa	U2FsdGVkX18c3wU1dyFqdluX+ZbL5s8a9esetIr2oh4=	enc
-AndroidAPA50	wpa	U2FsdGVkX1+n19MjJIMJTTcDln/PSBMoHZAMfj110m4=	enc
-DivorceHousing	wpa	U2FsdGVkX19kfgNudvspPVsi5wn2VR7xHf1bsDhM82XTfeLA2eba0iK7Fi3daj1Z	enc
+Jobvision-WiFi	wpa	U2FsdGVkX19eSxvoY3Unm8T9EuOv0ZMj4u7sqaQqkXI=	enc
+JobVision_DLink	wpa	U2FsdGVkX18Lqa5kPLgVywguLKJTWKomeeErSbjT8kw=	enc
+JobVision-3rd	wpa	U2FsdGVkX18X6856YZfviiQzHohpZClfYX4O26CLzb8=	enc
+JobVision	wpa	U2FsdGVkX196hsFK77cs6ZXdtVKoM6hG/vTN6CAPLas=	enc
+Galaxy A51	wpa	U2FsdGVkX189DKQLpTGR1ldW9FC2mD/G6TbDA5R28NQ=	enc
+Fatemeh's Galaxy A71	wpa	U2FsdGVkX1/Bh3qXibreoNPYOXfPubOzft8u5G8NvbI=	enc
+AndroidAPA50	wpa	U2FsdGVkX19qGOFnz+qj5Ltu75IATqHv/k1iEkaMxyA=	enc
+DivorceHousing	wpa	U2FsdGVkX19GMZCver4zmttP4NAZ5l6nvyEgXVxGnGNA4v+jTOsN5jAYKwM/9NEx	enc
 __WIFI_EOF__
 )"
 

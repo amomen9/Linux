@@ -473,6 +473,22 @@ open_url() {  # open_url URL
   fi
 }
 
+# Build a web-search URL for QUERY (percent-encoded). Used as a fallback "download page"
+# when no explicit download URL is known, so the user is still pointed at the right place
+# to fetch an installer.
+web_search_url() {  # web_search_url QUERY
+  local q="$1" out="" c i
+  for (( i=0; i<${#q}; i++ )); do
+    c="${q:i:1}"
+    case "$c" in
+      [A-Za-z0-9.~_-]) out="$out$c" ;;
+      ' ')             out="$out+" ;;
+      *)               out="$out$(printf '%%%02X' "'$c")" ;;
+    esac
+  done
+  printf 'https://duckduckgo.com/?q=%s' "$out"
+}
+
 # Run a command as the logged-in desktop user with their D-Bus session / runtime dir wired
 # up (per-user things like gsettings/dconf need this). Mirrors apply_settings.sh's helper
 # so install_app's post-install commands can touch the user's desktop. No-op of escalation
@@ -975,7 +991,12 @@ manual_fallback() {  # manual_fallback NAME [ALT] [NOTE] [URL] [LAUNCH]
   if is_dry_run; then mark_plan "${alt:-$name}" "manual installer (you would provide its path)"; return 0; fi
   local ans f disp="${alt:-$name}"
   [ -n "$mnote" ] && info "$mnote"
-  if [ -n "$murl" ]; then info "Download page: $murl"; info "(opening it in your default browser ...)"; open_url "$murl"; fi
+  # Always point the user at a download page and open it in their browser: the provided
+  # URL when present, otherwise a web search for the app so they are still guided to it.
+  local dlurl="$murl"
+  if [ -n "$dlurl" ]; then info "Download page: $dlurl"
+  else dlurl="$(web_search_url "$disp download")"; info "No download URL on file -- opening a web search for $disp:"; info "  $dlurl"; fi
+  info "(opening it in your default browser ...)"; open_url "$dlurl"
   info "Download the installer yourself (unzip it first if it is zipped)."
   info "Then type its path in single quotes -- either a full path, or one relative to ${TARGET_HOME}/Downloads."
   info "Any valid installer extension works (.deb/.rpm/.sh/.run/.bin/.bundle/.AppImage/.tar.gz/.zip/...); 'skip' to skip this app, or 'skip all' to skip this and every remaining manual app."
@@ -1167,7 +1188,13 @@ wine_app() {  # wine_app NAME [WINDOWS_INSTALLER_URL] [NOT_RECOMMENDED_REASON] [
   # 2) manual fallback: ask for the installer path in single quotes.
   if [ -z "$winpath" ]; then
     if [ ! -r /dev/tty ]; then mark_manual "$name (wine - Windows emulator)" "provide a Windows installer to run under wine"; return 0; fi
-    if [ -n "$winurl" ]; then info "Download page: $winurl"; info "(opening it in your default browser ...)"; open_url "$winurl"; fi
+    # Always point the user at a download page and open it in their browser: the
+    # manifest-provided Windows-installer URL when present, otherwise a web search for the
+    # app's official Windows installer so the wine flow guides them just like manual apps.
+    local dlurl="$winurl"
+    if [ -n "$dlurl" ]; then info "Download page: $dlurl"
+    else dlurl="$(web_search_url "$name Windows installer download")"; info "No download URL on file -- opening a web search for the $name Windows installer:"; info "  $dlurl"; fi
+    info "(opening it in your default browser ...)"; open_url "$dlurl"
     info "Download the Windows installer for $name (unzip it first if it is zipped)."
     info "Then type its path in single quotes -- either a full path, or one relative to ${TARGET_HOME}/Downloads."
     info "Any valid installer extension works (.exe, .msi, .bat, etc.); 'skip' to skip this app, or 'skip all' to skip every remaining wine (Windows emulator) install."
