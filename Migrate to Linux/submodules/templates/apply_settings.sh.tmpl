@@ -516,6 +516,43 @@ $(printf '%s\n' "$WIFI_DATA")
 EOF
 }
 
+# --------------------------------------------------------------------------------------
+# Windows -> Linux firewall mapping helpers.
+#
+# Windows exports each rule as:  name | direction | action | enabled | protocol |
+# localPort | remotePort.  A few Windows port fields are service *keywords* rather than
+# numbers; translate the common, well-known ones here -- this is the SINGLE place to add
+# more.  Anything still non-numeric afterwards is reported as un-migratable on screen.
+fw_port_alias() {  # fw_port_alias VALUE -> numeric port/range, or VALUE unchanged
+  case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+    rpcepmap)  printf '135' ;;          # RPC Endpoint Mapper
+    rpc)       printf '49152-65535' ;;  # dynamic RPC range (Windows ephemeral range)
+    iphttps)   printf '443' ;;          # IP-HTTPS tunnelling
+    teredo)    printf '3544' ;;         # Teredo IPv6 tunnelling
+    mdns)      printf '5353' ;;         # multicast DNS
+    *)         printf '%s' "$1" ;;
+  esac
+}
+
+# Apply ONE concrete (port-or-range, transport) rule on the active backend ($backend).
+# ufw wants ranges as N:M, firewalld as N-M.  Sets LAST_ERR on failure; returns 0 on
+# success (or when an identical firewalld rule already exists), 1 on failure.
+fw_apply_one() {  # fw_apply_one PORT_OR_RANGE PROTO ACTION DIR
+  local e="$1" pp="$2" act="$3" d="$4"
+  case "$backend" in
+    ufw)
+      local ue="$e"; case "$e" in *-*) ue="${e%-*}:${e#*-}" ;; esac
+      local verb="allow"; [ "$act" = "Block" ] && verb="deny"
+      local dirflag="in"; case "$d" in *out*) dirflag="out" ;; esac
+      capture ufw "$verb" "$dirflag" "${ue}/${pp}" ;;
+    firewalld)
+      local fwaction="accept"; [ "$act" = "Block" ] && fwaction="reject"
+      local rich="rule family=\"ipv4\" port port=\"${e}\" protocol=\"${pp}\" ${fwaction}"
+      firewall-cmd --permanent --query-rich-rule="$rich" >/dev/null 2>&1 && return 0
+      capture firewall-cmd --permanent --add-rich-rule="$rich" ;;
+  esac
+}
+
 apply_firewall() {
   [ -z "$(printf '%s' "$FIREWALL_DATA" | tr -d '[:space:]')" ] && return 0
   # Deploying the exported firewall rules is optional: the rules were staged on
@@ -541,32 +578,66 @@ apply_firewall() {
     [ -z "$backend" ] && { mark_manual "firewall rules" "no ufw/firewalld available"; return 0; }
   fi
 
-  local name dir action enabled proto port lproto dirl
-  while IFS="$(printf '\t')" read -r name dir action enabled proto port; do
+  local name dir action enabled proto lport rport dirl port plow protos applied problem p e pp oldifs
+  while IFS="$(printf '\t')" read -r name dir action enabled proto lport rport; do
     [ -z "$name" ] && continue
-    lproto="$(printf '%s' "$proto" | tr '[:upper:]' '[:lower:]')"
+    proto="$(printf '%s' "$proto" | tr '[:upper:]' '[:lower:]')"
     dirl="$(printf '%s' "$dir" | tr '[:upper:]' '[:lower:]')"
-    # Only rules with a concrete TCP/UDP port map cleanly; app/service rules don't.
-    case "$lproto" in tcp|udp) ;; *) mark_manual "fw: $name" "not portable to $backend (proto='${proto:-?}' port='${port:-?}')"; continue ;; esac
-    [ -z "$port" ] && { mark_manual "fw: $name" "no local port; not portable to $backend"; continue; }
-    case "$backend" in
-      ufw)
-        if [ "$enabled" != "True" ]; then record_line LOG "fw: $name" "disabled on Windows - not migrated"; continue; fi
-        local verb="allow"; [ "$action" = "Block" ] && verb="deny"
-        local dirflag="in"; case "$dirl" in *out*) dirflag="out" ;; esac
-        if capture ufw "$verb" "$dirflag" "${port}/${lproto}"; then mark_set "fw: $name ($verb $dirflag ${port}/${lproto})"
-        else mark_fail "fw: $name" "${LAST_ERR:-ufw rejected the rule}"; fi ;;
-      firewalld)
-        if [ "$enabled" != "True" ]; then record_line LOG "fw: $name" "disabled on Windows - not migrated"; continue; fi
-        local fwaction="accept"; [ "$action" = "Block" ] && fwaction="reject"
-        local rich="rule family=\"ipv4\" port port=\"${port}\" protocol=\"${lproto}\" ${fwaction}"
-        if firewall-cmd --permanent --query-rich-rule="$rich" >/dev/null 2>&1; then
-          mark_skip "fw: $name" "already present"; continue
-        fi
-        if capture firewall-cmd --permanent --add-rich-rule="$rich"; then
-          mark_set "fw: $name (${fwaction} ${port}/${lproto})"
-        else mark_fail "fw: $name" "${LAST_ERR:-firewall-cmd rejected the rule}"; fi ;;
+
+    # Disabled-on-Windows rules are not migrated; record them in the log only.
+    if [ "$enabled" != "True" ]; then record_line LOG "fw: $name" "disabled on Windows - not migrated"; continue; fi
+
+    # Pick the port that actually matters for the direction: an INbound rule is about the
+    # local listening port; an OUTbound rule is about the destination port it connects to
+    # (its local port is just an ephemeral source). Fall back to the other if one is empty.
+    case "$dirl" in
+      *out*) port="$rport"; [ -z "$port" ] && port="$lport" ;;
+      *)     port="$lport"; [ -z "$port" ] && port="$rport" ;;
     esac
+    port="$(fw_port_alias "$port")"
+    plow="$(printf '%s' "$port" | tr '[:upper:]' '[:lower:]')"
+
+    # No concrete port -> a whole-protocol allow. Too broad to recreate safely (these are
+    # usually Windows program-scoped / discovery rules Linux does not need). Say why, skip.
+    case "$plow" in
+      ""|any|"*")
+        mark_manual "fw: $name" "Windows rule opens ANY port (proto='${proto:-Any}', dir='${dir}'); a blanket allow is too broad to apply automatically - review manually"
+        continue ;;
+    esac
+
+    # Which transport(s) to open. 'Any' protocol with a real port -> both TCP and UDP.
+    # ICMP / GRE / other port-less protocols cannot be expressed as port rules; Linux uses
+    # its own sensible defaults for those, so report instead of failing.
+    case "$proto" in
+      tcp|udp) protos="$proto" ;;
+      any|"")  protos="tcp udp" ;;
+      *)       mark_manual "fw: $name" "protocol '${proto}' is not port-based (e.g. ICMP/GRE); not applied - Linux keeps its defaults for this"; continue ;;
+    esac
+
+    # Apply each port element separately (a Windows value can be a list like "1900,2869"
+    # or a range like "49152-65535"), across each transport. This avoids any backend
+    # multi-port syntax quirk; fw_apply_one translates the range separator per backend.
+    applied=0; problem=""; oldifs="$IFS"
+    IFS=','
+    for p in $port; do
+      IFS="$oldifs"
+      e="$(printf '%s' "$p" | tr -d '[:space:]')"; [ -z "$e" ] && continue
+      case "$e" in *[!0-9-]*|-*|*-|*-*-*) problem="unsupported port value '$e'"; break ;; esac
+      for pp in $protos; do
+        if fw_apply_one "$e" "$pp" "$action" "$dirl"; then applied=$((applied+1))
+        else problem="${LAST_ERR:-$backend rejected ${e}/${pp}}"; break; fi
+      done
+      [ -n "$problem" ] && break
+    done
+    IFS="$oldifs"
+
+    if [ -n "$problem" ]; then
+      mark_fail "fw: $name" "$problem (port='${port}', proto='${proto}')"
+    elif [ "$applied" -gt 0 ]; then
+      mark_set "fw: $name (${action} ${dirl} ${port}/${proto})"
+    else
+      record_line LOG "fw: $name" "nothing to apply (port='${port}', proto='${proto}')"
+    fi
   done <<EOF
 $(printf '%s\n' "$FIREWALL_DATA")
 EOF

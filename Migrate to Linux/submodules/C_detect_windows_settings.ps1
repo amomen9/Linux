@@ -753,8 +753,11 @@ try {
         $pf = $null
         try { $pf = $r | Get-NetFirewallPortFilter -ErrorAction SilentlyContinue -Verbose:$false } catch {}
         $proto = if ($pf) { [string]$pf.Protocol } else { '' }
-        $port  = if ($pf -and $pf.LocalPort) { (@($pf.LocalPort) -join ',') } else { '' }
-        $packed = (@($r.DisplayName, $r.Direction, $r.Action, $r.Enabled, $proto, $port) | ForEach-Object { ([string]$_ -replace '\|', ' ') }) -join '|'
+        # Export BOTH ports: inbound rules are about the local listening port, outbound
+        # rules about the remote/destination port (the apply step picks per direction).
+        $lport = if ($pf -and $pf.LocalPort)  { (@($pf.LocalPort)  -join ',') } else { '' }
+        $rport = if ($pf -and $pf.RemotePort) { (@($pf.RemotePort) -join ',') } else { '' }
+        $packed = (@($r.DisplayName, $r.Direction, $r.Action, $r.Enabled, $proto, $lport, $rport) | ForEach-Object { ([string]$_ -replace '\|', ' ') }) -join '|'
         Add-Row 'Firewall' 'fw_rule' $packed '' 'Linux: ufw / firewalld' -Scope 'System'
         $fwNames.Add([string]$r.DisplayName)
         $fwCount++

@@ -155,11 +155,21 @@ launch_hint_from_detail() {  # launch_hint_from_detail NAME DETAIL
     *)                   printf 'Search "%s" in the start menu, or run "%s" in a terminal' "$nm" "$nm" ;;
   esac
 }
+# Return STRING with any "already <state>" status phrase (already installed / configured /
+# present / set / enabled / exists / running / ...) shown in green; the optional 2nd arg is
+# the colour to RESUME with after the phrase, so the rest of the line keeps its original
+# colour (default: reset). On-screen use only -- the raw phrase is what is written to the log.
+hl_already() {  # hl_already STRING [RESUME_COLOUR]
+  local g=$'\033[32m' rst=$'\033[0m' back
+  back="${2:-$rst}"
+  printf '%s' "$1" | sed -E "s/already [A-Za-z]+/${g}&${back}/g"
+}
+
 # mark_ok WIN_NAME [DETAIL] [ALT_NAME] [LAUNCH_OVERRIDE]. The summary shows the app as
 # "<alt> (<win>): <launch hint>"; the hint is the manifest launch override if given,
 # else derived from how it was installed using the ALTERNATIVE name (what to search for).
 mark_ok()     { OK_LIST+=("$1"); local _alt="${3:-}" _h=""; if [ "${MODULE:-}" = "Applications" ]; then if [ -n "${4:-}" ]; then _h="$4"; else _h="$(launch_hint_from_detail "${_alt:-$1}" "${2:-}")"; fi; fi; record_line OK "$1" "${2:-}" "$_h" "$_alt"; ok "installed: ${_alt:-$1}${2:+  ->  $2}"; }
-mark_skip()   { SKIP_LIST+=("$1");   record_line SKIP   "$1" "${2:-}" "${3:-}" "${4:-}"; info "skipped: $1 (${2:-already present})"; }
+mark_skip()   { SKIP_LIST+=("$1");   record_line SKIP   "$1" "${2:-}" "${3:-}" "${4:-}"; info "skipped: $1 ($(hl_already "${2:-already present}"))"; }
 mark_fail()   { FAIL_LIST+=("$1"); FAIL_REASON+=("${2:-unknown error}"); record_line FAIL "$1" "${2:-}"; err "failed: $1 ${2:+- $2}"; }
 mark_manual() { MANUAL_LIST+=("$1"); record_line MANUAL "$1" "${2:-}"; warn "manual step required: $1 ${2:+- $2}"; }
 mark_plan()      { PLAN_LIST+=("$1");       record_line PLAN  "$1" "${2:-}"; info "[dry-run] would install: $1 ${2:+- $2}"; }
@@ -881,11 +891,22 @@ ensure_wine_i386() {
   _WINE_I386_READY=1
 }
 
-# True if FILE is a 32-bit (i386) Windows executable (so it needs WoW64 / wine32).
+# True if the installer FILE targets 32-bit x86 and therefore needs WoW64 / wine32 (a
+# 64-bit-only wine fails with c0000135 -- "could not load kernel32.dll" -- on it).
+# Handles BOTH PE executables (.exe) and Windows Installer (.msi) packages. An MSI is an
+# OLE compound document, not a PE file, so its target CPU is read from the "Template"
+# summary field: Intel -> 32-bit; x64/Intel64/Arm/Arm64 -> not 32-bit x86. MSIs with no
+# recognisable arch default to "needs wine32" (the safe choice: wine32 never hurts 64-bit
+# apps, but its absence breaks 32-bit ones).
 is_32bit_pe() {  # is_32bit_pe FILE
   have_cmd file || return 1
   local t; t="$(file -bL "$1" 2>/dev/null)"
   case "$t" in
+    *MSI\ Installer*)
+      case "$t" in
+        *Template:\ x64*|*Template:\ Intel64*|*Template:\ Arm*) return 1 ;;
+        *)                                                      return 0 ;;
+      esac ;;
     *x86-64*|*x86_64*|*PE32+*|*aarch64*|*ARM*) return 1 ;;
     *80386*|*"Intel i386"*)                    return 0 ;;
     *)                                         return 1 ;;
@@ -902,6 +923,20 @@ ensure_winetricks() {
     pacman) capture pm_install winetricks ;;
   esac
   have_cmd winetricks
+}
+
+# Run the Windows installer at PATH under wine, best-effort silent for the common
+# installer types, teeing wine's output both to LOG (for failure analysis) and to the
+# console. Returns wine's own exit status. Factored out so the install can be retried
+# after enabling 32-bit (WoW64) wine support.
+wine_run_installer() {  # wine_run_installer PATH LOG
+  local p="$1" log="$2"
+  case "$p" in
+    *.msi|*.MSI)             run_wine wine msiexec /i "$p" /qn 2>&1 | tee "$log" >&3 ;;
+    *.bat|*.BAT|*.cmd|*.CMD) run_wine wine cmd /c "$p" 2>&1 | tee "$log" >&3 ;;
+    *)                       run_wine wine "$p" /S 2>&1 | tee "$log" >&3 ;;
+  esac
+  return "${PIPESTATUS[0]}"
 }
 
 # After a wine install, scan the per-app prefix for Start Menu .lnk shortcuts and emit
@@ -1153,8 +1188,9 @@ wine_app() {  # wine_app NAME [WINDOWS_INSTALLER_URL] [NOT_RECOMMENDED_REASON] [
       esac
     done
   fi
-  # 2b) if the installer is 32-bit (i386), make sure wine has WoW64 support BEFORE the
-  #     prefix is initialised (a 64-bit-only wine fails with c0000135 on 32-bit apps).
+  # 2b) if the installer targets 32-bit x86 (PE .exe OR .msi), make sure wine has WoW64
+  #     support BEFORE the prefix is initialised -- a 64-bit-only wine fails with c0000135
+  #     ("could not load kernel32.dll") on 32-bit apps.
   is_32bit_pe "$winpath" && { info "installer is 32-bit (i386) -- enabling 32-bit wine (Windows emulator) support ..."; ensure_wine_i386; }
   run_wine wineboot -u >/dev/null 2>&1 || true
   # winetricks font baseline for better rendering/compatibility (best-effort).
@@ -1163,12 +1199,20 @@ wine_app() {  # wine_app NAME [WINDOWS_INSTALLER_URL] [NOT_RECOMMENDED_REASON] [
   #    Capture wine's full output so a meaningful failure reason can be reported.
   info "installing $name under wine (Windows emulator) ..."
   local wlog; wlog="$(mktemp 2>/dev/null || echo /tmp/mtl_wine.$$)"
-  case "$winpath" in
-    *.msi|*.MSI)             run_wine wine msiexec /i "$winpath" /qn 2>&1 | tee "$wlog" >&3 ;;
-    *.bat|*.BAT|*.cmd|*.CMD) run_wine wine cmd /c "$winpath" 2>&1 | tee "$wlog" >&3 ;;
-    *)                       run_wine wine "$winpath" /S 2>&1 | tee "$wlog" >&3 ;;
-  esac
-  rc=${PIPESTATUS[0]}
+  wine_run_installer "$winpath" "$wlog"; rc=$?
+  # Self-heal the classic 32-bit bootstrap failure: if wine could not load kernel32.dll
+  # (c0000135) -- e.g. an installer whose 32-bit-ness we could not detect up front -- and
+  # WoW64 support is not in yet, install 32-bit wine, rebuild the (worthless, half-booted)
+  # prefix from scratch so syswow64 is populated, and retry the install once.
+  if [ "$rc" -ne 0 ] && [ "${_WINE_I386_READY:-0}" != "1" ] \
+     && grep -qiE 'c0000135|could not load (kernel32|ntdll)' "$wlog" 2>/dev/null; then
+    warn "wine is missing 32-bit (i386) support -- enabling it and retrying the install ..."
+    ensure_wine_i386
+    rm -rf "$prefix" 2>/dev/null || true; mkdir -p "$prefix"
+    chown -R "$TARGET_USER":"$TARGET_USER" "$TARGET_HOME/.local/share/wineprefixes" 2>/dev/null || true
+    run_wine wineboot -u >/dev/null 2>&1 || true
+    wine_run_installer "$winpath" "$wlog"; rc=$?
+  fi
   # font size 2.5x: default wine DPI 96 -> 240 (LogPixels 0xF0), applied right after install.
   run_wine wine reg add 'HKEY_CURRENT_USER\Control Panel\Desktop' /v LogPixels /t REG_DWORD /d 0x000000F0 /f >/dev/null 2>&1 || true
   if [ "$rc" -eq 0 ]; then
@@ -1646,7 +1690,7 @@ print_module_summary() {  # print_module_summary "Module name"
     local r
     while IFS= read -r r; do
       [ -z "$r" ] && continue
-      printf '                 \033[38;5;208mSkipped: %s\033[0m\n' "$r" >&3
+      printf '                 \033[38;5;208mSkipped: %s\033[0m\n' "$(hl_already "$r" $'\033[38;5;208m')" >&3
       awk -F'\t' -v m="$m" -v rr="$r" '{g=$3;gsub(/ /,"",g); d=$5; if(d=="")d="already present"} $2==m && g=="SKIP" && d==rr{printf "            - %s\n",$4}' "$f" >&3
     done < <(awk -F'\t' -v m="$m" '{g=$3;gsub(/ /,"",g); d=$5; if(d=="")d="already present"} $2==m && g=="SKIP"{print d}' "$f" | sort -u)
   fi
