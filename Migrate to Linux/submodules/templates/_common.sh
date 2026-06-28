@@ -101,7 +101,7 @@ launch_hint_from_detail() {  # launch_hint_from_detail NAME DETAIL
 # mark_ok WIN_NAME [DETAIL] [ALT_NAME] [LAUNCH_OVERRIDE]. The summary shows the app as
 # "<alt> (<win>): <launch hint>"; the hint is the manifest launch override if given,
 # else derived from how it was installed using the ALTERNATIVE name (what to search for).
-mark_ok()     { OK_LIST+=("$1"); local _alt="${3:-}" _h=""; if [ "${MODULE:-}" = "Applications" ]; then if [ -n "${4:-}" ]; then _h="$4"; else _h="$(launch_hint_from_detail "${_alt:-$1}" "${2:-}")"; fi; fi; record_line OK "$1" "${2:-}" "$_h" "$_alt"; ok "installed: $1${2:+  ->  $2}"; }
+mark_ok()     { OK_LIST+=("$1"); local _alt="${3:-}" _h=""; if [ "${MODULE:-}" = "Applications" ]; then if [ -n "${4:-}" ]; then _h="$4"; else _h="$(launch_hint_from_detail "${_alt:-$1}" "${2:-}")"; fi; fi; record_line OK "$1" "${2:-}" "$_h" "$_alt"; ok "installed: ${_alt:-$1}${2:+  ->  $2}"; }
 mark_skip()   { SKIP_LIST+=("$1");   record_line SKIP   "$1" "${2:-}" "${3:-}" "${4:-}"; info "skipped: $1 (${2:-already present})"; }
 mark_fail()   { FAIL_LIST+=("$1"); FAIL_REASON+=("${2:-unknown error}"); record_line FAIL "$1" "${2:-}"; err "failed: $1 ${2:+- $2}"; }
 mark_manual() { MANUAL_LIST+=("$1"); record_line MANUAL "$1" "${2:-}"; warn "manual step required: $1 ${2:+- $2}"; }
@@ -129,7 +129,7 @@ finish_install() {  # finish_install NAME ALT METHOD ID DETAIL [LAUNCH]
   if verify_present "$method" "$id"; then
     ledger_add "$method" "$id"; mark_ok "$name" "$detail" "$alt" "$launch"
   else
-    mark_unverified "$name" "$detail (could not confirm it is installed)"
+    mark_unverified "${alt:-$name}" "$detail (could not confirm it is installed)"
   fi
 }
 
@@ -419,7 +419,7 @@ open_url() {  # open_url URL
 
 webapp_desktop() {  # webapp_desktop "Name" "URL" [ALT] [LAUNCH]
   local name="$1" url="$2" alt="${3:-}" launch="${4:-}" browser appdir desktop slug
-  browser="$(detect_browser)" || { mark_manual "$name" "no browser found for web-app shortcut ($url)"; return 1; }
+  browser="$(detect_browser)" || { mark_manual "${alt:-$name}" "no browser found for web-app shortcut ($url)"; return 1; }
   slug="$(printf '%s' "$name" | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9-')"
   appdir="$TARGET_HOME/.local/share/applications"
   mkdir -p "$appdir"
@@ -521,13 +521,13 @@ install_app() {
   # Security-suite equivalents (antivirus/firewall, etc.) are only installed when the
   # user opted in; many skip them because Linux is hardened by default.
   if [ "$is_security" -eq 1 ] && [ "${MIGRATE_INSTALL_SECURITY:-no}" != "yes" ]; then
-    mark_skip "$name" "security suite - not installed (opted out)"
+    mark_skip "${alt:-$name}" "security suite - not installed (opted out)"
     return 0
   fi
 
   # Dry-run (report only): print the plan for this app and make no changes.
   if is_dry_run; then
-    if ! arch_supported "$arch_list"; then mark_skip "$name" "not available for $ARCH"; return 0; fi
+    if ! arch_supported "$arch_list"; then mark_skip "${alt:-$name}" "not available for $ARCH"; return 0; fi
     local dpkg="" plan=""
     case "$PM" in apt) dpkg="$apt" ;; dnf) dpkg="$dnf" ;; zypper) dpkg="$zypper" ;; pacman) dpkg="$pacman" ;; esac
     case "$method" in
@@ -543,7 +543,7 @@ install_app() {
         else plan="no automatic route -> manual"; fi ;;
     esac
     [ "$is_paid" -eq 1 ] && plan="$plan (paid)"
-    mark_plan "$name" "$plan"
+    mark_plan "${alt:-$name}" "$plan"
     return 0
   fi
 
@@ -554,14 +554,14 @@ install_app() {
       printf '\n\n\033[1;33m==> %s%s has no free alternative.\033[0m\n' "$name" "${alt:+ ---> $alt}" >&3
       printf '  No free alternative exists for this application. Do you want to continue with the installation of the paid one? Answering with No means skipping this application (y/n): ' > /dev/tty
       read -r _fans < /dev/tty || _fans="n"
-      case "$_fans" in [Yy]*) ;; *) mark_skip "$name" "paid - skipped (free-only mode)"; return 0 ;; esac
+      case "$_fans" in [Yy]*) ;; *) mark_skip "${alt:-$name}" "paid - skipped (free-only mode)"; return 0 ;; esac
     else
-      mark_skip "$name" "paid - skipped (free-only mode)"; return 0
+      mark_skip "${alt:-$name}" "paid - skipped (free-only mode)"; return 0
     fi
   fi
 
   if ! arch_supported "$arch_list"; then
-    mark_skip "$name" "not available for $ARCH"
+    mark_skip "${alt:-$name}" "not available for $ARCH"
     return 0
   fi
 
@@ -596,9 +596,9 @@ install_app() {
       if [ -d "$mdir" ] && [ -n "$(ls -A "$mdir" 2>/dev/null)" ]; then
         for mf in "$mdir"/*; do [ -f "$mf" ] && install_by_ext "$mf" && got=1; done
         if [ "$got" -eq 1 ]; then ledger_add file "$mdir"; mark_ok "$name" "installed from staged file" "$alt" "$launch"
-        else mark_fail "$name" "${LAST_ERR:-staged file could not be installed}"; fi
+        else mark_fail "${alt:-$name}" "${LAST_ERR:-staged file could not be installed}"; fi
       else
-        mark_manual "$name" "${note:-manual install}"
+        mark_manual "${alt:-$name}" "${note:-manual install}"
       fi
       return 0 ;;
   esac
@@ -615,7 +615,8 @@ install_app() {
       if   [ -n "$flatpak" ] && have_cmd flatpak && flatpak_installed "$flatpak"; then _d="flatpak $flatpak"
       elif [ -n "$native_pkg" ] && pm_installed "${native_pkg%% *}"; then _d="native $native_pkg"
       elif [ -n "$snap_pkg" ]; then _d="snap $snap_pkg"; fi
-      mark_skip "$name" "already installed" "${launch:-$(launch_hint_from_detail "${alt:-$name}" "$_d")}" "$alt"
+      # Show the Linux alternative (what is actually installed), not the Windows name.
+      mark_skip "${alt:-$name}" "already installed" "${launch:-$(launch_hint_from_detail "${alt:-$name}" "$_d")}" "$alt"
       return 0
     fi
   fi
@@ -652,7 +653,7 @@ install_app() {
         # Skip if present, UNLESS the user asked to update existing apps (then
         # pm_install upgrades it to the latest available).
         if pm_installed "${native_pkg%% *}" && [ "${MIGRATE_UPDATE_EXISTING:-no}" != "yes" ]; then
-          mark_skip "$name" "already installed" "${launch:-$(launch_hint_from_detail "${alt:-$name}" "native $native_pkg")}" "$alt"; return 0
+          mark_skip "${alt:-$name}" "already installed" "${launch:-$(launch_hint_from_detail "${alt:-$name}" "native $native_pkg")}" "$alt"; return 0
         fi
         # match the Windows version when the user chose "same version".
         if [ "${MIGRATE_VERSION_MODE:-latest}" = "same" ] && [ -n "$winver" ]; then
@@ -681,7 +682,7 @@ install_app() {
   # package-manager route on this distro), show that and fall back to the manual
   # download-by-user scheme (place the file, then done/skip, handled by extension).
   if [ -n "$LAST_ERR" ]; then
-    mark_fail "$name" "$LAST_ERR"
+    mark_fail "${alt:-$name}" "$LAST_ERR"
   else
     err "no available package manager could install it"
     manual_fallback "$name" "$alt" "$note" "$webapp_url$url_x86$github_repo" "$launch"
@@ -833,22 +834,22 @@ EOF
 manual_fallback() {  # manual_fallback NAME [ALT] [NOTE] [URL] [LAUNCH]
   local name="$1" alt="$2" mnote="$3" murl="$4" mlaunch="${5:-}"
   # "skip all" chosen earlier: skip this and every remaining manual app without prompting.
-  if [ "${MANUAL_FALLBACK_SKIP_ALL:-0}" = "1" ]; then mark_skip "$name" "user skipped (skip all)"; return 0; fi
-  if is_dry_run; then mark_plan "$name" "manual installer (you would provide its path)"; return 0; fi
+  if [ "${MANUAL_FALLBACK_SKIP_ALL:-0}" = "1" ]; then mark_skip "${alt:-$name}" "user skipped (skip all)"; return 0; fi
+  if is_dry_run; then mark_plan "${alt:-$name}" "manual installer (you would provide its path)"; return 0; fi
   local ans f disp="${alt:-$name}"
   [ -n "$mnote" ] && info "$mnote"
   if [ -n "$murl" ]; then info "Download page: $murl"; info "(opening it in your default browser ...)"; open_url "$murl"; fi
   info "Download the installer yourself (unzip it first if it is zipped)."
   info "Then type its path in single quotes -- either a full path, or one relative to ${TARGET_HOME}/Downloads."
   info "Any valid installer extension works (.deb/.rpm/.sh/.run/.bin/.bundle/.AppImage/.tar.gz/.zip/...); 'skip' to skip this app, or 'skip all' to skip this and every remaining manual app."
-  if [ ! -r /dev/tty ]; then mark_manual "$name" "no package manager route - needs manual download"; return 0; fi
+  if [ ! -r /dev/tty ]; then mark_manual "${alt:-$name}" "no package manager route - needs manual download"; return 0; fi
   while :; do
     printf "  %s ('installer path'/skip/skip all): " "$disp" > /dev/tty
     read -r ans < /dev/tty || ans="skip"
     case "$ans" in
       [Aa]|[Aa][Ll][Ll]|[Ss][Kk][Ii][Pp][Aa][Ll][Ll]|'skip all'|'Skip all'|'Skip All'|'SKIP ALL')
-        MANUAL_FALLBACK_SKIP_ALL=1; mark_skip "$name" "user skipped (skip all)"; return 0 ;;
-      [Ss]|[Ss][Kk][Ii][Pp]) mark_skip "$name" "user skipped"; return 0 ;;
+        MANUAL_FALLBACK_SKIP_ALL=1; mark_skip "${alt:-$name}" "user skipped (skip all)"; return 0 ;;
+      [Ss]|[Ss][Kk][Ii][Pp]) mark_skip "${alt:-$name}" "user skipped"; return 0 ;;
       *)
         f="$(resolve_user_path "$ans")"
         if [ -z "$f" ] || [ ! -f "$f" ] || [ ! -r "$f" ]; then

@@ -109,7 +109,7 @@ launch_hint_from_detail() {  # launch_hint_from_detail NAME DETAIL
 # mark_ok WIN_NAME [DETAIL] [ALT_NAME] [LAUNCH_OVERRIDE]. The summary shows the app as
 # "<alt> (<win>): <launch hint>"; the hint is the manifest launch override if given,
 # else derived from how it was installed using the ALTERNATIVE name (what to search for).
-mark_ok()     { OK_LIST+=("$1"); local _alt="${3:-}" _h=""; if [ "${MODULE:-}" = "Applications" ]; then if [ -n "${4:-}" ]; then _h="$4"; else _h="$(launch_hint_from_detail "${_alt:-$1}" "${2:-}")"; fi; fi; record_line OK "$1" "${2:-}" "$_h" "$_alt"; ok "installed: $1${2:+  ->  $2}"; }
+mark_ok()     { OK_LIST+=("$1"); local _alt="${3:-}" _h=""; if [ "${MODULE:-}" = "Applications" ]; then if [ -n "${4:-}" ]; then _h="$4"; else _h="$(launch_hint_from_detail "${_alt:-$1}" "${2:-}")"; fi; fi; record_line OK "$1" "${2:-}" "$_h" "$_alt"; ok "installed: ${_alt:-$1}${2:+  ->  $2}"; }
 mark_skip()   { SKIP_LIST+=("$1");   record_line SKIP   "$1" "${2:-}" "${3:-}" "${4:-}"; info "skipped: $1 (${2:-already present})"; }
 mark_fail()   { FAIL_LIST+=("$1"); FAIL_REASON+=("${2:-unknown error}"); record_line FAIL "$1" "${2:-}"; err "failed: $1 ${2:+- $2}"; }
 mark_manual() { MANUAL_LIST+=("$1"); record_line MANUAL "$1" "${2:-}"; warn "manual step required: $1 ${2:+- $2}"; }
@@ -137,7 +137,7 @@ finish_install() {  # finish_install NAME ALT METHOD ID DETAIL [LAUNCH]
   if verify_present "$method" "$id"; then
     ledger_add "$method" "$id"; mark_ok "$name" "$detail" "$alt" "$launch"
   else
-    mark_unverified "$name" "$detail (could not confirm it is installed)"
+    mark_unverified "${alt:-$name}" "$detail (could not confirm it is installed)"
   fi
 }
 
@@ -427,7 +427,7 @@ open_url() {  # open_url URL
 
 webapp_desktop() {  # webapp_desktop "Name" "URL" [ALT] [LAUNCH]
   local name="$1" url="$2" alt="${3:-}" launch="${4:-}" browser appdir desktop slug
-  browser="$(detect_browser)" || { mark_manual "$name" "no browser found for web-app shortcut ($url)"; return 1; }
+  browser="$(detect_browser)" || { mark_manual "${alt:-$name}" "no browser found for web-app shortcut ($url)"; return 1; }
   slug="$(printf '%s' "$name" | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9-')"
   appdir="$TARGET_HOME/.local/share/applications"
   mkdir -p "$appdir"
@@ -529,13 +529,13 @@ install_app() {
   # Security-suite equivalents (antivirus/firewall, etc.) are only installed when the
   # user opted in; many skip them because Linux is hardened by default.
   if [ "$is_security" -eq 1 ] && [ "${MIGRATE_INSTALL_SECURITY:-no}" != "yes" ]; then
-    mark_skip "$name" "security suite - not installed (opted out)"
+    mark_skip "${alt:-$name}" "security suite - not installed (opted out)"
     return 0
   fi
 
   # Dry-run (report only): print the plan for this app and make no changes.
   if is_dry_run; then
-    if ! arch_supported "$arch_list"; then mark_skip "$name" "not available for $ARCH"; return 0; fi
+    if ! arch_supported "$arch_list"; then mark_skip "${alt:-$name}" "not available for $ARCH"; return 0; fi
     local dpkg="" plan=""
     case "$PM" in apt) dpkg="$apt" ;; dnf) dpkg="$dnf" ;; zypper) dpkg="$zypper" ;; pacman) dpkg="$pacman" ;; esac
     case "$method" in
@@ -551,7 +551,7 @@ install_app() {
         else plan="no automatic route -> manual"; fi ;;
     esac
     [ "$is_paid" -eq 1 ] && plan="$plan (paid)"
-    mark_plan "$name" "$plan"
+    mark_plan "${alt:-$name}" "$plan"
     return 0
   fi
 
@@ -562,14 +562,14 @@ install_app() {
       printf '\n\n\033[1;33m==> %s%s has no free alternative.\033[0m\n' "$name" "${alt:+ ---> $alt}" >&3
       printf '  No free alternative exists for this application. Do you want to continue with the installation of the paid one? Answering with No means skipping this application (y/n): ' > /dev/tty
       read -r _fans < /dev/tty || _fans="n"
-      case "$_fans" in [Yy]*) ;; *) mark_skip "$name" "paid - skipped (free-only mode)"; return 0 ;; esac
+      case "$_fans" in [Yy]*) ;; *) mark_skip "${alt:-$name}" "paid - skipped (free-only mode)"; return 0 ;; esac
     else
-      mark_skip "$name" "paid - skipped (free-only mode)"; return 0
+      mark_skip "${alt:-$name}" "paid - skipped (free-only mode)"; return 0
     fi
   fi
 
   if ! arch_supported "$arch_list"; then
-    mark_skip "$name" "not available for $ARCH"
+    mark_skip "${alt:-$name}" "not available for $ARCH"
     return 0
   fi
 
@@ -604,9 +604,9 @@ install_app() {
       if [ -d "$mdir" ] && [ -n "$(ls -A "$mdir" 2>/dev/null)" ]; then
         for mf in "$mdir"/*; do [ -f "$mf" ] && install_by_ext "$mf" && got=1; done
         if [ "$got" -eq 1 ]; then ledger_add file "$mdir"; mark_ok "$name" "installed from staged file" "$alt" "$launch"
-        else mark_fail "$name" "${LAST_ERR:-staged file could not be installed}"; fi
+        else mark_fail "${alt:-$name}" "${LAST_ERR:-staged file could not be installed}"; fi
       else
-        mark_manual "$name" "${note:-manual install}"
+        mark_manual "${alt:-$name}" "${note:-manual install}"
       fi
       return 0 ;;
   esac
@@ -623,7 +623,8 @@ install_app() {
       if   [ -n "$flatpak" ] && have_cmd flatpak && flatpak_installed "$flatpak"; then _d="flatpak $flatpak"
       elif [ -n "$native_pkg" ] && pm_installed "${native_pkg%% *}"; then _d="native $native_pkg"
       elif [ -n "$snap_pkg" ]; then _d="snap $snap_pkg"; fi
-      mark_skip "$name" "already installed" "${launch:-$(launch_hint_from_detail "${alt:-$name}" "$_d")}" "$alt"
+      # Show the Linux alternative (what is actually installed), not the Windows name.
+      mark_skip "${alt:-$name}" "already installed" "${launch:-$(launch_hint_from_detail "${alt:-$name}" "$_d")}" "$alt"
       return 0
     fi
   fi
@@ -660,7 +661,7 @@ install_app() {
         # Skip if present, UNLESS the user asked to update existing apps (then
         # pm_install upgrades it to the latest available).
         if pm_installed "${native_pkg%% *}" && [ "${MIGRATE_UPDATE_EXISTING:-no}" != "yes" ]; then
-          mark_skip "$name" "already installed" "${launch:-$(launch_hint_from_detail "${alt:-$name}" "native $native_pkg")}" "$alt"; return 0
+          mark_skip "${alt:-$name}" "already installed" "${launch:-$(launch_hint_from_detail "${alt:-$name}" "native $native_pkg")}" "$alt"; return 0
         fi
         # match the Windows version when the user chose "same version".
         if [ "${MIGRATE_VERSION_MODE:-latest}" = "same" ] && [ -n "$winver" ]; then
@@ -689,7 +690,7 @@ install_app() {
   # package-manager route on this distro), show that and fall back to the manual
   # download-by-user scheme (place the file, then done/skip, handled by extension).
   if [ -n "$LAST_ERR" ]; then
-    mark_fail "$name" "$LAST_ERR"
+    mark_fail "${alt:-$name}" "$LAST_ERR"
   else
     err "no available package manager could install it"
     manual_fallback "$name" "$alt" "$note" "$webapp_url$url_x86$github_repo" "$launch"
@@ -841,22 +842,22 @@ EOF
 manual_fallback() {  # manual_fallback NAME [ALT] [NOTE] [URL] [LAUNCH]
   local name="$1" alt="$2" mnote="$3" murl="$4" mlaunch="${5:-}"
   # "skip all" chosen earlier: skip this and every remaining manual app without prompting.
-  if [ "${MANUAL_FALLBACK_SKIP_ALL:-0}" = "1" ]; then mark_skip "$name" "user skipped (skip all)"; return 0; fi
-  if is_dry_run; then mark_plan "$name" "manual installer (you would provide its path)"; return 0; fi
+  if [ "${MANUAL_FALLBACK_SKIP_ALL:-0}" = "1" ]; then mark_skip "${alt:-$name}" "user skipped (skip all)"; return 0; fi
+  if is_dry_run; then mark_plan "${alt:-$name}" "manual installer (you would provide its path)"; return 0; fi
   local ans f disp="${alt:-$name}"
   [ -n "$mnote" ] && info "$mnote"
   if [ -n "$murl" ]; then info "Download page: $murl"; info "(opening it in your default browser ...)"; open_url "$murl"; fi
   info "Download the installer yourself (unzip it first if it is zipped)."
   info "Then type its path in single quotes -- either a full path, or one relative to ${TARGET_HOME}/Downloads."
   info "Any valid installer extension works (.deb/.rpm/.sh/.run/.bin/.bundle/.AppImage/.tar.gz/.zip/...); 'skip' to skip this app, or 'skip all' to skip this and every remaining manual app."
-  if [ ! -r /dev/tty ]; then mark_manual "$name" "no package manager route - needs manual download"; return 0; fi
+  if [ ! -r /dev/tty ]; then mark_manual "${alt:-$name}" "no package manager route - needs manual download"; return 0; fi
   while :; do
     printf "  %s ('installer path'/skip/skip all): " "$disp" > /dev/tty
     read -r ans < /dev/tty || ans="skip"
     case "$ans" in
       [Aa]|[Aa][Ll][Ll]|[Ss][Kk][Ii][Pp][Aa][Ll][Ll]|'skip all'|'Skip all'|'Skip All'|'SKIP ALL')
-        MANUAL_FALLBACK_SKIP_ALL=1; mark_skip "$name" "user skipped (skip all)"; return 0 ;;
-      [Ss]|[Ss][Kk][Ii][Pp]) mark_skip "$name" "user skipped"; return 0 ;;
+        MANUAL_FALLBACK_SKIP_ALL=1; mark_skip "${alt:-$name}" "user skipped (skip all)"; return 0 ;;
+      [Ss]|[Ss][Kk][Ii][Pp]) mark_skip "${alt:-$name}" "user skipped"; return 0 ;;
       *)
         f="$(resolve_user_path "$ans")"
         if [ -z "$f" ] || [ ! -f "$f" ] || [ ! -r "$f" ]; then
@@ -1276,6 +1277,8 @@ CFG_lock_timeout="10 min"
 CFG_mouse_size="48"
 CFG_mouse_speed="0.8"
 CFG_mouse_accel="default"
+CFG_mouse_swap="false"
+CFG_mouse_dblclick="500"
 CFG_a11y_stickykeys="false"
 CFG_a11y_slowkeys="false"
 CFG_a11y_mousekeys="false"
@@ -1286,6 +1289,19 @@ CFG_key_repeat_rate="33"
 CFG_numlock="true"
 CFG_timezone="Europe/Berlin"
 CFG_ntp_server="pool.ntp.org"
+CFG_color_scheme="default"
+CFG_accent="blue"
+CFG_locale="en_US.UTF-8"
+CFG_proxy_mode="none"
+CFG_proxy_host=""
+CFG_proxy_port=""
+CFG_proxy_autoconfig=""
+CFG_touchpad_tap="true"
+CFG_touchpad_natural="false"
+CFG_sleep_ac="0"
+CFG_sleep_dc="0"
+CFG_night_light="false"
+CFG_default_browser="edge"
 
 # WiFi profiles, one per line:  ssid<TAB>auth<TAB>secret<TAB>sectype
 #   sectype = enc (secret is an OpenSSL-encrypted, base64 key) | plain | none
@@ -1293,24 +1309,24 @@ CFG_ntp_server="pool.ntp.org"
 WIFI_DATA="$(cat <<'__WIFI_EOF__'
 eduroam	wpa		none
 somenet	open		none
-V.momen	wpa		none
+V.momen	wpa	U2FsdGVkX18twkr4cTfaSLRFH0NTTEBVSUsJwz7rQGA=	enc
 Tbilisi Loves You	open		none
 Tbilisi Airport Free	open		none
 Simorgh-WiFi	open		none
-Shatel	wpa		none
-SHAW-48EE	wpa		none
-Redmi Note 10 Pro Max	wpa		none
-Parsway	wpa		none
-NZT9930134C	wpa		none
+Shatel	wpa	U2FsdGVkX19uUFRiLRPPxiKdIgA71W+YTolghENKdcY=	enc
+SHAW-48EE	wpa	U2FsdGVkX19KIgKWRzP1lHf0Cx8kHiSemfdxBjtzgbY=	enc
+Redmi Note 10 Pro Max	wpa	U2FsdGVkX18FJG2/dPN4u2zBF2GGq3JZjVMHVEBTi2Y=	enc
+Parsway	wpa	U2FsdGVkX18CHWO+QvbRWS1JKoOUThoqI5juxcM9I6Q=	enc
+NZT9930134C	wpa	U2FsdGVkX18s/P+hDuznFBIShq1UI33OWVLyx+fCmNA=	enc
 Mofid-GoHyper!	open		none
-Jobvision-WiFi	wpa		none
-JobVision_DLink	wpa		none
-JobVision-3rd	wpa		none
-JobVision	wpa		none
-Galaxy A51	wpa		none
-Fatemeh's Galaxy A71	wpa		none
-AndroidAPA50	wpa		none
-DivorceHousing	wpa		none
+Jobvision-WiFi	wpa	U2FsdGVkX1+drlYA0O6eGw65dvl3O58wGOEceuqh2Ig=	enc
+JobVision_DLink	wpa	U2FsdGVkX1++mnVcD7qlxCOMaFj9UEajieo9K3qKH2E=	enc
+JobVision-3rd	wpa	U2FsdGVkX1+EXieOUQ4ouagYIiuOiiFMJHyUxAQAsjM=	enc
+JobVision	wpa	U2FsdGVkX19/AXGfHg0WcL/s5qN2NJQdkI8xgmtDrLI=	enc
+Galaxy A51	wpa	U2FsdGVkX18IKvXSISVBSKLvyVE/1JHko33RJxCj+Sc=	enc
+Fatemeh's Galaxy A71	wpa	U2FsdGVkX1+gLndfLT844JYptLvONhdFBvbNuiGnVfQ=	enc
+AndroidAPA50	wpa	U2FsdGVkX1816kgvYrQkF2VJEhwCH5EKTgEKxP4n8L4=	enc
+DivorceHousing	wpa	U2FsdGVkX19t1i2cIF5MQj5qNZFkW3kso1h8OpBWgeqLTS8o1w8J/1HJab/jERg2	enc
 __WIFI_EOF__
 )"
 
@@ -2095,8 +2111,6 @@ Hotspot Shield VPN - Wifi Proxy	Outbound	Allow	True	Any	Any
 Hotspot Shield VPN - Wifi Proxy	Inbound	Allow	True	Any	Any
 OfficePushNotificationsUtility	Outbound	Allow	True	Any	Any
 Microsoft.Office.ActionsServer	Outbound	Allow	True	Any	Any
-Windows Media Player	Outbound	Allow	True	Any	Any
-Windows Media Player	Inbound	Allow	True	Any	Any
 Store Experience Host	Outbound	Allow	True	Any	Any
 Store Experience Host	Inbound	Allow	True	Any	Any
 Get Help	Outbound	Allow	True	Any	Any
@@ -2134,7 +2148,6 @@ Windows Feature Experience Pack	Inbound	Allow	True	Any	Any
 Windows Feature Experience Pack	Outbound	Allow	True	Any	Any
 Windows Feature Experience Pack	Outbound	Allow	True	Any	Any
 Windows Feature Experience Pack	Inbound	Allow	True	Any	Any
-Windows Web Experience Pack	Outbound	Allow	True	Any	Any
 Windows Subsystem for Linux	Outbound	Allow	True	Any	Any
 Microsoft Edge (mDNS-In)	Inbound	Allow	True	UDP	5353
 Start Experiences App	Outbound	Allow	True	Any	Any
@@ -2213,6 +2226,10 @@ Microsoft 365 Copilot	Outbound	Allow	True	Any	Any
 Microsoft 365 Copilot	Inbound	Allow	True	Any	Any
 PowerToys.MouseWithoutBorders	Inbound	Allow	True	Any	Any
 PowerToys.SparseApp	Outbound	Allow	True	Any	Any
+Microsoft Edge (mDNS-In)	Inbound	Allow	True	UDP	5353
+Windows Media Player	Outbound	Allow	True	Any	Any
+Windows Media Player	Inbound	Allow	True	Any	Any
+Windows Web Experience Pack	Outbound	Allow	True	Any	Any
 Microsoft Edge (mDNS-In)	Inbound	Allow	True	UDP	5353
 __FW_EOF__
 )"
@@ -2312,6 +2329,60 @@ nordvpn-service	nordvpn-service
 nordsec-threatprotection-service	nordsec-threatprotection-service
 Intel® Graphics Software	IntelGraphicsSoftwareService
 __SV_EOF__
+)"
+
+# Manually-created Windows scheduled tasks, one per line:
+#   name<TAB>scope<TAB>schedule<TAB>exeBase   (scope=user|system; schedule uses commas)
+SCHEDTASKS_DATA="$(cat <<'__TK_EOF__'
+ASC_PerformanceMonitor	User	onlogon	Monitor
+ASC_SkipUac_Ali	User	unsupported	ASC
+CreateExplorerShellUnelevatedTask	User	unsupported	explorer
+oCamTask	User	onlogon	oCamTask
+OneDrive Per-Machine Standalone Update Task	System	daily,23,00	OneDriveStandaloneUpdater
+OneDrive Reporting Task-S-1-5-21-134476807-1998891258-1216728456-1001	User	daily,00,52	OneDriveStandaloneUpdater
+OneDrive Startup Task-S-1-5-21-134476807-1998891258-1216728456-1001	User	onlogon	OneDriveLauncher
+RPCServiceHealthCheck	User	daily,00,45	RPCDownloader
+update-S-1-5-21-134476807-1998891258-1216728456-1001	User	daily,15,45	Updater
+Quick Share Relaunch	User	daily,22,10	nearby_share_launcher
+RunPlatformExperienceHelper_Daily	User	daily,10,44	platform_experience_helper
+RunPlatformExperienceHelper_Metrics	User	daily,10,48	platform_experience_helper
+Lenovo Professional Ultraslim Wireless Combo Gen2 OSD task	User	onlogon	UltraslimOSD
+Firefox Default Browser Agent 308046B0AF4A39CB	User	daily,13,49	default-browser-agent
+Autorun for Ali	User	onlogon	PowerToys
+SoftLandingCreativeManagementTask	User	unsupported	
+SoftLandingDeferralTask-{71575cbf-db55-4a73-b13f-ce73b7964e58}	User	daily,02,32	
+__TK_EOF__
+)"
+
+# Custom /etc/hosts lines (verbatim), one per line:
+HOSTS_DATA="$(cat <<'__HO_EOF__'
+0.0.0.0	asc.iobit.com
+0.0.0.0	93.184.220.29:80
+0.0.0.0	www.asc55.iobit.com
+0.0.0.0	idb.iobit.com
+0.0.0.0	is360.iobit.com
+0.0.0.0	pf.iobit.com
+0.0.0.0	98.129.229.186
+0.0.0.0	www.iana.org
+__HO_EOF__
+)"
+
+# Network printers, one per line:  name<TAB>host
+PRINTERS_DATA="$(cat <<'__PR_EOF__'
+LU-card-printer	http://127.0.0.1:9177/ipp/webprint.leidenuniv.nl_9164/4c552d636172642d7072696e746572/printers/LU-card-printer
+__PR_EOF__
+)"
+
+# Static IP / DNS (reported as a manual note), one per line:  iface<TAB>ip<TAB>gw<TAB>dns
+NETCFG_DATA="$(cat <<'__NE_EOF__'
+VMware Network Adapter VMnet1	192.168.88.1		
+VMware Network Adapter VMnet11	192.168.171.1		
+VMware Network Adapter VMnet12	172.23.124.1		
+vEthernet (Default Switch)	172.26.0.1		
+vEthernet (WSL (Hyper-V firewall))	172.18.80.1		
+NordLynx	10.5.0.2		
+Wi-Fi 2		10.112.63.254 1.1.1.1	10.112.10.254,10.112.11.254
+__NE_EOF__
 )"
 
 DE="unknown"
@@ -2483,15 +2554,152 @@ apply_resolution() {
 }
 
 apply_mouse() {
-  [ -z "${CFG_mouse_size:-}${CFG_mouse_speed:-}${CFG_mouse_accel:-}" ] && return 0
-  log "Mouse: pointer size / speed / acceleration"
+  [ -z "${CFG_mouse_size:-}${CFG_mouse_speed:-}${CFG_mouse_accel:-}${CFG_mouse_swap:-}${CFG_mouse_dblclick:-}" ] && return 0
+  log "Mouse: pointer size / speed / acceleration / buttons"
   case "$DE" in
     gnome|cinnamon)
       [ -n "${CFG_mouse_size:-}" ]  && gset org.gnome.desktop.interface cursor-size "$CFG_mouse_size"
       [ -n "${CFG_mouse_speed:-}" ] && gset org.gnome.desktop.peripherals.mouse speed "$CFG_mouse_speed"
-      [ -n "${CFG_mouse_accel:-}" ] && gset org.gnome.desktop.peripherals.mouse accel-profile "'$CFG_mouse_accel'" ;;
+      [ -n "${CFG_mouse_accel:-}" ] && gset org.gnome.desktop.peripherals.mouse accel-profile "'$CFG_mouse_accel'"
+      [ -n "${CFG_mouse_swap:-}" ]  && gset org.gnome.desktop.peripherals.mouse left-handed "$CFG_mouse_swap"
+      [ -n "${CFG_mouse_dblclick:-}" ] && gset org.gnome.desktop.peripherals.mouse double-click "$CFG_mouse_dblclick" ;;
     *) mark_manual "mouse settings" "set pointer size/speed in your DE settings" ;;
   esac
+}
+
+apply_appearance() {
+  [ -z "${CFG_color_scheme:-}${CFG_accent:-}${CFG_night_light:-}" ] && return 0
+  log "Appearance: theme / accent / night light"
+  case "$DE" in
+    gnome|cinnamon)
+      [ -n "${CFG_color_scheme:-}" ] && gset org.gnome.desktop.interface color-scheme "'$CFG_color_scheme'"
+      # GTK theme dark variant follows the color-scheme on most modern desktops.
+      [ "${CFG_color_scheme:-}" = "prefer-dark" ] && gset org.gnome.desktop.interface gtk-theme "'Adwaita-dark'"
+      [ -n "${CFG_accent:-}" ] && gset org.gnome.desktop.interface accent-color "'$CFG_accent'"
+      [ -n "${CFG_night_light:-}" ] && gset org.gnome.settings-daemon.plugins.color night-light-enabled "$CFG_night_light" ;;
+    *) mark_manual "appearance" "set theme/accent in your DE settings" ;;
+  esac
+}
+
+apply_touchpad() {
+  [ -z "${CFG_touchpad_tap:-}${CFG_touchpad_natural:-}" ] && return 0
+  log "Touchpad: tap-to-click / natural scroll"
+  case "$DE" in
+    gnome|cinnamon)
+      [ -n "${CFG_touchpad_tap:-}" ]     && gset org.gnome.desktop.peripherals.touchpad tap-to-click "$CFG_touchpad_tap"
+      [ -n "${CFG_touchpad_natural:-}" ] && gset org.gnome.desktop.peripherals.touchpad natural-scroll "$CFG_touchpad_natural" ;;
+    *) mark_manual "touchpad" "set tap-to-click / natural scroll in your DE settings" ;;
+  esac
+}
+
+apply_power_timeouts() {
+  [ -z "${CFG_sleep_ac:-}${CFG_sleep_dc:-}" ] && return 0
+  log "Power: sleep timeouts"
+  case "$DE" in
+    gnome|cinnamon)
+      [ -n "${CFG_sleep_ac:-}" ] && gset org.gnome.settings-daemon.plugins.power sleep-inactive-ac-timeout "$CFG_sleep_ac"
+      [ -n "${CFG_sleep_dc:-}" ] && gset org.gnome.settings-daemon.plugins.power sleep-inactive-battery-timeout "$CFG_sleep_dc" ;;
+    *) mark_manual "power timeouts" "set sleep timeouts in your DE settings" ;;
+  esac
+}
+
+apply_locale() {
+  [ -z "${CFG_locale:-}" ] && return 0
+  log "Locale: ${CFG_locale}"
+  have_cmd localectl || { mark_manual "locale" "set LANG=${CFG_locale} (no localectl)"; return 0; }
+  local cur; cur="$(localectl status 2>/dev/null | sed -n 's/.*LANG=//p' | head -n1)"
+  if [ "$cur" = "$CFG_locale" ]; then mark_skip "locale" "already $CFG_locale"
+  elif capture localectl set-locale "LANG=$CFG_locale"; then mark_set "locale = $CFG_locale"
+  else mark_fail "locale" "${LAST_ERR:-localectl set-locale failed (locale may need generating)}"; fi
+}
+
+apply_proxy() {
+  case "${CFG_proxy_mode:-}" in
+    '') return 0 ;;
+    none) case "$DE" in gnome|cinnamon) gset org.gnome.system.proxy mode "'none'" ;; esac; return 0 ;;
+  esac
+  log "Proxy: ${CFG_proxy_mode}"
+  case "$DE" in
+    gnome|cinnamon)
+      case "$CFG_proxy_mode" in
+        manual)
+          gset org.gnome.system.proxy mode "'manual'"
+          if [ -n "${CFG_proxy_host:-}" ]; then
+            gset org.gnome.system.proxy.http host "'$CFG_proxy_host'"
+            gset org.gnome.system.proxy.https host "'$CFG_proxy_host'"
+            [ -n "${CFG_proxy_port:-}" ] && { gset org.gnome.system.proxy.http port "$CFG_proxy_port"; gset org.gnome.system.proxy.https port "$CFG_proxy_port"; }
+          fi ;;
+        auto)
+          gset org.gnome.system.proxy mode "'auto'"
+          [ -n "${CFG_proxy_autoconfig:-}" ] && gset org.gnome.system.proxy autoconfig-url "'$CFG_proxy_autoconfig'" ;;
+      esac ;;
+    *) mark_manual "proxy" "set the proxy in your DE settings" ;;
+  esac
+  # Also export to /etc/environment for CLI tools (manual mode only).
+  if [ "$CFG_proxy_mode" = "manual" ] && [ -n "${CFG_proxy_host:-}" ] && [ -n "${CFG_proxy_port:-}" ]; then
+    local url="http://${CFG_proxy_host}:${CFG_proxy_port}"
+    if [ -f /etc/environment ] && grep -qiE "^http_proxy=.*${CFG_proxy_host}:${CFG_proxy_port}" /etc/environment; then
+      mark_skip "proxy env" "already in /etc/environment"
+    else
+      { printf 'http_proxy=%s\nhttps_proxy=%s\nHTTP_PROXY=%s\nHTTPS_PROXY=%s\n' "$url" "$url" "$url" "$url" >> /etc/environment; } 2>/dev/null \
+        && mark_set "proxy env -> /etc/environment ($url)" || mark_fail "proxy env" "could not write /etc/environment"
+    fi
+  fi
+}
+
+apply_hosts() {
+  [ -z "$(printf '%s' "$HOSTS_DATA" | tr -d '[:space:]')" ] && return 0
+  log "Hosts file: custom entries -> /etc/hosts"
+  local line added=0
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    if grep -qF "$line" /etc/hosts 2>/dev/null; then mark_skip "hosts: $line" "already present"; continue; fi
+    if printf '%s\n' "$line" >> /etc/hosts 2>/dev/null; then mark_set "hosts: $line"; added=$((added+1))
+    else mark_fail "hosts: $line" "could not append to /etc/hosts"; fi
+  done <<EOF
+$(printf '%s\n' "$HOSTS_DATA")
+EOF
+  [ "$added" -gt 0 ] && info "added $added custom hosts entr(ies)"
+}
+
+apply_printers() {
+  [ -z "$(printf '%s' "$PRINTERS_DATA" | tr -d '[:space:]')" ] && return 0
+  log "Network printers -> CUPS"
+  if ! have_cmd lpadmin; then
+    ask_install_addition "network printers" "cups" "add the migrated network printers" || { mark_manual "printers" "install CUPS, then add the printers"; return 0; }
+  fi
+  local name host uri
+  while IFS="$(printf '\t')" read -r name host; do
+    [ -z "$name" ] && continue
+    if lpstat -p "$name" >/dev/null 2>&1; then mark_skip "printer: $name" "already configured"; continue; fi
+    case "$host" in http://*|https://*|ipp://*) uri="$host" ;; *) uri="ipp://${host}/ipp/print" ;; esac
+    if capture lpadmin -p "$(printf '%s' "$name" | tr ' ' '_')" -E -v "$uri" -m everywhere; then
+      mark_set "printer: $name -> $uri"
+    else mark_manual "printer: $name" "add it manually (tried $uri)"; fi
+  done <<EOF
+$(printf '%s\n' "$PRINTERS_DATA")
+EOF
+}
+
+apply_netcfg() {
+  [ -z "$(printf '%s' "$NETCFG_DATA" | tr -d '[:space:]')" ] && return 0
+  # Deploying the static network config is optional: it was staged on Windows,
+  # but ask before emitting it here so the user can opt out.
+  if [ -r /dev/tty ]; then
+    warn "Static network configuration was exported from Windows. Do you want to apply it on this system now? (y/n)"
+    local dans; printf '  (y/n): ' > /dev/tty; read -r dans < /dev/tty || dans="n"
+    case "$dans" in [Yy]*) ;; *) mark_skip "network config" "deployment skipped by user"; return 0 ;; esac
+  else
+    mark_skip "network config" "deployment is optional; no terminal available to confirm"; return 0
+  fi
+  log "Static IP / DNS (manual - not auto-applied so networking can't break)"
+  local iface ip gw dns
+  while IFS="$(printf '\t')" read -r iface ip gw dns; do
+    [ -z "$iface$ip$dns" ] && continue
+    mark_manual "network: $iface" "set via NetworkManager if wanted: ip=${ip:-?} gateway=${gw:-?} dns=${dns:-?}  (e.g. nmcli con mod <name> ipv4.addresses ${ip} ipv4.gateway ${gw} ipv4.dns '${dns}' ipv4.method manual)"
+  done <<EOF
+$(printf '%s\n' "$NETCFG_DATA")
+EOF
 }
 
 apply_accessibility() {
@@ -2555,7 +2763,8 @@ apply_wifi() {
   if ! have_cmd nmcli; then
     mark_manual "wifi networks" "NetworkManager (nmcli) not present; import WiFi profiles manually"; return 0
   fi
-  # If any entry carries an encrypted key, ask once for the password to decrypt them.
+  # If any entry carries an encrypted key, a transfer password WAS provided on
+  # Windows: ask once to decrypt the keys.
   local has_enc=0 wifikey=""
   printf '%s\n' "$WIFI_DATA" | awk -F'\t' '$4=="enc"{f=1} END{exit !f}' && has_enc=1
   if [ "$has_enc" = "1" ]; then
@@ -2563,6 +2772,21 @@ apply_wifi() {
     if have_cmd openssl && [ -r /dev/tty ]; then
       printf '  Enter the password used to encrypt the WiFi keys (empty to import profiles WITHOUT saved passwords): ' > /dev/tty
       read -r wifikey < /dev/tty || wifikey=""
+    fi
+  else
+    # No transfer password was provided on Windows (or it timed out): there may be
+    # password-protected networks with no stored key. Ask whether to import them
+    # anyway (manual password entry per network). "No" skips WiFi entirely.
+    local has_prot=0
+    printf '%s\n' "$WIFI_DATA" | awk -F'\t' '$1!="" && tolower($2)!="open" && tolower($2)!="none" && $4!="enc"{f=1} END{exit !f}' && has_prot=1
+    if [ "$has_prot" = "1" ] && [ -r /dev/tty ]; then
+      local YEL=$'\033[1;33m' RST=$'\033[0m' wans
+      printf '\n  You %sdid not%s provide a %spassword%s for sensitive data encryption while exporting your data on Windows (or providing a %spassword%s was %stimed out%s).\n' "$YEL" "$RST" "$YEL" "$RST" "$YEL" "$RST" "$YEL" "$RST" >&3
+      printf '  Do you still want to transfer WiFi networks without their passwords?\n' >&3
+      printf '  (if "yes", manual password entry for each password-protected one is required)\n' >&3
+      printf '  If you %sdid not%s intend for this, you can go over to Windows and export your data again with providing the encryption pass this time. (y/n)\n' "$YEL" "$RST" >&3
+      printf '  (y/n): ' > /dev/tty; read -r wans < /dev/tty || wans="y"
+      case "$wans" in [Nn]*) mark_skip "wifi networks" "skipped (no transfer password provided on Windows)"; return 0 ;; esac
     fi
   fi
   local ssid auth secret sectype psk
@@ -2604,6 +2828,16 @@ EOF
 
 apply_firewall() {
   [ -z "$(printf '%s' "$FIREWALL_DATA" | tr -d '[:space:]')" ] && return 0
+  # Deploying the exported firewall rules is optional: the rules were staged on
+  # Windows, but ask before applying them here so the user can opt out.
+  if [ -r /dev/tty ]; then
+    warn "Firewall rules were exported from Windows. Do you want to apply them on this system now?"
+    warn "If you skip, no rules are created (you can re-run later to apply them). (y/n)"
+    local dans; printf '  (y/n): ' > /dev/tty; read -r dans < /dev/tty || dans="n"
+    case "$dans" in [Yy]*) ;; *) mark_skip "firewall rules" "deployment skipped by user"; return 0 ;; esac
+  else
+    mark_skip "firewall rules" "deployment is optional; no terminal available to confirm"; return 0
+  fi
   log "Firewall rules"
   local backend="" enablecmd=""
   if have_cmd ufw; then backend="ufw"; enablecmd="ufw enable"
@@ -2807,6 +3041,58 @@ $(printf '%s\n' "$SERVICES_DATA")
 EOF
 }
 
+# Windows DaysOfWeek bitmask (Sun=1,Mon=2,...,Sat=64) -> cron day-of-week list (Sun=0..Sat=6).
+win_mask_to_cron_dow() {  # win_mask_to_cron_dow MASK
+  local m="$1" out="" dow
+  case "$m" in ''|*[!0-9]*) printf '*'; return 0 ;; esac
+  for dow in 0 1 2 3 4 5 6; do
+    [ $(( m & (1 << dow) )) -ne 0 ] && out="${out:+$out,}$dow"
+  done
+  printf '%s' "${out:-*}"
+}
+
+# Manually-created Windows scheduled tasks -> cron, ONLY when the task's program
+# resolves to an installed Linux app/binary. Scope: user task -> the user's crontab;
+# system task -> root's crontab. Non-resolving / non-portable tasks are log-only.
+apply_scheduled_tasks() {
+  [ -z "$(printf '%s' "$SCHEDTASKS_DATA" | tr -d '[:space:]')" ] && return 0
+  log "Scheduled tasks -> cron (resolved programs only)"
+  if ! have_cmd crontab; then log_note "scheduled tasks" "crontab not available"; return 0; fi
+  local name scope sched exe cmd cronexpr who did dir marker cur hh mm mask hm rest
+  while IFS="$(printf '\t')" read -r name scope sched exe; do
+    [ -z "$name$exe" ] && continue
+    # Resolve a runnable command: a binary on PATH, else the resolved app's Exec.
+    cmd=""
+    if [ -n "$exe" ] && have_cmd "$exe"; then cmd="$exe"
+    elif did="$(resolve_desktop "$name" "$exe")"; then
+      for dir in /usr/share/applications /var/lib/flatpak/exports/share/applications "$TARGET_HOME/.local/share/applications"; do
+        [ -f "$dir/$did" ] && { cmd="$(grep -m1 '^Exec=' "$dir/$did" 2>/dev/null | sed 's/^Exec=//; s/ *%[a-zA-Z].*//')"; break; }
+      done
+    fi
+    [ -z "$cmd" ] && { log_note "scheduled task: $name" "no installed program to run (skipped)"; continue; }
+    # Build the cron schedule (10# forces base-10 so 08/09 don't read as bad octal).
+    case "$sched" in
+      daily,*)
+        hm="${sched#daily,}"; hh="${hm%%,*}"; mm="${hm##*,}"
+        cronexpr="$((10#${mm:-0})) $((10#${hh:-0})) * * *" ;;
+      weekly,*)
+        rest="${sched#weekly,}"; mask="${rest%%,*}"; hm="${rest#*,}"; hh="${hm%%,*}"; mm="${hm##*,}"
+        cronexpr="$((10#${mm:-0})) $((10#${hh:-0})) * * $(win_mask_to_cron_dow "$mask")" ;;
+      onstart|onlogon) cronexpr="@reboot" ;;
+      *) log_note "scheduled task: $name" "trigger '$sched' not portable to cron (skipped)"; continue ;;
+    esac
+    case "$scope" in system) who="root" ;; *) who="$TARGET_USER" ;; esac
+    marker="# migrated-task: $name"
+    cur="$(crontab -u "$who" -l 2>/dev/null)"
+    if printf '%s\n' "$cur" | grep -qF "$marker"; then mark_skip "scheduled task: $name" "already in $who crontab"; continue; fi
+    if printf '%s\n%s\n%s %s\n' "$cur" "$marker" "$cronexpr" "$cmd" | crontab -u "$who" - 2>/dev/null; then
+      mark_set "scheduled task ($scope): $name -> cron [$cronexpr] $cmd"
+    else mark_fail "scheduled task: $name" "could not update $who crontab"; fi
+  done <<EOF
+$(printf '%s\n' "$SCHEDTASKS_DATA")
+EOF
+}
+
 # C_detect packs the user's personal files into ONE encrypted archive next to the
 # staging dir: "<migrated_user_data>.tar.enc" (AES-256-CBC / PBKDF2, same transfer
 # password as WiFi). Decrypt + extract it ONCE into a private temp dir; copy_ssh and
@@ -2820,14 +3106,14 @@ unpack_stage() {
     [ -d "$MIGRATE_STAGE" ] && [ -n "$(ls -A "$MIGRATE_STAGE" 2>/dev/null)" ] && STAGE_DIR="$MIGRATE_STAGE"
     return 0
   fi
-  if ! have_cmd openssl; then ask_install_addition "personal data" "openssl" "decrypt your transferred SSH keys and Contacts" || { mark_skip "personal data" "openssl unavailable to decrypt the archive"; return 0; }; fi
+  if ! have_cmd openssl; then ask_install_addition "personal data" "openssl" "decrypt your transferred SSH keys / Contacts / wallpaper" || { mark_skip "personal data" "openssl unavailable to decrypt the archive"; return 0; }; fi
   if ! have_cmd tar; then mark_skip "personal data" "tar unavailable to extract the archive"; return 0; fi
   local key=""
   if [ -r /dev/tty ]; then
-    printf '  Enter the password used to encrypt your transferred personal data (SSH keys / Contacts; same as WiFi; empty to skip): ' > /dev/tty
+    printf '  Enter the password used to encrypt your transferred personal data (SSH keys / Contacts / wallpaper; same as WiFi; empty to skip): ' > /dev/tty
     read -r key < /dev/tty || key=""
   fi
-  [ -z "$key" ] && { mark_skip "personal data" "no decryption password given (SSH/Contacts skipped)"; return 0; }
+  [ -z "$key" ] && { mark_skip "personal data" "no decryption password given (personal data skipped)"; return 0; }
   STAGE_TMP="$(mktemp -d 2>/dev/null || echo /tmp/mtl_stage.$$)"; mkdir -p "$STAGE_TMP"
   if openssl enc -d -aes-256-cbc -pbkdf2 -salt -pass pass:"$key" -in "$archive" 2>/dev/null | tar -xf - -C "$STAGE_TMP" 2>/dev/null; then
     STAGE_DIR="$STAGE_TMP"
@@ -2875,17 +3161,116 @@ copy_contacts() {
   fi
 }
 
+# Fonts are NOT migrated in the staged archive (they would bloat it by hundreds of MB).
+# Instead, manual-install style: tell the user where to get fonts and ask for a directory
+# (local path, or a mounted SMB/NFS share) of unzipped font files; search it <=3 levels
+# deep and install every valid font found. Loops so several directories can be added.
+install_fonts() {
+  log "Custom fonts"
+  is_dry_run && { mark_plan "fonts" "would prompt for a font directory to install from"; return 0; }
+  if [ ! -r /dev/tty ]; then mark_skip "fonts" "no terminal to ask for a font directory"; return 0; fi
+  local dest="$TARGET_HOME/.local/share/fonts" dir ans f n total=0
+  info "Fonts are not auto-transferred. To bring your Windows fonts over:"
+  info "  1) On Windows, copy the font files you want from %LOCALAPPDATA%\\Microsoft\\Windows\\Fonts"
+  info "     and/or %SYSTEMROOT%\\Fonts  (i.e. C:\\Windows\\Fonts)  -- unzip them if they are zipped."
+  info "  2) Put them in a directory reachable from THIS machine: a local folder, or a mounted"
+  info "     SMB/NFS share (e.g. /mnt/share, /media/...)."
+  info "  3) Enter that directory path below; it is searched recursively (up to 3 levels deep)"
+  info "     and every .ttf/.otf/.ttc font found is installed into ~/.local/share/fonts."
+  mkdir -p "$dest"
+  while :; do
+    printf "  Font directory ('path' to install / 'done' when finished / 'skip' to skip fonts): " > /dev/tty
+    read -r ans < /dev/tty || ans="skip"
+    case "$ans" in
+      [Ss]|[Ss][Kk][Ii][Pp]) [ "$total" -eq 0 ] && mark_skip "fonts" "user skipped"; break ;;
+      [Dd]|[Dd][Oo][Nn][Ee]) break ;;
+      *)
+        dir="$(resolve_user_path "$ans")"
+        if [ -z "$dir" ] || [ ! -d "$dir" ]; then
+          printf "\033[1;31m  Not a readable directory: '%s' -- enter a valid path, 'done', or 'skip'.\033[0m\n" "${dir:-$ans}" > /dev/tty; continue
+        fi
+        n=0
+        while IFS= read -r f; do
+          [ -f "$f" ] || continue
+          cp -fn "$f" "$dest/" 2>/dev/null && n=$((n+1))
+        done <<EOF
+$(find "$dir" -maxdepth 3 -type f \( -iname '*.ttf' -o -iname '*.otf' -o -iname '*.ttc' -o -iname '*.otc' -o -iname '*.pfb' -o -iname '*.pcf' \) 2>/dev/null)
+EOF
+        if [ "$n" -gt 0 ]; then total=$((total+n)); info "installed $n font(s) from $dir"
+        else printf "\033[1;33m  No font files found under '%s' (searched 3 levels deep).\033[0m\n" "$dir" > /dev/tty; fi
+        ;;
+    esac
+  done
+  if [ "$total" -gt 0 ]; then
+    chown -R "$TARGET_USER":"$TARGET_USER" "$dest" 2>/dev/null || true
+    have_cmd fc-cache && run_as_user fc-cache -f >/dev/null 2>&1 || true
+    mark_set "fonts: installed $total font file(s) into ~/.local/share/fonts"
+  fi
+}
+
+apply_wallpaper() {
+  local src="$STAGE_DIR/wallpaper"
+  [ -n "$STAGE_DIR" ] && [ -d "$src" ] && [ -n "$(ls -A "$src" 2>/dev/null)" ] || return 0
+  log "Wallpaper -> desktop background"
+  local img="" dest f
+  for f in "$src"/*; do [ -f "$f" ] && { img="$f"; break; }; done
+  [ -z "$img" ] && return 0
+  dest="$TARGET_HOME/.local/share/backgrounds/$(basename "$img")"
+  mkdir -p "$(dirname "$dest")"
+  if cp -f "$img" "$dest" 2>/dev/null; then
+    chown -R "$TARGET_USER":"$TARGET_USER" "$TARGET_HOME/.local/share/backgrounds" 2>/dev/null || true
+    case "$DE" in
+      gnome|cinnamon)
+        gset org.gnome.desktop.background picture-uri "'file://$dest'"
+        gset org.gnome.desktop.background picture-uri-dark "'file://$dest'" ;;
+      *) mark_manual "wallpaper" "set $dest as your wallpaper" ;;
+    esac
+  else mark_fail "wallpaper" "could not copy the image"; fi
+}
+
+apply_default_browser() {
+  [ -z "${CFG_default_browser:-}" ] && return 0
+  log "Default web browser: ${CFG_default_browser}"
+  have_cmd xdg-settings || { mark_manual "default browser" "set ${CFG_default_browser} as default in Settings"; return 0; }
+  # Candidate .desktop ids per browser token, first installed one wins.
+  local cands="" did=""
+  case "$CFG_default_browser" in
+    chrome)  cands="google-chrome.desktop google-chrome-stable.desktop com.google.Chrome.desktop" ;;
+    firefox) cands="firefox.desktop firefox-esr.desktop org.mozilla.firefox.desktop" ;;
+    edge)    cands="microsoft-edge.desktop com.microsoft.Edge.desktop" ;;
+    brave)   cands="brave-browser.desktop com.brave.Browser.desktop" ;;
+    opera)   cands="opera.desktop com.opera.Opera.desktop" ;;
+  esac
+  local c d
+  for c in $cands; do
+    for d in /usr/share/applications /var/lib/flatpak/exports/share/applications "$TARGET_HOME/.local/share/applications"; do
+      [ -f "$d/$c" ] && { did="$c"; break 2; }
+    done
+  done
+  [ -z "$did" ] && { mark_skip "default browser" "${CFG_default_browser} not installed"; return 0; }
+  if capture run_as_user xdg-settings set default-web-browser "$did"; then mark_set "default browser = $did"
+  else mark_fail "default browser" "${LAST_ERR:-xdg-settings failed}"; fi
+}
+
 run_pre() {
   apply_display_scaling
   apply_resolution
   apply_mouse
+  apply_appearance
+  apply_touchpad
+  apply_power_timeouts
   apply_lock_timeout
   apply_keyboard_layout
   apply_accessibility
+  apply_locale
+  apply_proxy
   disable_telemetry_location
   apply_timezone_timesync
   apply_wifi
   apply_firewall
+  apply_hosts
+  apply_printers
+  apply_netcfg
   apply_lid_behavior
   info "Note: keyboard shortcuts (copy/paste/screenshot/etc.) map to your DE's"
   info "      defaults on Linux; review System Settings > Keyboard if needed."
@@ -2895,10 +3280,14 @@ run_post() {
   apply_shortcuts
   apply_startup_items
   enable_services
+  apply_scheduled_tasks
   unpack_stage
   copy_ssh
   copy_contacts
+  apply_wallpaper
   cleanup_stage
+  install_fonts
+  apply_default_browser
 }
 
 main() {

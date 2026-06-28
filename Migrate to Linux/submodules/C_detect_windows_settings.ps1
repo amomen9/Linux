@@ -60,24 +60,25 @@ if (-not $OutputPath) {
 }
 
 # =======================================================================
-#  PROJECT MEGA-TITLE -- printed FIRST, before anything else.
+#  TRANSFER PASSWORD
+#  When launched by run_project.ps1 the mega-title + password prompt have ALREADY
+#  been shown (before the "STEP n/5" banners) and the answer is handed over via
+#  $env:MIGRATE_XFER_PWD. When run standalone we show the title + prompt here.
+#  The password protects every exported secret (WiFi passwords AND SSH private keys
+#  / the personal-data archive).
 # =======================================================================
-Write-Host ''
-Write-Host '  ###########################################################' -ForegroundColor Cyan
-Write-Host '  ##                                                       ##' -ForegroundColor Cyan
-Write-Host '  ##            M I G R A T E   T O   L I N U X             ##' -ForegroundColor Cyan
-Write-Host '  ##        Windows  ->  Linux   Migration  Toolkit         ##' -ForegroundColor Cyan
-Write-Host '  ##                                                       ##' -ForegroundColor Cyan
-Write-Host '  ###########################################################' -ForegroundColor Cyan
-Write-Host ''
+# Shared mega-title + prompt helpers (Show-MegaTitle / Get-XferPassword).
+$xferPromptShared = Join-Path $PSScriptRoot '_xfer_password.ps1'
+if (Test-Path $xferPromptShared) { . $xferPromptShared }
 
-# =======================================================================
-#  TRANSFER-PASSWORD PROMPT -- the SECOND thing shown (right after the title).
-#  One password protects every exported secret (WiFi passwords AND SSH private
-#  keys / the personal-data archive). 15-second IDLE timeout (resets on each
-#  keystroke); a timeout -- or an empty answer -- counts as SKIPPED: WiFi is
-#  exported without passwords and personal data is not migrated.
-# =======================================================================
+if ($env:MIGRATE_XFER_PROMPTED -eq '1') {
+    $xferPwd = [string]$env:MIGRATE_XFER_PWD          # already prompted by run_project
+} elseif (Get-Command Get-XferPassword -ErrorAction SilentlyContinue) {
+    Show-MegaTitle
+    $xferPwd = Get-XferPassword -TimeoutSec 15
+} else {
+    $xferPwd = ''
+}
 
 # Locate openssl on Windows so secrets can be encrypted in the exact OpenSSL
 # "Salted__"/PBKDF2 format that apply_settings.sh decrypts (install on demand).
@@ -103,70 +104,6 @@ function Resolve-OpenSSL {
     return $null
 }
 
-# Read a line with an IDLE timeout and a LIVE on-screen countdown bar (the timer
-# sits on its own line above the prompt and updates every second; it resets on
-# every keystroke). Returns '' on timeout, on empty input, or when there is no
-# interactive console (redirected input / -NonInteractive).
-$Script:ShowTimer = {
-    param([int]$secs, [int]$row, [int]$total)
-    $cl = [Console]::CursorLeft; $ct = [Console]::CursorTop
-    try {
-        [Console]::SetCursorPosition(0, $row)
-        $w = [math]::Min($total, 30)
-        $fill = [int][math]::Round($secs / [double]$total * $w)
-        $bar = ('#' * $fill).PadRight($w, '-')
-        $col = if ($secs -le 5) { 'Red' } else { 'DarkYellow' }
-        Write-Host -NoNewline ("  Time left: {0,2}s  [{1}]   " -f $secs, $bar) -ForegroundColor $col
-        [Console]::SetCursorPosition($cl, $ct)
-    } catch {}
-}
-$Script:ClearTimer = {
-    param([int]$row)
-    $cl = [Console]::CursorLeft; $ct = [Console]::CursorTop
-    try {
-        [Console]::SetCursorPosition(0, $row)
-        Write-Host -NoNewline (' ' * ([Console]::WindowWidth - 1))
-        [Console]::SetCursorPosition($cl, $ct)
-    } catch {}
-}
-function Read-HostTimed {
-    param([string]$Prompt, [int]$TimeoutSec = 15)
-    # No interactive console (redirected / -NonInteractive) -> skip immediately.
-    try { $null = [Console]::KeyAvailable } catch {
-        Write-Host -NoNewline $Prompt; Write-Host ''
-        Write-Host '  (non-interactive: no password entered -> treated as empty / skipped)' -ForegroundColor Yellow
-        return ''
-    }
-    $sb = New-Object System.Text.StringBuilder
-    $deadline = (Get-Date).AddSeconds($TimeoutSec)
-    $lastShown = -1
-    Write-Host ''                          # this blank line becomes the live countdown
-    $timerRow = [Console]::CursorTop - 1
-    Write-Host -NoNewline $Prompt
-    while ($true) {
-        $remaining = [int][math]::Ceiling((($deadline) - (Get-Date)).TotalSeconds)
-        if ($remaining -lt 0) { $remaining = 0 }
-        if ($remaining -ne $lastShown) { & $Script:ShowTimer $remaining $timerRow $TimeoutSec; $lastShown = $remaining }
-        if ($remaining -le 0) {
-            & $Script:ClearTimer $timerRow; Write-Host ''
-            Write-Host '  (no input within the time limit -> treated as empty / skipped)' -ForegroundColor Yellow
-            return ''
-        }
-        if ([Console]::KeyAvailable) {
-            $k = [Console]::ReadKey($true)
-            $deadline = (Get-Date).AddSeconds($TimeoutSec)   # idle timer resets on each keystroke
-            if ($k.Key -eq 'Enter') { & $Script:ClearTimer $timerRow; Write-Host ''; return $sb.ToString() }
-            elseif ($k.Key -eq 'Backspace') {
-                if ($sb.Length -gt 0) { [void]$sb.Remove($sb.Length - 1, 1); Write-Host -NoNewline "`b `b" }
-            }
-            elseif ($k.KeyChar) { [void]$sb.Append($k.KeyChar); Write-Host -NoNewline $k.KeyChar }
-        } else {
-            Start-Sleep -Milliseconds 100
-        }
-    }
-}
-
-$xferPwd = Read-HostTimed -Prompt "Enter a password to ENCRYPT exported secrets -- WiFi passwords and SSH private keys (Enter to skip; auto-skips after 15s idle): " -TimeoutSec 15
 $opensslExe = $null
 if ($xferPwd) {
     $opensslExe = Resolve-OpenSSL
@@ -189,6 +126,35 @@ function Protect-Secret { param([string]$Plain, [string]$Passphrase, [string]$Op
 
 # Safely access a property that may not exist.
 function Safe-Property { param($Obj, [string] $Name, $Default = $null); try { $Obj.$Name } catch { $Default } }
+
+# --verbose / -v (the built-in CmdletBinding -Verbose switch) -> list every item's
+# name per category; otherwise just print the count + a hint. (Task 15)
+# Use the EXPLICITLY-BOUND parameter (not $VerbosePreference, which can be inherited
+# from the session and would wrongly enable verbose when -Verbose was never passed).
+$Script:IsVerbose = $PSBoundParameters.ContainsKey('Verbose')
+# ...then silence cmdlet/module verbose so -Verbose lists OUR items, not CIM/WMI chatter
+# (incl. the NetSecurity module-import + per-rule flood from Get-NetFirewallRule). Must
+# be GLOBAL: module imports/cmdlets read the global preference, so a script-scoped
+# override would not suppress them when the session inherited a verbose preference.
+$global:VerbosePreference = 'SilentlyContinue'
+function Write-ExportSummary { param([string]$Title, $Names)
+    $arr = @($Names | Where-Object { $_ })
+    Write-Host ''
+    Write-Host ("{0}:" -f $Title)
+    if ($Script:IsVerbose) {
+        Write-Host ("  {0} items exported:" -f $arr.Count)
+        foreach ($n in $arr) { Write-Host "    - $n" }
+    } else {
+        Write-Host ("  {0} items exported (Re-run the script with --verbose to see the list)" -f $arr.Count)
+    }
+}
+# Per-category name lists (populated during detection, printed via Write-ExportSummary).
+$fwNames = New-Object System.Collections.Generic.List[string]
+$qlNames = New-Object System.Collections.Generic.List[string]
+$smNames = New-Object System.Collections.Generic.List[string]
+$dtNames = New-Object System.Collections.Generic.List[string]
+$startNames = New-Object System.Collections.Generic.List[string]
+$svcNames = New-Object System.Collections.Generic.List[string]
 
 # -----------------------------------------------------------------------
 # 1. POWER SETTINGS - lid-close action (battery / AC)
@@ -440,7 +406,7 @@ Add-Row 'Screen' 'lock_screen_timeout' $lockValue '' 'GNOME (system-wide dconf, 
 # -----------------------------------------------------------------------
 # 7. MOUSE - pointer size, speed, acceleration
 # -----------------------------------------------------------------------
-$mouseSize = ''; $mouseSpeed = ''; $mouseAccel = ''
+$mouseSize = ''; $mouseSpeed = ''; $mouseAccel = ''; $mouseSwap = ''; $mouseDbl = ''
 try {
     $m = Get-ItemProperty -Path 'HKCU:\Control Panel\Mouse' -ErrorAction SilentlyContinue
     # Sensitivity 1..20 (default 10)  ->  GNOME peripherals.mouse speed -1..1 (default 0).
@@ -450,6 +416,10 @@ try {
     # MouseSpeed 0 = no pointer acceleration ("flat"); >0 = Windows "enhance precision".
     $accelRaw = [int](Safe-Property $m 'MouseSpeed' 1)
     $mouseAccel = if ($accelRaw -eq 0) { 'flat' } else { 'default' }
+    # Primary-button swap (left-handed) and double-click speed (ms).
+    $mouseSwap = if ([int](Safe-Property $m 'SwapMouseButtons' 0) -eq 1) { 'true' } else { 'false' }
+    $dbl = [int](Safe-Property $m 'DoubleClickSpeed' 0)
+    if ($dbl -gt 0) { $mouseDbl = [string]$dbl }
 } catch {}
 try {
     $cur = Get-ItemProperty -Path 'HKCU:\Control Panel\Cursors' -ErrorAction SilentlyContinue
@@ -457,10 +427,12 @@ try {
     if ($base -gt 0) { $mouseSize = [string]$base }
 } catch {}
 
-Write-Host "Mouse: pointer size = $mouseSize ; speed = $mouseSpeed ; accel = $mouseAccel"
+Write-Host "Mouse: pointer size = $mouseSize ; speed = $mouseSpeed ; accel = $mouseAccel ; swap = $mouseSwap"
 Add-Row 'Mouse' 'mouse_size'  $mouseSize  '' 'GNOME org.gnome.desktop.interface cursor-size'
 Add-Row 'Mouse' 'mouse_speed' $mouseSpeed '' 'GNOME org.gnome.desktop.peripherals.mouse speed (-1..1)'
 Add-Row 'Mouse' 'mouse_accel' $mouseAccel '' 'GNOME org.gnome.desktop.peripherals.mouse accel-profile'
+Add-Row 'Mouse' 'mouse_swap'  $mouseSwap  '' 'GNOME org.gnome.desktop.peripherals.mouse left-handed'
+Add-Row 'Mouse' 'mouse_dblclick' $mouseDbl '' 'GNOME org.gnome.desktop.peripherals.mouse double-click (ms)'
 
 # -----------------------------------------------------------------------
 # 8. ACCESSIBILITY - sticky/slow/mouse keys, high contrast, magnifier
@@ -563,6 +535,178 @@ Add-Row 'Time' 'timezone'   $ianaTz    '' 'Linux: timedatectl set-timezone' -Sco
 Add-Row 'Time' 'ntp_server' $ntpServer '' 'Linux: systemd-timesyncd NTP= (non-Microsoft)' -Scope 'System'
 
 # -----------------------------------------------------------------------
+# 10b. EXTRA DESKTOP/SYSTEM SETTINGS (theme, accent, locale, proxy, touchpad,
+#      sleep timeouts, night light) + hosts file, network printers, static IP/DNS.
+# -----------------------------------------------------------------------
+# THEME (dark/light)
+$colorScheme = ''
+try {
+    $pz = Get-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize' -ErrorAction SilentlyContinue
+    if ($pz -and $null -ne $pz.AppsUseLightTheme) { $colorScheme = if ([int]$pz.AppsUseLightTheme -eq 0) { 'prefer-dark' } else { 'default' } }
+} catch {}
+Add-Row 'Appearance' 'color_scheme' $colorScheme '' 'GNOME org.gnome.desktop.interface color-scheme'
+
+# ACCENT COLOR -> nearest GNOME accent (GNOME 47+).
+function Get-NearestAccent { param([int]$R, [int]$G, [int]$B)
+    $cands = @{ blue='3584e4'; teal='2190a4'; green='3a944a'; yellow='c88800'; orange='ed5b00'; red='e62d42'; pink='d56199'; purple='9141ac'; slate='6f8396' }
+    $best = ''; $bestD = [double]::MaxValue
+    foreach ($k in $cands.Keys) {
+        $h = $cands[$k]
+        $r2 = [Convert]::ToInt32($h.Substring(0,2),16); $g2 = [Convert]::ToInt32($h.Substring(2,2),16); $b2 = [Convert]::ToInt32($h.Substring(4,2),16)
+        $d = [math]::Pow($R-$r2,2) + [math]::Pow($G-$g2,2) + [math]::Pow($B-$b2,2)
+        if ($d -lt $bestD) { $bestD = $d; $best = $k }
+    }
+    return $best
+}
+$accent = ''
+try {
+    $dwm = Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\DWM' -Name 'AccentColor' -ErrorAction SilentlyContinue
+    if ($dwm -and $null -ne $dwm.AccentColor) {
+        $abgr = [uint32]$dwm.AccentColor          # stored 0xAABBGGRR
+        $r = [int]($abgr -band 0xFF); $g = [int](($abgr -shr 8) -band 0xFF); $b = [int](($abgr -shr 16) -band 0xFF)
+        $accent = Get-NearestAccent -R $r -G $g -B $b
+    }
+} catch {}
+Add-Row 'Appearance' 'accent_color' $accent '' 'GNOME org.gnome.desktop.interface accent-color (GNOME 47+)'
+
+# LOCALE / regional formats
+$posixLocale = ''
+try {
+    $intl = Get-ItemProperty -Path 'HKCU:\Control Panel\International' -Name 'LocaleName' -ErrorAction SilentlyContinue
+    $ln = if ($intl) { [string]$intl.LocaleName } else { (Get-Culture).Name }
+    if ($ln) { $posixLocale = ($ln -replace '-', '_') + '.UTF-8' }
+} catch {}
+Add-Row 'Locale' 'locale' $posixLocale '' 'Linux: localectl set-locale LANG=' -Scope 'System'
+
+# PROXY (WinINET)
+$proxyMode = 'none'; $proxyHost = ''; $proxyPort = ''; $proxyAuto = ''
+try {
+    $is = Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -ErrorAction SilentlyContinue
+    if ($is) {
+        if ($is.AutoConfigURL) { $proxyMode = 'auto'; $proxyAuto = [string]$is.AutoConfigURL }
+        elseif ([int](Safe-Property $is 'ProxyEnable' 0) -eq 1 -and $is.ProxyServer) {
+            $proxyMode = 'manual'
+            $ps = [string]$is.ProxyServer
+            if ($ps -match 'http=([^;]+)') { $ps = $Matches[1] } elseif ($ps -match ';') { $ps = ($ps -split ';')[0] }
+            $ps = $ps -replace '^[a-z]+=', ''
+            $proxyHost = ($ps -split ':')[0]; $proxyPort = ($ps -split ':')[1]
+        }
+    }
+} catch {}
+Add-Row 'Proxy' 'proxy_mode'       $proxyMode '' 'GNOME org.gnome.system.proxy mode'
+Add-Row 'Proxy' 'proxy_host'       $proxyHost '' 'GNOME org.gnome.system.proxy.http host'
+Add-Row 'Proxy' 'proxy_port'       $proxyPort '' 'GNOME org.gnome.system.proxy.http port'
+Add-Row 'Proxy' 'proxy_autoconfig' $proxyAuto '' 'GNOME org.gnome.system.proxy autoconfig-url'
+
+# TOUCHPAD (only if a precision touchpad is configured)
+$tpTap = ''; $tpNatural = ''
+try {
+    $tp = Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\PrecisionTouchPad' -ErrorAction SilentlyContinue
+    if ($tp) {
+        if ($null -ne $tp.TapsEnabled)    { $tpTap = if ([int]$tp.TapsEnabled -eq 1) { 'true' } else { 'false' } }
+        if ($null -ne $tp.ScrollDirection){ $tpNatural = if ([int]$tp.ScrollDirection -eq 1) { 'true' } else { 'false' } }
+    }
+} catch {}
+Add-Row 'Touchpad' 'touchpad_tap'     $tpTap     '' 'GNOME org.gnome.desktop.peripherals.touchpad tap-to-click'
+Add-Row 'Touchpad' 'touchpad_natural' $tpNatural '' 'GNOME org.gnome.desktop.peripherals.touchpad natural-scroll'
+
+# SLEEP timeouts (seconds; STANDBYIDLE on AC/DC from the active power scheme)
+$sleepAc = ''; $sleepDc = ''
+try {
+    $sl = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Power\User\PowerSchemes\*\238c9fa8-0aad-41ed-83f4-97be242c8f20\29f6c1db-86da-48c5-9fdb-f2b67b1f44da' -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($sl) { if ($null -ne $sl.ACSettingIndex) { $sleepAc = [string][int]$sl.ACSettingIndex }; if ($null -ne $sl.DCSettingIndex) { $sleepDc = [string][int]$sl.DCSettingIndex } }
+} catch {}
+Add-Row 'Power' 'sleep_ac' $sleepAc '' 'GNOME power sleep-inactive-ac-timeout (s)' -Scope 'System'
+Add-Row 'Power' 'sleep_dc' $sleepDc '' 'GNOME power sleep-inactive-battery-timeout (s)' -Scope 'System'
+
+# NIGHT LIGHT (blue-light reduction) on/off -- best-effort blob read.
+function Test-NightLight {
+    try {
+        $p = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\CloudStore\Store\DefaultAccount\Current\default$windows.data.bluelightreduction.bluelightreductionstate\windows.data.bluelightreduction.bluelightreductionstate'
+        $d = (Get-ItemProperty -Path $p -Name 'Data' -ErrorAction SilentlyContinue).Data
+        if (-not $d) { return '' }
+        for ($i = 0; $i -lt $d.Length - 5; $i++) {
+            if ($d[$i] -eq 0x10 -and $d[$i+1] -eq 0 -and $d[$i+2] -eq 0 -and $d[$i+3] -eq 0) {
+                if ($d[$i+4] -eq 0x02 -and $d[$i+5] -eq 0x01) { return 'true' } else { return 'false' }
+            }
+        }
+        return 'false'
+    } catch { return '' }
+}
+$nightLight = Test-NightLight
+Add-Row 'Appearance' 'night_light' $nightLight '' 'GNOME org.gnome.settings-daemon.plugins.color night-light-enabled'
+
+# DEFAULT WEB BROWSER (applied post-install once the equivalent is installed)
+$defBrowser = ''
+try {
+    $uc = Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\https\UserChoice' -Name 'ProgId' -ErrorAction SilentlyContinue
+    switch -Wildcard ([string]$uc.ProgId) {
+        'ChromeHTML*' { $defBrowser = 'chrome' }
+        'FirefoxURL*' { $defBrowser = 'firefox' }
+        'MSEdgeHTM*'  { $defBrowser = 'edge' }
+        'BraveHTML*'  { $defBrowser = 'brave' }
+        'OperaStable*'{ $defBrowser = 'opera' }
+    }
+} catch {}
+Add-Row 'DefaultApps' 'default_browser' $defBrowser '' 'Linux: xdg-settings set default-web-browser' -Phase 'post' -Scope 'User'
+
+# HOSTS file -- custom (non-default) entries only.
+$hostsCount = 0
+try {
+    $hp = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts'
+    if (Test-Path $hp) {
+        Get-Content $hp -ErrorAction SilentlyContinue | ForEach-Object {
+            $line = ($_ -replace '#.*$', '').Trim()
+            if (-not $line) { return }
+            $parts = $line -split '\s+', 2
+            if ($parts.Count -lt 2) { return }
+            $ip = $parts[0]
+            # skip the default loopback boilerplate
+            if ($ip -in @('127.0.0.1', '::1') -and $parts[1] -match '^(localhost)\s*$') { return }
+            Add-Row 'Hosts' 'host_entry' (($line -replace '\|', ' ')) '' 'Linux: merge into /etc/hosts' -Scope 'System'
+            $hostsCount++
+        }
+    }
+} catch {}
+if ($hostsCount -eq 0) { Add-Row 'Hosts' 'host_entry' '' '' 'No custom hosts entries (placeholder)' -Scope 'System' }
+Write-Host "Hosts: $hostsCount custom entr(ies)"
+
+# NETWORK PRINTERS (network/shared; local USB drivers are not portable).
+$prnCount = 0
+try {
+    Get-Printer -ErrorAction SilentlyContinue | Where-Object {
+        $_.PortName -and ($_.PortName -match '^(IP_|WSD|https?://)' -or $_.Shared -eq $true -or $_.Type -eq 'Connection')
+    } | ForEach-Object {
+        $hostp = ($_.PortName -replace '^IP_', '')
+        $packed = (@($_.Name, $hostp) | ForEach-Object { ([string]$_ -replace '\|', ' ') }) -join '|'
+        Add-Row 'Printers' 'printer' $packed '' 'Linux: CUPS lpadmin (best-effort)' -Scope 'System'
+        $prnCount++
+    }
+} catch {}
+if ($prnCount -eq 0) { Add-Row 'Printers' 'printer' '' '' 'No network printers (placeholder)' -Scope 'System' }
+Write-Host "Printers: $prnCount network printer(s)"
+
+# STATIC IP / DNS (captured as a MANUAL note -- never auto-applied, so migration
+# cannot break the user's network).
+$netCount = 0
+try {
+    Get-NetIPConfiguration -ErrorAction SilentlyContinue | ForEach-Object {
+        $cfg = $_
+        $man = $cfg.IPv4Address | Where-Object { $_.PrefixOrigin -eq 'Manual' }
+        $dns = ($cfg.DNSServer | Where-Object { $_.AddressFamily -eq 2 } | ForEach-Object { $_.ServerAddresses }) -join ','
+        if ($man -or $dns) {
+            $ip = if ($man) { ($man | Select-Object -First 1).IPAddress } else { '' }
+            $gw = [string]$cfg.IPv4DefaultGateway.NextHop
+            $packed = (@($cfg.InterfaceAlias, $ip, $gw, $dns) | ForEach-Object { ([string]$_ -replace '\|', ' ') }) -join '|'
+            Add-Row 'NetConfig' 'static_net' $packed '' 'Linux: configure via NetworkManager (manual note)' -Scope 'System'
+            $netCount++
+        }
+    }
+} catch {}
+if ($netCount -eq 0) { Add-Row 'NetConfig' 'static_net' '' '' 'No static IP/DNS config (placeholder)' -Scope 'System' }
+Write-Host "Static network config: $netCount adapter(s)"
+
+# -----------------------------------------------------------------------
 # 11. WIFI known networks + (optionally encrypted) passwords
 #     (the transfer password + openssl were prompted/resolved at the top.)
 # -----------------------------------------------------------------------
@@ -601,19 +745,23 @@ Write-Host "WiFi: $wifiCount profile(s) exported ($wifiMode)"
 # -----------------------------------------------------------------------
 $fwCount = 0
 try {
-    $rules = Get-NetFirewallRule -ErrorAction SilentlyContinue
+    # -Verbose:$false stops these module cmdlets from streaming per-rule verbose lines
+    # when the SESSION's $VerbosePreference is set (module cmdlets read the global
+    # preference, which a script-scoped override does not change).
+    $rules = Get-NetFirewallRule -ErrorAction SilentlyContinue -Verbose:$false
     foreach ($r in $rules) {
         $pf = $null
-        try { $pf = $r | Get-NetFirewallPortFilter -ErrorAction SilentlyContinue } catch {}
+        try { $pf = $r | Get-NetFirewallPortFilter -ErrorAction SilentlyContinue -Verbose:$false } catch {}
         $proto = if ($pf) { [string]$pf.Protocol } else { '' }
         $port  = if ($pf -and $pf.LocalPort) { (@($pf.LocalPort) -join ',') } else { '' }
         $packed = (@($r.DisplayName, $r.Direction, $r.Action, $r.Enabled, $proto, $port) | ForEach-Object { ([string]$_ -replace '\|', ' ') }) -join '|'
         Add-Row 'Firewall' 'fw_rule' $packed '' 'Linux: ufw / firewalld' -Scope 'System'
+        $fwNames.Add([string]$r.DisplayName)
         $fwCount++
     }
 } catch {}
 if ($fwCount -eq 0) { Add-Row 'Firewall' 'fw_rule' '' '' 'No firewall rules found (category placeholder)' -Scope 'System' }
-Write-Host "Firewall: $fwCount rule(s) exported"
+Write-ExportSummary 'Firewall Rules export' $fwNames
 
 # =======================================================================
 #  POST-INSTALL items (Phase=post): applied AFTER apps are installed.
@@ -657,12 +805,15 @@ foreach ($src in $shortcutSources) {
             $exe  = Get-LnkTargetBase $_.FullName
             $packed = (@($disp, $exe) | ForEach-Object { ([string]$_ -replace '\|', ' ') }) -join '|'
             Add-Row 'Shortcuts' $src.Kind $packed '' 'Linux: resolve to an installed .desktop (favourite / desktop file)' -Phase 'post' -Scope 'User'
+            switch ($src.Kind) { 'quicklaunch' { $qlNames.Add($disp) } 'startmenu' { $smNames.Add($disp) } 'desktop' { $dtNames.Add($disp) } }
             $scCount++
         }
     } catch {}
 }
 if ($scCount -eq 0) { Add-Row 'Shortcuts' 'desktop' '' '' 'No transferable shortcuts found (category placeholder)' -Phase 'post' -Scope 'User' }
-Write-Host "Shortcuts: $scCount transferable shortcut(s) recorded"
+Write-ExportSummary 'Shortcuts / Quick Launch export' $qlNames
+Write-ExportSummary 'Shortcuts / Start Menu export'   $smNames
+Write-ExportSummary 'Shortcuts / Desktop export'      $dtNames
 
 # -----------------------------------------------------------------------
 # 13b. STARTUP ITEMS + auto-start SERVICES (Phase=post). Scope is preserved:
@@ -689,6 +840,7 @@ function Add-StartupRows { param([string]$RegPath, [string]$FolderPath, [string]
                     $exe = Get-ExeBaseFromCommand ([string]$p.Value)
                     $packed = (@($p.Name, $exe) | ForEach-Object { ([string]$_ -replace '\|', ' ') }) -join '|'
                     Add-Row 'Startup' 'startup_item' $packed '' 'Linux: autostart if it resolves to an installed app' -Phase 'post' -Scope $Scope
+                    $script:startNames.Add([string]$p.Name)
                     $script:startupCount++
                 }
             }
@@ -700,6 +852,7 @@ function Add-StartupRows { param([string]$RegPath, [string]$FolderPath, [string]
             $exe  = Get-LnkTargetBase $_.FullName
             $packed = (@($name, $exe) | ForEach-Object { ([string]$_ -replace '\|', ' ') }) -join '|'
             Add-Row 'Startup' 'startup_item' $packed '' 'Linux: autostart if it resolves to an installed app' -Phase 'post' -Scope $Scope
+            $script:startNames.Add([string]$name)
             $script:startupCount++
         }
     }
@@ -708,7 +861,7 @@ Add-StartupRows -RegPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -
 Add-StartupRows -RegPath 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Run' -FolderPath ([Environment]::GetFolderPath('CommonStartup')) -Scope 'System'
 Add-StartupRows -RegPath 'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Run' -FolderPath $null -Scope 'System'
 if ($startupCount -eq 0) { Add-Row 'Startup' 'startup_item' '' '' 'No startup items found (placeholder)' -Phase 'post' -Scope 'User' }
-Write-Host "Startup items: $startupCount recorded"
+Write-ExportSummary 'Startup Items export' $startNames
 
 # Auto-start, third-party services (exclude C:\Windows\ OS services that can never map).
 $svcCount = 0
@@ -718,11 +871,56 @@ try {
     } | ForEach-Object {
         $packed = (@($_.DisplayName, $_.Name) | ForEach-Object { ([string]$_ -replace '\|', ' ') }) -join '|'
         Add-Row 'Services' 'service' $packed '' 'Linux: systemctl enable if a clearly-matching unit exists' -Phase 'post' -Scope 'System'
+        $svcNames.Add([string]$_.DisplayName)
         $svcCount++
     }
 } catch {}
 if ($svcCount -eq 0) { Add-Row 'Services' 'service' '' '' 'No auto-start third-party services found (placeholder)' -Phase 'post' -Scope 'System' }
-Write-Host "Services: $svcCount auto-start third-party service(s) recorded"
+Write-ExportSummary 'Services export' $svcNames
+
+# -----------------------------------------------------------------------
+# 13c. SCHEDULED TASKS (manually created; Phase=post). Only non-Microsoft, enabled
+#      tasks are considered. Scope follows the task principal (SYSTEM/service ->
+#      System; otherwise User). The Linux side turns each into a cron entry IF its
+#      program resolves to an installed app; non-resolving ones are log-only.
+#      Packed: name|scope|schedule|exeBase   (schedule uses commas, not '|').
+# -----------------------------------------------------------------------
+$taskCount = 0
+try {
+    Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object {
+        $_.TaskPath -notmatch '^\\Microsoft\\' -and $_.State -ne 'Disabled'
+    } | ForEach-Object {
+        $t = $_
+        # Scope: SYSTEM / service accounts -> System; otherwise the current user.
+        $scope = 'User'
+        try {
+            $uid = [string]$t.Principal.UserId; $lt = [string]$t.Principal.LogonType
+            if ($uid -match '(?i)system|S-1-5-18|S-1-5-19|S-1-5-20|LocalService|NetworkService' -or $lt -match '(?i)ServiceAccount') { $scope = 'System' }
+        } catch {}
+        # First exec action -> the program to run.
+        $act = $t.Actions | Where-Object { $_.Execute } | Select-Object -First 1
+        $exePath = if ($act) { [string]$act.Execute } else { '' }
+        $exeBase = if ($exePath) { [System.IO.Path]::GetFileNameWithoutExtension(($exePath -replace '"', '')) } else { '' }
+        # First trigger -> a portable schedule string.
+        $trig = $t.Triggers | Select-Object -First 1
+        $cls  = if ($trig) { [string]$trig.CimClass.CimClassName } else { '' }
+        $hh = ''; $mm = ''
+        try { if ($trig.StartBoundary) { $dt = [datetime]$trig.StartBoundary; $hh = $dt.ToString('HH'); $mm = $dt.ToString('mm') } } catch {}
+        $sched = 'unsupported'
+        switch -Wildcard ($cls) {
+            '*DailyTrigger'  { $sched = "daily,$hh,$mm" }
+            '*TimeTrigger'   { $sched = "daily,$hh,$mm" }
+            '*WeeklyTrigger' { $mask = 0; try { $mask = [int]$trig.DaysOfWeek } catch {}; $sched = "weekly,$mask,$hh,$mm" }
+            '*LogonTrigger'  { $sched = 'onlogon' }
+            '*BootTrigger'   { $sched = 'onstart' }
+        }
+        $packed = (@($t.TaskName, $scope, $sched, $exeBase) | ForEach-Object { ([string]$_ -replace '\|', ' ') }) -join '|'
+        Add-Row 'ScheduledTasks' 'task' $packed '' 'Linux: cron entry if the program resolves to an installed app' -Phase 'post' -Scope $scope
+        $taskCount++
+    }
+} catch {}
+if ($taskCount -eq 0) { Add-Row 'ScheduledTasks' 'task' '' '' 'No user-created scheduled tasks found (placeholder)' -Phase 'post' -Scope 'User' }
+Write-Host "Scheduled tasks: $taskCount recorded"
 
 # -----------------------------------------------------------------------
 # 14. SSH - stage the whole ~/.ssh verbatim (private keys included). The entire
@@ -761,6 +959,26 @@ if (Test-Path $contactsSrc) {
     Add-Row 'Contacts' 'contacts_dir' '' '' 'No Contacts folder found (category placeholder)' -Phase 'post' -Scope 'User'
 }
 Write-Host "Contacts: $contactsCount file(s) staged"
+
+# NOTE: Fonts are intentionally NOT staged/migrated here (they bloat the archive --
+# e.g. the bundled CJK families alone are hundreds of MB). On Linux the user is
+# instead asked, manual-install style, for a directory of font files to install from.
+
+# -----------------------------------------------------------------------
+# 15c. WALLPAPER - stage the current desktop wallpaper image.
+# -----------------------------------------------------------------------
+$wpStaged = 0
+try {
+    $wp = (Get-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name 'WallPaper' -ErrorAction SilentlyContinue).WallPaper
+    if ($wp -and (Test-Path $wp)) {
+        $wpDst = Join-Path $stageRoot 'wallpaper'
+        New-Item -ItemType Directory -Force -Path $wpDst | Out-Null
+        Copy-Item -LiteralPath $wp -Destination (Join-Path $wpDst ([System.IO.Path]::GetFileName($wp))) -Force -ErrorAction SilentlyContinue
+        $wpStaged = 1
+    }
+} catch {}
+Add-Row 'Wallpaper' 'wallpaper_file' $(if ($wpStaged) { 'staged: migrated_user_data (encrypted archive)' } else { '' }) '' 'Linux: set org.gnome.desktop.background picture-uri' -Phase 'post' -Scope 'User'
+Write-Host "Wallpaper: $(if ($wpStaged) { 'staged' } else { 'none' })"
 
 # -----------------------------------------------------------------------
 # 16. ENCRYPT the staged personal data into ONE archive and remove the clear copy.
@@ -805,4 +1023,7 @@ Write-Host ""
 Write-Host "Settings extracted to: $OutputPath" -ForegroundColor Green
 Write-Host "Categories: $($configRows.Count) config rows written"
 Write-Host ""
-$configRows | ForEach-Object { Write-Host "  $($_.Category) / $($_.ConfigKey) = $($_.WindowsValue)" }
+# Full per-row dump only with -Verbose; otherwise the per-category counts above suffice.
+if ($Script:IsVerbose) {
+    $configRows | ForEach-Object { Write-Host "  $($_.Category) / $($_.ConfigKey) = $($_.WindowsValue)" }
+}
