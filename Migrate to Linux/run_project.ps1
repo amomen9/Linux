@@ -99,6 +99,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Forward -Verbose to the detection step ONLY when it was explicitly passed to this
+# script (not when merely inherited from the session's $VerbosePreference).
+$forwardVerbose = $PSBoundParameters.ContainsKey('Verbose')
+
 # ---------------------------------------------------------------------------
 # Resolve paths
 # ---------------------------------------------------------------------------
@@ -405,20 +409,14 @@ function Invoke-Step {
         [string] $StepLabel,
         [string] $ScriptPath,
         [string] $OutputPath,
-        [scriptblock] $ExtraArgs,
-        # Step 1 (Config) prints the project mega-title + the encryption-password prompt
-        # itself, which MUST be the very first thing on screen -- so its step banner is
-        # suppressed (otherwise the banner would appear before the title/prompt).
-        [switch] $SuppressBanner
+        [scriptblock] $ExtraArgs
     )
-    if (-not $SuppressBanner) {
-        $border = '=' * 70
-        Write-Host "`n$border" -ForegroundColor Cyan
-        Write-Host "  STEP: $StepLabel" -ForegroundColor Yellow
-        Write-Host "  Script: $ScriptPath" -ForegroundColor Gray
-        Write-Host "$border" -ForegroundColor Cyan
-        Write-Host ""
-    }
+    $border = '=' * 70
+    Write-Host "`n$border" -ForegroundColor Cyan
+    Write-Host "  STEP: $StepLabel" -ForegroundColor Yellow
+    Write-Host "  Script: $ScriptPath" -ForegroundColor Gray
+    Write-Host "$border" -ForegroundColor Cyan
+    Write-Host ""
 
     $childTokens = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $ScriptPath, '-OutputPath', $OutputPath)
 
@@ -461,15 +459,33 @@ function Invoke-Step {
 }
 
 # ---------------------------------------------------------------------------
+# MEGA-TITLE + transfer-password prompt -- shown FIRST, before any "STEP n/5"
+# section banner. run_project owns the prompt so it precedes every section title;
+# the answer is handed to step 1 (C_detect) via $env:MIGRATE_XFER_PWD.
+# ---------------------------------------------------------------------------
+$xferPromptShared = Join-Path $submodulesDir '_xfer_password.ps1'
+$xferPwd = ''
+if (Test-Path $xferPromptShared) {
+    . $xferPromptShared
+    Show-MegaTitle
+    if (-not $SkipDetection) { $xferPwd = Get-XferPassword -TimeoutSec 15 }
+}
+
+# ---------------------------------------------------------------------------
 # 1. CONFIG  - C_detect_windows_settings.ps1
 # ---------------------------------------------------------------------------
 if (-not $SkipDetection) {
     $configOutput = Join-Path $OutputDir 'C_windows_configs.csv'
+    # Hand the already-entered password to C_detect for this step only, then clear it
+    # so the later steps (B/A/D) don't inherit it in their environment.
+    $env:MIGRATE_XFER_PROMPTED = '1'
+    $env:MIGRATE_XFER_PWD = $xferPwd
     Invoke-Step -StepLabel '1/5  Config (Windows settings extraction)' `
                 -ScriptPath $scriptConfig `
                 -OutputPath $configOutput `
-                -SuppressBanner `
-                -ExtraArgs { if ($VerbosePreference -eq 'Continue') { '-Verbose' } }
+                -ExtraArgs { if ($forwardVerbose) { '-Verbose' } }
+    Remove-Item Env:\MIGRATE_XFER_PWD -ErrorAction SilentlyContinue
+    Remove-Item Env:\MIGRATE_XFER_PROMPTED -ErrorAction SilentlyContinue
 
     # -----------------------------------------------------------------------
     # 2. SOFTWARE  - B_detect_installed_windows_software.ps1

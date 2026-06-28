@@ -1308,24 +1308,24 @@ CFG_default_browser="edge"
 WIFI_DATA="$(cat <<'__WIFI_EOF__'
 eduroam	wpa		none
 somenet	open		none
-V.momen	wpa	U2FsdGVkX1/cKdXuTmYVCUSkuikGrfD0Xb7+KkGT0W0=	enc
+V.momen	wpa	U2FsdGVkX1/fgFbuBcFFFNv53zKjaoMyLXZNcI4kRcI=	enc
 Tbilisi Loves You	open		none
 Tbilisi Airport Free	open		none
 Simorgh-WiFi	open		none
-Shatel	wpa	U2FsdGVkX1+ehU50Be3pyugX9Gq9c/EtRwX+/4NysgM=	enc
-SHAW-48EE	wpa	U2FsdGVkX1+x5XKd58616xz5QIgjNW4WXHAMNqEvzm4=	enc
-Redmi Note 10 Pro Max	wpa	U2FsdGVkX19rBP7EWSQ15XjK+bM9Cz9UHetsZhp88go=	enc
-Parsway	wpa	U2FsdGVkX18+Qdl+CyOVV1RWGQ1DlHiD6cL1WYa43Dc=	enc
-NZT9930134C	wpa	U2FsdGVkX1+D6wkHJXIf02NnJC7JmLBosJCd2yXUNAw=	enc
+Shatel	wpa	U2FsdGVkX1/Je0VLA6iSOXCyOyD2cv5zKXuK6r4KiOI=	enc
+SHAW-48EE	wpa	U2FsdGVkX18mNBW9Rnra0ktEb6VltlvwmOoFUUppF4o=	enc
+Redmi Note 10 Pro Max	wpa	U2FsdGVkX19HvZfv/4AlLma72SxeXXgzJhxhpcaV+rg=	enc
+Parsway	wpa	U2FsdGVkX18cwxUJhBMPve0qjpCt9kIT1xYLigDGIIE=	enc
+NZT9930134C	wpa	U2FsdGVkX1+rnXP2eKCJD1TusUYPcb5jrLmjrLaJG4o=	enc
 Mofid-GoHyper!	open		none
-Jobvision-WiFi	wpa	U2FsdGVkX19aXkrQZeq/u5U3iUEs2qalgdO/6laX8Dk=	enc
-JobVision_DLink	wpa	U2FsdGVkX1+IHrU/Vi3yL0nVwYx10zw2PQ/2QuWehZo=	enc
-JobVision-3rd	wpa	U2FsdGVkX1+REHcqgFUNdGCmFHxZUWMxw77v2rlkh/4=	enc
-JobVision	wpa	U2FsdGVkX190dEXDrbOvaGwyXEdcwOydq+tKQ+eTJmQ=	enc
-Galaxy A51	wpa	U2FsdGVkX19X4+bvzN/YBxj74JQzVt++xM2x/F+Ruy4=	enc
-Fatemeh's Galaxy A71	wpa	U2FsdGVkX19Ou9VdPdbedC+6TKV7lSZZFnAYw0fpEOI=	enc
-AndroidAPA50	wpa	U2FsdGVkX18H0ElmuTcOLKib+LqIpFzydILSOo1u3tY=	enc
-DivorceHousing	wpa	U2FsdGVkX1966jwCuGV1NglOTnNs6BVcn7qmVj0ZUgDfkNefp/zWhHarHlxc5C0n	enc
+Jobvision-WiFi	wpa	U2FsdGVkX1+afS8uUFdVnpQkuGc5m6eTIFFVFOpcAnw=	enc
+JobVision_DLink	wpa	U2FsdGVkX1/jhwm7i2vnyM64H6wL1x2Yy0O60zaVLMk=	enc
+JobVision-3rd	wpa	U2FsdGVkX18I9JWo+u5sGAK8zNNt3hOXWoMLREVqO7c=	enc
+JobVision	wpa	U2FsdGVkX19FsHahcFfmA4WnMoKhQrA/MscEnmb0ULw=	enc
+Galaxy A51	wpa	U2FsdGVkX1/a7AP3IeYpbBRZE8PLGzGqZ1TRW4Rqb/Q=	enc
+Fatemeh's Galaxy A71	wpa	U2FsdGVkX1+Pe5GVLnb8oavxbo1DZzRJ/ixP2e/pLws=	enc
+AndroidAPA50	wpa	U2FsdGVkX1/08FuE8scV6kAyqhWvNH80OIcQys6wf40=	enc
+DivorceHousing	wpa	U2FsdGVkX19Tzazbc7kVL+p0iNdzRa8HCmjy7EjQeTfrIKnr+6+tSyPVh2Yy73qP	enc
 __WIFI_EOF__
 )"
 
@@ -2110,8 +2110,6 @@ Hotspot Shield VPN - Wifi Proxy	Outbound	Allow	True	Any	Any
 Hotspot Shield VPN - Wifi Proxy	Inbound	Allow	True	Any	Any
 OfficePushNotificationsUtility	Outbound	Allow	True	Any	Any
 Microsoft.Office.ActionsServer	Outbound	Allow	True	Any	Any
-Windows Media Player	Outbound	Allow	True	Any	Any
-Windows Media Player	Inbound	Allow	True	Any	Any
 Store Experience Host	Outbound	Allow	True	Any	Any
 Store Experience Host	Inbound	Allow	True	Any	Any
 Get Help	Outbound	Allow	True	Any	Any
@@ -2149,7 +2147,6 @@ Windows Feature Experience Pack	Inbound	Allow	True	Any	Any
 Windows Feature Experience Pack	Outbound	Allow	True	Any	Any
 Windows Feature Experience Pack	Outbound	Allow	True	Any	Any
 Windows Feature Experience Pack	Inbound	Allow	True	Any	Any
-Windows Web Experience Pack	Outbound	Allow	True	Any	Any
 Windows Subsystem for Linux	Outbound	Allow	True	Any	Any
 Microsoft Edge (mDNS-In)	Inbound	Allow	True	UDP	5353
 Start Experiences App	Outbound	Allow	True	Any	Any
@@ -2229,8 +2226,10 @@ Microsoft 365 Copilot	Inbound	Allow	True	Any	Any
 PowerToys.MouseWithoutBorders	Inbound	Allow	True	Any	Any
 PowerToys.SparseApp	Outbound	Allow	True	Any	Any
 Microsoft Edge (mDNS-In)	Inbound	Allow	True	UDP	5353
-NordVPN Meshnet Service	Inbound	Allow	True	UDP	Any
-NordVPN Meshnet Service	Outbound	Allow	True	UDP	Any
+Windows Media Player	Outbound	Allow	True	Any	Any
+Windows Media Player	Inbound	Allow	True	Any	Any
+Windows Web Experience Pack	Outbound	Allow	True	Any	Any
+Microsoft Edge (mDNS-In)	Inbound	Allow	True	UDP	5353
 __FW_EOF__
 )"
 
@@ -2350,7 +2349,7 @@ Lenovo Professional Ultraslim Wireless Combo Gen2 OSD task	User	onlogon	Ultrasli
 Firefox Default Browser Agent 308046B0AF4A39CB	User	daily,13,49	default-browser-agent
 Autorun for Ali	User	onlogon	PowerToys
 SoftLandingCreativeManagementTask	User	unsupported	
-SoftLandingDeferralTask-{b2c0abde-7201-4e71-821c-1f9ede688522}	User	daily,12,32	
+SoftLandingDeferralTask-{71575cbf-db55-4a73-b13f-ce73b7964e58}	User	daily,02,32	
 __TK_EOF__
 )"
 
@@ -2380,7 +2379,7 @@ VMware Network Adapter VMnet11	192.168.171.1
 VMware Network Adapter VMnet12	172.23.124.1		
 vEthernet (Default Switch)	172.26.0.1		
 vEthernet (WSL (Hyper-V firewall))	172.18.80.1		
-NordLynx	10.5.0.2	10.5.0.1	103.86.96.100,103.86.99.100
+NordLynx	10.5.0.2		
 Wi-Fi 2		10.112.63.254 1.1.1.1	10.112.10.254,10.112.11.254
 __NE_EOF__
 )"

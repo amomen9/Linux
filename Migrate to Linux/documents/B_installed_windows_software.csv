@@ -113,4 +113,4 @@
 "Windows Notepad","11.2604.5.0","Microsoft Corporation","Store","Native Alternative","GNOME Text Editor / gedit (install: apt)","70","Free (FOSS)","yes","No, manual transfer","Native (APT package)","https://apps.gnome.org/TextEditor/"
 "Windows Store","22605.1401.13.0","Microsoft Corporation","Store","Native Alternative","GNOME Software / KDE Discover (install: apt)","70","Free (FOSS)","yes","No, manual transfer","Native (APT package)","https://apps.gnome.org/Software/"
 "Windows Terminal","1.24.11321.0","Microsoft Corporation","Store","Native Alternative","GNOME Console / GNOME Terminal (install: apt)","70","Free (FOSS)","yes","No, manual transfer","Native (APT package)","https://apps.gnome.org/Console/"
-"Zune Music","11.2604.10.0","Microsoft Corporation","Store","Native Alternative","Rhythmbox (install: apt)","70","Free (FOSS)","yes","No, manual transfer","Native (APT package)","https://wiki.gnome.org/Apps/Rhythmbox"
+"Zune Music","11.2605.14.0","Microsoft Corporation","Store","Native Alternative","Rhythmbox (install: apt)","70","Free (FOSS)","yes","No, manual transfer","Native (APT package)","https://wiki.gnome.org/Apps/Rhythmbox"

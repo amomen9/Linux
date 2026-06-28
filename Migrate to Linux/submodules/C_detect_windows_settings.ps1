@@ -60,24 +60,25 @@ if (-not $OutputPath) {
 }
 
 # =======================================================================
-#  PROJECT MEGA-TITLE -- printed FIRST, before anything else.
+#  TRANSFER PASSWORD
+#  When launched by run_project.ps1 the mega-title + password prompt have ALREADY
+#  been shown (before the "STEP n/5" banners) and the answer is handed over via
+#  $env:MIGRATE_XFER_PWD. When run standalone we show the title + prompt here.
+#  The password protects every exported secret (WiFi passwords AND SSH private keys
+#  / the personal-data archive).
 # =======================================================================
-Write-Host ''
-Write-Host '  ###########################################################' -ForegroundColor Cyan
-Write-Host '  ##                                                       ##' -ForegroundColor Cyan
-Write-Host '  ##            M I G R A T E   T O   L I N U X             ##' -ForegroundColor Cyan
-Write-Host '  ##        Windows  ->  Linux   Migration  Toolkit         ##' -ForegroundColor Cyan
-Write-Host '  ##                                                       ##' -ForegroundColor Cyan
-Write-Host '  ###########################################################' -ForegroundColor Cyan
-Write-Host ''
+# Shared mega-title + prompt helpers (Show-MegaTitle / Get-XferPassword).
+$xferPromptShared = Join-Path $PSScriptRoot '_xfer_password.ps1'
+if (Test-Path $xferPromptShared) { . $xferPromptShared }
 
-# =======================================================================
-#  TRANSFER-PASSWORD PROMPT -- the SECOND thing shown (right after the title).
-#  One password protects every exported secret (WiFi passwords AND SSH private
-#  keys / the personal-data archive). 15-second IDLE timeout (resets on each
-#  keystroke); a timeout -- or an empty answer -- counts as SKIPPED: WiFi is
-#  exported without passwords and personal data is not migrated.
-# =======================================================================
+if ($env:MIGRATE_XFER_PROMPTED -eq '1') {
+    $xferPwd = [string]$env:MIGRATE_XFER_PWD          # already prompted by run_project
+} elseif (Get-Command Get-XferPassword -ErrorAction SilentlyContinue) {
+    Show-MegaTitle
+    $xferPwd = Get-XferPassword -TimeoutSec 15
+} else {
+    $xferPwd = ''
+}
 
 # Locate openssl on Windows so secrets can be encrypted in the exact OpenSSL
 # "Salted__"/PBKDF2 format that apply_settings.sh decrypts (install on demand).
@@ -103,110 +104,6 @@ function Resolve-OpenSSL {
     return $null
 }
 
-# Live countdown bar: own line above the prompt, updates each second, resets on every
-# keystroke. Twice as big -- 2 '#' per second (two are removed each second).
-$Script:ShowTimer = {
-    param([int]$secs, [int]$row, [int]$total)
-    $cl = [Console]::CursorLeft; $ct = [Console]::CursorTop
-    try {
-        [Console]::SetCursorPosition(0, $row)
-        $w = $total * 2
-        $fill = [math]::Max(0, [math]::Min($w, $secs * 2))
-        $bar = ('#' * $fill).PadRight($w, '-')
-        $col = if ($secs -le 5) { 'Red' } else { 'DarkYellow' }
-        Write-Host -NoNewline ("  Time left: {0,2}s  [{1}]   " -f $secs, $bar) -ForegroundColor $col
-        [Console]::SetCursorPosition($cl, $ct)
-    } catch {}
-}
-$Script:ClearTimer = {
-    param([int]$row)
-    $cl = [Console]::CursorLeft; $ct = [Console]::CursorTop
-    try {
-        [Console]::SetCursorPosition(0, $row)
-        Write-Host -NoNewline (' ' * ([Console]::WindowWidth - 1))
-        [Console]::SetCursorPosition($cl, $ct)
-    } catch {}
-}
-# Read a masked ('*') line with an IDLE timeout + live countdown. Returns a hashtable
-# @{ Value; Status } where Status is 'ok' | 'empty' | 'timeout' | 'noconsole'.
-function Read-HostTimed {
-    param([string]$Prompt, [int]$TimeoutSec = 15)
-    try { $null = [Console]::KeyAvailable } catch {
-        Write-Host -NoNewline $Prompt; Write-Host ''
-        return @{ Value = ''; Status = 'noconsole' }
-    }
-    $sb = New-Object System.Text.StringBuilder
-    $deadline = (Get-Date).AddSeconds($TimeoutSec)
-    $lastShown = -1
-    Write-Host ''                          # this blank line becomes the live countdown
-    $timerRow = [Console]::CursorTop - 1
-    Write-Host -NoNewline $Prompt
-    while ($true) {
-        $remaining = [int][math]::Ceiling((($deadline) - (Get-Date)).TotalSeconds)
-        if ($remaining -lt 0) { $remaining = 0 }
-        if ($remaining -ne $lastShown) { & $Script:ShowTimer $remaining $timerRow $TimeoutSec; $lastShown = $remaining }
-        if ($remaining -le 0) {
-            & $Script:ClearTimer $timerRow; Write-Host ''
-            return @{ Value = ''; Status = 'timeout' }
-        }
-        if ([Console]::KeyAvailable) {
-            $k = [Console]::ReadKey($true)
-            $deadline = (Get-Date).AddSeconds($TimeoutSec)   # idle timer resets on each keystroke
-            if ($k.Key -eq 'Enter') {
-                & $Script:ClearTimer $timerRow; Write-Host ''
-                $v = $sb.ToString()
-                if ($v -eq '') { return @{ Value = ''; Status = 'empty' } }
-                return @{ Value = $v; Status = 'ok' }
-            }
-            elseif ($k.Key -eq 'Backspace') {
-                if ($sb.Length -gt 0) { [void]$sb.Remove($sb.Length - 1, 1); Write-Host -NoNewline "`b `b" }
-            }
-            elseif ($k.KeyChar) { [void]$sb.Append($k.KeyChar); Write-Host -NoNewline '*' }   # masked
-        } else {
-            Start-Sleep -Milliseconds 100
-        }
-    }
-}
-
-# Prompt for the transfer password: HIDDEN entry + a "Confirm password:" re-entry,
-# with the idle timeout/countdown. Prints the right Warning! for each skip reason and
-# returns '' when skipped (empty / timeout / non-interactive).
-function Get-XferPassword {
-    param([int]$TimeoutSec = 15)
-    $first = Read-HostTimed -Prompt "Enter a password to ENCRYPT exported sensitive data -- Ex: Known WiFi Networks passwords, SSH private keys, etc.`n(Enter to skip; auto-skips after 15s idle): " -TimeoutSec $TimeoutSec
-    switch ($first.Status) {
-        'empty' {
-            Write-Host '  (empty password -> skipped)'
-            Write-Host '  Warning! You skipped entering a password. Sensitive data (WiFi, ssh pvt keys, etc) will not be migrated.' -ForegroundColor Yellow
-            return '' }
-        'timeout' {
-            Write-Host '  (no input within the time limit -> treated as empty / skipped)'
-            Write-Host '  Warning! Password entry timed out. Sensitive data (WiFi, ssh pvt keys, etc) will not be migrated.' -ForegroundColor Yellow
-            return '' }
-        'noconsole' {
-            Write-Host '  (non-interactive: no password entered -> treated as empty / skipped)'
-            Write-Host '  Warning! no password could be entered. Sensitive data (WiFi, ssh pvt keys, etc) will not be migrated.' -ForegroundColor Yellow
-            return '' }
-    }
-    while ($true) {
-        $confirm = Read-HostTimed -Prompt "Confirm password: " -TimeoutSec $TimeoutSec
-        if ($confirm.Status -eq 'ok' -and $confirm.Value -eq $first.Value) {
-            Write-Host ("  password set! " + [char]0x2705) -ForegroundColor Green
-            Write-Host ''
-            return $first.Value
-        }
-        switch ($confirm.Status) {
-            'timeout' {
-                Write-Host '  (no input within the time limit -> treated as empty / skipped)'
-                Write-Host '  Warning! Password entry timed out. Sensitive data (WiFi, ssh pvt keys, etc) will not be migrated.' -ForegroundColor Yellow
-                return '' }
-            'noconsole' { return '' }
-            default { Write-Host '  Passwords did not match -- please confirm again.' -ForegroundColor Yellow }
-        }
-    }
-}
-
-$xferPwd = Get-XferPassword -TimeoutSec 15
 $opensslExe = $null
 if ($xferPwd) {
     $opensslExe = Resolve-OpenSSL
@@ -232,9 +129,14 @@ function Safe-Property { param($Obj, [string] $Name, $Default = $null); try { $O
 
 # --verbose / -v (the built-in CmdletBinding -Verbose switch) -> list every item's
 # name per category; otherwise just print the count + a hint. (Task 15)
-$Script:IsVerbose = ($VerbosePreference -ne 'SilentlyContinue')
-# ...then silence cmdlet verbose so -Verbose lists OUR items, not CIM/WMI chatter.
-$VerbosePreference = 'SilentlyContinue'
+# Use the EXPLICITLY-BOUND parameter (not $VerbosePreference, which can be inherited
+# from the session and would wrongly enable verbose when -Verbose was never passed).
+$Script:IsVerbose = $PSBoundParameters.ContainsKey('Verbose')
+# ...then silence cmdlet/module verbose so -Verbose lists OUR items, not CIM/WMI chatter
+# (incl. the NetSecurity module-import + per-rule flood from Get-NetFirewallRule). Must
+# be GLOBAL: module imports/cmdlets read the global preference, so a script-scoped
+# override would not suppress them when the session inherited a verbose preference.
+$global:VerbosePreference = 'SilentlyContinue'
 function Write-ExportSummary { param([string]$Title, $Names)
     $arr = @($Names | Where-Object { $_ })
     Write-Host ''
@@ -843,10 +745,13 @@ Write-Host "WiFi: $wifiCount profile(s) exported ($wifiMode)"
 # -----------------------------------------------------------------------
 $fwCount = 0
 try {
-    $rules = Get-NetFirewallRule -ErrorAction SilentlyContinue
+    # -Verbose:$false stops these module cmdlets from streaming per-rule verbose lines
+    # when the SESSION's $VerbosePreference is set (module cmdlets read the global
+    # preference, which a script-scoped override does not change).
+    $rules = Get-NetFirewallRule -ErrorAction SilentlyContinue -Verbose:$false
     foreach ($r in $rules) {
         $pf = $null
-        try { $pf = $r | Get-NetFirewallPortFilter -ErrorAction SilentlyContinue } catch {}
+        try { $pf = $r | Get-NetFirewallPortFilter -ErrorAction SilentlyContinue -Verbose:$false } catch {}
         $proto = if ($pf) { [string]$pf.Protocol } else { '' }
         $port  = if ($pf -and $pf.LocalPort) { (@($pf.LocalPort) -join ',') } else { '' }
         $packed = (@($r.DisplayName, $r.Direction, $r.Action, $r.Enabled, $proto, $port) | ForEach-Object { ([string]$_ -replace '\|', ' ') }) -join '|'
@@ -1132,4 +1037,7 @@ Write-Host ""
 Write-Host "Settings extracted to: $OutputPath" -ForegroundColor Green
 Write-Host "Categories: $($configRows.Count) config rows written"
 Write-Host ""
-$configRows | ForEach-Object { Write-Host "  $($_.Category) / $($_.ConfigKey) = $($_.WindowsValue)" }
+# Full per-row dump only with -Verbose; otherwise the per-category counts above suffice.
+if ($Script:IsVerbose) {
+    $configRows | ForEach-Object { Write-Host "  $($_.Category) / $($_.ConfigKey) = $($_.WindowsValue)" }
+}
