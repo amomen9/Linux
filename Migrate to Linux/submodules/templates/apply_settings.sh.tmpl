@@ -551,13 +551,13 @@ apply_firewall() {
     [ -z "$port" ] && { mark_manual "fw: $name" "no local port; not portable to $backend"; continue; }
     case "$backend" in
       ufw)
-        if [ "$enabled" != "True" ]; then mark_skip "fw: $name" "disabled rule (ufw cannot store disabled rules)"; continue; fi
+        if [ "$enabled" != "True" ]; then record_line LOG "fw: $name" "disabled on Windows - not migrated"; continue; fi
         local verb="allow"; [ "$action" = "Block" ] && verb="deny"
         local dirflag="in"; case "$dirl" in *out*) dirflag="out" ;; esac
         if capture ufw "$verb" "$dirflag" "${port}/${lproto}"; then mark_set "fw: $name ($verb $dirflag ${port}/${lproto})"
         else mark_fail "fw: $name" "${LAST_ERR:-ufw rejected the rule}"; fi ;;
       firewalld)
-        if [ "$enabled" != "True" ]; then mark_skip "fw: $name" "disabled on Windows - not migrated (logged only)"; continue; fi
+        if [ "$enabled" != "True" ]; then record_line LOG "fw: $name" "disabled on Windows - not migrated"; continue; fi
         local fwaction="accept"; [ "$action" = "Block" ] && fwaction="reject"
         local rich="rule family=\"ipv4\" port port=\"${port}\" protocol=\"${lproto}\" ${fwaction}"
         if firewall-cmd --permanent --query-rich-rule="$rich" >/dev/null 2>&1; then

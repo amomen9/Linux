@@ -494,6 +494,15 @@ Error handling:
 - Individual file copy failures → skip that file, continue with the rest.
 - No tty (non-interactive environment) → skip silently.
 
+### Custom post-install commands
+
+Any app can carry **custom commands that run right after it installs**, declared once in the manifest as an `install.postInstall` array (a list of shell snippets). The generator emits them and the installer runs them **as the logged-in desktop user** (so `gsettings`/`dconf` and other per-user settings take effect) **only when the app was actually installed this run** - a failing command is reported but never fails the install. For example, **CopyQ** uses this to bind **Win+V (Super+V)** as the shortcut that opens its clipboard-history viewer, reproducing the Windows clipboard‑history key.
+
+### Natively-available apps and always-included helpers
+
+- **Apps Microsoft (and others) also ship for Linux** install as the **same app, natively** - e.g. **Microsoft SQL Server**: if it ran on the **host OS** on Windows it is installed natively from Microsoft's official repo (`mssql-server`, x86_64, Ubuntu/RHEL/SLES); if it ran as a **Docker container** it is recreated as a container by the Docker rebuild step. The two paths can't double‑install because they're chosen by how the app was detected.
+- **Linux-only helpers you always want** can be marked `"forceInclude": true` in the manifest so they install **even though no matching Windows app exists to detect**. **CopyQ** (the clipboard manager that replaces the Windows Win+V history) is included this way.
+
 ### Windows-only apps under Wine (the Windows emulator)
 
 For apps with no native Linux build, the installer can **also install the original Windows program under Wine** if you answer **yes** to the last setup question, *"Install the non-cross-platform Windows applications under the Windows emulator (wine) too?"*

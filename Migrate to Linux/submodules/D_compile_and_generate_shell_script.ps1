@@ -128,6 +128,12 @@ function New-InstallCall {
     Add-Flag $parts '--docker' (Get-Prop $Install 'dockerImage')
     Add-Flag $parts '--github' (Get-Prop $Install 'githubRepo')
     Add-Flag $parts '--note'   (Get-Prop $Install 'note')
+
+    # Custom post-install commands (install.postInstall: string or array of shell snippets).
+    # Emitted as one --post 'CMD' per command; install_app runs them after a successful install.
+    $post = Get-Prop $Install 'postInstall'
+    if ($post) { foreach ($c in @($post)) { if ([string]$c -ne '') { Add-Flag $parts '--post' ([string]$c) } } }
+
     if (Get-Prop $Install 'security') { $parts.Add('--security') }
     if ($Paid) { $parts.Add('--paid') }
 
@@ -355,8 +361,20 @@ $manualLines = New-Object System.Collections.Generic.List[string]
 $emittedNames = New-Object System.Collections.Generic.HashSet[string]
 $enriched = 0; $fallback = 0
 
+# Force-included manifest apps: emitted even when NOT detected on Windows (e.g. a Linux-only
+# helper the user always wants, like a clipboard manager). Opt-in via "forceInclude": true
+# on the manifest entry; purely additive, so detection-driven selection is unchanged for
+# every other app. De-duped against detected apps by normalised name.
+foreach ($app in $apps) {
+    if ([string](Get-Prop $app 'forceInclude') -match '^(?i)(true|yes|1)$') {
+        $key = ([string](Get-Prop $app 'name')).ToLowerInvariant()
+        if ($selectedKeys.Add($key)) { $selectedApps.Add($app) }
+    }
+}
+
 # Emit ONLY the detected apps (the union half coming from B_installed_windows_software.csv,
-# matched to manifest entries above). The Additional CSV adds the other union half below.
+# matched to manifest entries above) plus any forceInclude apps. The Additional CSV adds
+# the other union half below.
 foreach ($app in $selectedApps) {
     # Collect all mustInclude alternatives, ranked best-first by competency.
     $mustAlts = @()

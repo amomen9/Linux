@@ -462,6 +462,40 @@ open_url() {  # open_url URL
   fi
 }
 
+# Run a command as the logged-in desktop user with their D-Bus session / runtime dir wired
+# up (per-user things like gsettings/dconf need this). Mirrors apply_settings.sh's helper
+# so install_app's post-install commands can touch the user's desktop. No-op of escalation
+# when already running as that user.
+run_as_user() {  # run_as_user CMD [ARGS...]
+  local uid; uid="$(id -u "$TARGET_USER" 2>/dev/null)"
+  if [ "$(id -u)" -eq 0 ] && [ "$TARGET_USER" != "root" ]; then
+    sudo -u "$TARGET_USER" \
+      DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/${uid}/bus" \
+      XDG_RUNTIME_DIR="/run/user/${uid}" DISPLAY="${DISPLAY:-:0}" "$@"
+  else
+    DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/${uid}/bus}" \
+      XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/${uid}}" DISPLAY="${DISPLAY:-:0}" "$@"
+  fi
+}
+
+# Run an app's custom post-install commands (from the manifest's install.postInstall),
+# best-effort, as the logged-in user, right after the app was successfully installed.
+# Each command is a self-contained shell snippet; a failing one is reported but never
+# fails the install. No-op in dry-run / with no commands.
+run_post_install() {  # run_post_install NAME CMD [CMD...]
+  local name="$1"; shift
+  is_dry_run && return 0
+  [ "$#" -gt 0 ] || return 0
+  local cmd rc=0
+  info "applying custom post-install setup for $name ..."
+  for cmd in "$@"; do
+    [ -n "$cmd" ] || continue
+    run_as_user bash -lc "$cmd" >/dev/null 2>&1 || { rc=1; warn "a post-install command for $name did not complete (continuing): $cmd"; }
+  done
+  [ "$rc" -eq 0 ] && ok "custom post-install setup applied for $name"
+  return 0
+}
+
 webapp_desktop() {  # webapp_desktop "Name" "URL" [ALT] [LAUNCH]
   local name="$1" url="$2" alt="${3:-}" launch="${4:-}" browser appdir desktop slug
   browser="$(detect_browser)" || { mark_manual "${alt:-$name}" "no browser found for web-app shortcut ($url)"; return 1; }
@@ -529,8 +563,10 @@ install_native_version() {  # install_native_version PKG WINVER
 #                --arch "x86_64 aarch64"
 #  Methods: flatpak | native | snap | webapp | docker | wine-bottles |
 #           deb-url | github-deb | manual
+#  Custom post-install commands (manifest install.postInstall) are passed as repeated
+#  --post 'CMD' flags; the public install_app wrapper below runs them after a success.
 # =============================================================================
-install_app() {
+_install_app_core() {
   local name="" alt="" method="" flatpak="" snap_pkg="" arch_list="" winver="" is_security=0 is_paid=0
   local apt="" dnf="" zypper="" pacman="" launch=""
   local url_x86="" url_arm="" url_deb="" url_rpm="" webapp_url="" docker_image="" github_repo="" note=""
@@ -731,6 +767,26 @@ install_app() {
   else
     err "no available package manager could install it"
     manual_fallback "$name" "$alt" "$note" "$webapp_url$url_x86$github_repo" "$launch"
+  fi
+}
+
+# Public entry point. Pulls out any --post 'CMD' flags (custom commands to run right after
+# this app installs), delegates the install to _install_app_core, then -- ONLY if the app
+# was freshly installed this run (a new OK was recorded) -- runs those commands as the
+# logged-in user. Everything else is unchanged, so apps without postInstall behave exactly
+# as before.
+install_app() {
+  local -a _post=() _args=()
+  local _name=""
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" = "--post" ]; then _post+=("$2"); shift 2; continue; fi
+    [ "$1" = "--name" ] && _name="$2"
+    _args+=("$1"); shift
+  done
+  local _ok_before=${#OK_LIST[@]}
+  _install_app_core "${_args[@]}"
+  if [ "${#_post[@]}" -gt 0 ] && [ "${#OK_LIST[@]}" -gt "$_ok_before" ]; then
+    run_post_install "$_name" "${_post[@]}"
   fi
 }
 
@@ -1487,6 +1543,7 @@ repo_setup_nodejs() {
   app_alt 1 install_app --name "Windows Store" --alt "GNOME Software / KDE Discover" --method native --apt "gnome-software" --dnf "gnome-software" --pacman "gnome-software" --note "KDE: plasma-discover"
   app_alt 1 install_app --name "Windows Terminal" --alt "GNOME Console / GNOME Terminal" --method native --apt "gnome-terminal" --dnf "gnome-terminal" --pacman "gnome-terminal" --note "or 'kgx' (GNOME Console)"
   app_alt 1 install_app --name "Zune Music / Windows Media Player" --alt "Rhythmbox" --method flatpak --flatpak "org.gnome.Rhythmbox" --apt "rhythmbox" --dnf "rhythmbox" --pacman "rhythmbox"
+  app_alt 1 install_app --name "CopyQ" --alt "CopyQ" --method native --flatpak "com.github.hluk.copyq" --apt "copyq" --dnf "copyq" --zypper "copyq" --pacman "copyq" --arch "x86_64 aarch64" --note "Binds Win+V (Super+V) as the shortcut to open CopyQ's clipboard history viewer (GNOME / GNOME-based desktops via gsettings)." --post "b=/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/copyq/; base=org.gnome.settings-daemon.plugins.media-keys; list=\$(gsettings get \$base custom-keybindings 2>/dev/null); case \"\$list\" in *copyq*) : ;; *) if [ -z \"\$list\" ] || [ \"\$list\" = \"@as []\" ] || [ \"\$list\" = \"[]\" ]; then list=\"['\$b']\"; else list=\"\${list%]}, '\$b']\"; fi; gsettings set \$base custom-keybindings \"\$list\" ;; esac; k=\"\$base.custom-keybinding:\$b\"; gsettings set \"\$k\" name 'CopyQ Clipboard History'; gsettings set \"\$k\" command 'copyq toggle'; gsettings set \"\$k\" binding '<Super>v'"
   install_app --name "Adobe Acrobat Pro" --alt "Stirling PDF (Docker) + PDF Arranger (APT)" --method manual --url-x86 "https://github.com/Stirling-Tools/Stirling-PDF" --note "Stirling PDF (Docker) + PDF Arranger (APT) | stirlingtools.com (Docker Hub); pdfarranger (APT)"
   install_app --name "Advanced IP Scanner" --alt "Angry IP Scanner (.deb)" --method manual --url-x86 "https://angryip.org/download/" --note "Angry IP Scanner (.deb) | angryip.org"
   install_app --name "Advanced Port Scanner" --alt "RustScan + nmap + Zenmap" --method manual --url-x86 "https://github.com/RustScan/RustScan" --note "RustScan + nmap + Zenmap | github.com/RustScan/RustScan; nmap.org"

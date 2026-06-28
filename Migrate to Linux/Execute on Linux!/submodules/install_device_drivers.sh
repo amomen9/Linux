@@ -463,6 +463,40 @@ open_url() {  # open_url URL
   fi
 }
 
+# Run a command as the logged-in desktop user with their D-Bus session / runtime dir wired
+# up (per-user things like gsettings/dconf need this). Mirrors apply_settings.sh's helper
+# so install_app's post-install commands can touch the user's desktop. No-op of escalation
+# when already running as that user.
+run_as_user() {  # run_as_user CMD [ARGS...]
+  local uid; uid="$(id -u "$TARGET_USER" 2>/dev/null)"
+  if [ "$(id -u)" -eq 0 ] && [ "$TARGET_USER" != "root" ]; then
+    sudo -u "$TARGET_USER" \
+      DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/${uid}/bus" \
+      XDG_RUNTIME_DIR="/run/user/${uid}" DISPLAY="${DISPLAY:-:0}" "$@"
+  else
+    DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/${uid}/bus}" \
+      XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/${uid}}" DISPLAY="${DISPLAY:-:0}" "$@"
+  fi
+}
+
+# Run an app's custom post-install commands (from the manifest's install.postInstall),
+# best-effort, as the logged-in user, right after the app was successfully installed.
+# Each command is a self-contained shell snippet; a failing one is reported but never
+# fails the install. No-op in dry-run / with no commands.
+run_post_install() {  # run_post_install NAME CMD [CMD...]
+  local name="$1"; shift
+  is_dry_run && return 0
+  [ "$#" -gt 0 ] || return 0
+  local cmd rc=0
+  info "applying custom post-install setup for $name ..."
+  for cmd in "$@"; do
+    [ -n "$cmd" ] || continue
+    run_as_user bash -lc "$cmd" >/dev/null 2>&1 || { rc=1; warn "a post-install command for $name did not complete (continuing): $cmd"; }
+  done
+  [ "$rc" -eq 0 ] && ok "custom post-install setup applied for $name"
+  return 0
+}
+
 webapp_desktop() {  # webapp_desktop "Name" "URL" [ALT] [LAUNCH]
   local name="$1" url="$2" alt="${3:-}" launch="${4:-}" browser appdir desktop slug
   browser="$(detect_browser)" || { mark_manual "${alt:-$name}" "no browser found for web-app shortcut ($url)"; return 1; }
@@ -530,8 +564,10 @@ install_native_version() {  # install_native_version PKG WINVER
 #                --arch "x86_64 aarch64"
 #  Methods: flatpak | native | snap | webapp | docker | wine-bottles |
 #           deb-url | github-deb | manual
+#  Custom post-install commands (manifest install.postInstall) are passed as repeated
+#  --post 'CMD' flags; the public install_app wrapper below runs them after a success.
 # =============================================================================
-install_app() {
+_install_app_core() {
   local name="" alt="" method="" flatpak="" snap_pkg="" arch_list="" winver="" is_security=0 is_paid=0
   local apt="" dnf="" zypper="" pacman="" launch=""
   local url_x86="" url_arm="" url_deb="" url_rpm="" webapp_url="" docker_image="" github_repo="" note=""
@@ -732,6 +768,26 @@ install_app() {
   else
     err "no available package manager could install it"
     manual_fallback "$name" "$alt" "$note" "$webapp_url$url_x86$github_repo" "$launch"
+  fi
+}
+
+# Public entry point. Pulls out any --post 'CMD' flags (custom commands to run right after
+# this app installs), delegates the install to _install_app_core, then -- ONLY if the app
+# was freshly installed this run (a new OK was recorded) -- runs those commands as the
+# logged-in user. Everything else is unchanged, so apps without postInstall behave exactly
+# as before.
+install_app() {
+  local -a _post=() _args=()
+  local _name=""
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" = "--post" ]; then _post+=("$2"); shift 2; continue; fi
+    [ "$1" = "--name" ] && _name="$2"
+    _args+=("$1"); shift
+  done
+  local _ok_before=${#OK_LIST[@]}
+  _install_app_core "${_args[@]}"
+  if [ "${#_post[@]}" -gt 0 ] && [ "${#OK_LIST[@]}" -gt "$_ok_before" ]; then
+    run_post_install "$_name" "${_post[@]}"
   fi
 }
 

@@ -8459,7 +8459,45 @@
                                                                   "note":  "Official Microsoft SQL Server engine for Linux (x86_64 only; Ubuntu/RHEL/SLES - not on Arch). After the package installs, finish setup as root:  sudo ACCEPT_EULA=Y MSSQL_PID=Developer MSSQL_SA_PASSWORD=\u0027YourStrong!Passw0rd\u0027 /opt/mssql/bin/mssql-conf -n setup  then  sudo systemctl enable --now mssql-server . Restore your databases from their .bak backups. A containerised SQL Server on Windows is migrated by the Docker rebuild step instead."
                                                               }
                                               },
-                             "installedVersion":  "16.0",
+                             "installedVersion":  "",
+                             "installedEdition":  ""
+                         },
+                         {
+                             "name":  "CopyQ",
+                             "version":  "N/A (Linux clipboard manager)",
+                             "publisher":  "Lukas Holecek",
+                             "sourceType":  "Linux",
+                             "linuxAvailability":  "Available on Linux",
+                             "destType":  "Native",
+                             "forceInclude":  true,
+                             "review":  true,
+                             "alternatives":  {
+                                                  "name":  "CopyQ",
+                                                  "competency":  "100",
+                                                  "pricingModel":  "Free (FOSS)",
+                                                  "mustInclude":  "yes",
+                                                  "canSync":  "No, manual transfer",
+                                                  "notes":  "Advanced clipboard manager with searchable history - the best Linux replacement for the Windows clipboard history (Win+V). Always installed (forceInclude) because it has no Windows counterpart to be detected. Installed natively (copyq) or from Flathub.",
+                                                  "installMethod":  "apt",
+                                                  "appType":  "Native (APT package)",
+                                                  "downloadUrl":  "https://flathub.org/apps/com.github.hluk.copyq",
+                                                  "install":  {
+                                                                  "method":  "native",
+                                                                  "flatpakId":  "com.github.hluk.copyq",
+                                                                  "arch":  "x86_64 aarch64",
+                                                                  "native":  {
+                                                                                 "apt":  "copyq",
+                                                                                 "dnf":  "copyq",
+                                                                                 "zypper":  "copyq",
+                                                                                 "pacman":  "copyq"
+                                                                             },
+                                                                  "postInstall":  [
+                                                                                      "b=/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/copyq/; base=org.gnome.settings-daemon.plugins.media-keys; list=$(gsettings get $base custom-keybindings 2\u003e/dev/null); case \"$list\" in *copyq*) : ;; *) if [ -z \"$list\" ] || [ \"$list\" = \"@as []\" ] || [ \"$list\" = \"[]\" ]; then list=\"[\u0027$b\u0027]\"; else list=\"${list%]}, \u0027$b\u0027]\"; fi; gsettings set $base custom-keybindings \"$list\" ;; esac; k=\"$base.custom-keybinding:$b\"; gsettings set \"$k\" name \u0027CopyQ Clipboard History\u0027; gsettings set \"$k\" command \u0027copyq toggle\u0027; gsettings set \"$k\" binding \u0027\u003cSuper\u003ev\u0027"
+                                                                                  ],
+                                                                  "note":  "Binds Win+V (Super+V) as the shortcut to open CopyQ\u0027s clipboard history viewer (GNOME / GNOME-based desktops via gsettings)."
+                                                              }
+                                              },
+                             "installedVersion":  "",
                              "installedEdition":  ""
                          },
                          {

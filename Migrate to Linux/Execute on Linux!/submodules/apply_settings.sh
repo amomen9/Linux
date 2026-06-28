@@ -462,6 +462,40 @@ open_url() {  # open_url URL
   fi
 }
 
+# Run a command as the logged-in desktop user with their D-Bus session / runtime dir wired
+# up (per-user things like gsettings/dconf need this). Mirrors apply_settings.sh's helper
+# so install_app's post-install commands can touch the user's desktop. No-op of escalation
+# when already running as that user.
+run_as_user() {  # run_as_user CMD [ARGS...]
+  local uid; uid="$(id -u "$TARGET_USER" 2>/dev/null)"
+  if [ "$(id -u)" -eq 0 ] && [ "$TARGET_USER" != "root" ]; then
+    sudo -u "$TARGET_USER" \
+      DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/${uid}/bus" \
+      XDG_RUNTIME_DIR="/run/user/${uid}" DISPLAY="${DISPLAY:-:0}" "$@"
+  else
+    DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/${uid}/bus}" \
+      XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/${uid}}" DISPLAY="${DISPLAY:-:0}" "$@"
+  fi
+}
+
+# Run an app's custom post-install commands (from the manifest's install.postInstall),
+# best-effort, as the logged-in user, right after the app was successfully installed.
+# Each command is a self-contained shell snippet; a failing one is reported but never
+# fails the install. No-op in dry-run / with no commands.
+run_post_install() {  # run_post_install NAME CMD [CMD...]
+  local name="$1"; shift
+  is_dry_run && return 0
+  [ "$#" -gt 0 ] || return 0
+  local cmd rc=0
+  info "applying custom post-install setup for $name ..."
+  for cmd in "$@"; do
+    [ -n "$cmd" ] || continue
+    run_as_user bash -lc "$cmd" >/dev/null 2>&1 || { rc=1; warn "a post-install command for $name did not complete (continuing): $cmd"; }
+  done
+  [ "$rc" -eq 0 ] && ok "custom post-install setup applied for $name"
+  return 0
+}
+
 webapp_desktop() {  # webapp_desktop "Name" "URL" [ALT] [LAUNCH]
   local name="$1" url="$2" alt="${3:-}" launch="${4:-}" browser appdir desktop slug
   browser="$(detect_browser)" || { mark_manual "${alt:-$name}" "no browser found for web-app shortcut ($url)"; return 1; }
@@ -529,8 +563,10 @@ install_native_version() {  # install_native_version PKG WINVER
 #                --arch "x86_64 aarch64"
 #  Methods: flatpak | native | snap | webapp | docker | wine-bottles |
 #           deb-url | github-deb | manual
+#  Custom post-install commands (manifest install.postInstall) are passed as repeated
+#  --post 'CMD' flags; the public install_app wrapper below runs them after a success.
 # =============================================================================
-install_app() {
+_install_app_core() {
   local name="" alt="" method="" flatpak="" snap_pkg="" arch_list="" winver="" is_security=0 is_paid=0
   local apt="" dnf="" zypper="" pacman="" launch=""
   local url_x86="" url_arm="" url_deb="" url_rpm="" webapp_url="" docker_image="" github_repo="" note=""
@@ -731,6 +767,26 @@ install_app() {
   else
     err "no available package manager could install it"
     manual_fallback "$name" "$alt" "$note" "$webapp_url$url_x86$github_repo" "$launch"
+  fi
+}
+
+# Public entry point. Pulls out any --post 'CMD' flags (custom commands to run right after
+# this app installs), delegates the install to _install_app_core, then -- ONLY if the app
+# was freshly installed this run (a new OK was recorded) -- runs those commands as the
+# logged-in user. Everything else is unchanged, so apps without postInstall behave exactly
+# as before.
+install_app() {
+  local -a _post=() _args=()
+  local _name=""
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" = "--post" ]; then _post+=("$2"); shift 2; continue; fi
+    [ "$1" = "--name" ] && _name="$2"
+    _args+=("$1"); shift
+  done
+  local _ok_before=${#OK_LIST[@]}
+  _install_app_core "${_args[@]}"
+  if [ "${#_post[@]}" -gt 0 ] && [ "${#OK_LIST[@]}" -gt "$_ok_before" ]; then
+    run_post_install "$_name" "${_post[@]}"
   fi
 }
 
@@ -1346,24 +1402,24 @@ CFG_default_browser="edge"
 WIFI_DATA="$(cat <<'__WIFI_EOF__'
 eduroam	wpa		none
 somenet	open		none
-V.momen	wpa	U2FsdGVkX19+zYtknBSuPezZPKsGQFxo71erqDt6aWU=	enc
+V.momen	wpa	U2FsdGVkX18EqCS/6chSyzjFGiyeAUC7QazmXallW4E=	enc
 Tbilisi Loves You	open		none
 Tbilisi Airport Free	open		none
 Simorgh-WiFi	open		none
-Shatel	wpa	U2FsdGVkX19hLIMKS5RqJIr2Md650Ro9tb36eOXEm24=	enc
-SHAW-48EE	wpa	U2FsdGVkX1/qVQpAYdYD0XotxEyPI+Hlqh2vZC/bBZI=	enc
-Redmi Note 10 Pro Max	wpa	U2FsdGVkX1+JQFTtQldDlisQyANbGQcWont3t97Xfa8=	enc
-Parsway	wpa	U2FsdGVkX19ZSTwnpNvRv+T9PiS4cAz1xGztKJ5elkM=	enc
-NZT9930134C	wpa	U2FsdGVkX1+IPHz5CT7WvfuVeSZfjwd/dFpakBVIJlY=	enc
+Shatel	wpa	U2FsdGVkX1+p5F6Y9Vukz1nmdcvyHqA3AO/jAbIN1H0=	enc
+SHAW-48EE	wpa	U2FsdGVkX1+TBsNdn5aiYL4lyQqD03kDMKgiYgTtzvk=	enc
+Redmi Note 10 Pro Max	wpa	U2FsdGVkX18t3LTEmd60habQbVq/lsfTTK7L6M+CwdM=	enc
+Parsway	wpa	U2FsdGVkX18GDTw/MVAgXMrHZzVJuez1fKY4nGAxCtc=	enc
+NZT9930134C	wpa	U2FsdGVkX18XvM0s7j4VVeOMlMVBYSj55SNsoISUVNM=	enc
 Mofid-GoHyper!	open		none
-Jobvision-WiFi	wpa	U2FsdGVkX19+QWxi9+cKOuY7QAO0eaWtQpz9v0Z8SQQ=	enc
-JobVision_DLink	wpa	U2FsdGVkX19xr/ZedC3+Q2KSaMibpkw0QeDoJ/BKwUo=	enc
-JobVision-3rd	wpa	U2FsdGVkX19UkaIsKlci/965cZILEnGiuvRAYifAh3o=	enc
-JobVision	wpa	U2FsdGVkX1/PoPgjxUAt78lR9p/7JsZY5SOA2rOq0fY=	enc
-Galaxy A51	wpa	U2FsdGVkX1+bLyUqClnNQvlb3zo3z2Dj9PnfPppODuI=	enc
-Fatemeh's Galaxy A71	wpa	U2FsdGVkX18JuxgwyWnzpqHF1JqRuS47m0G+6i/E0+w=	enc
-AndroidAPA50	wpa	U2FsdGVkX18hWq8bSfOtlO/KyqyLiOde6c5e0OffyK8=	enc
-DivorceHousing	wpa	U2FsdGVkX181NAB5t9hhAM+HYfYpMDAD+H5huNbv3T12Q/hTkcHXg2u3CWxxvu4C	enc
+Jobvision-WiFi	wpa	U2FsdGVkX18wN1gRiYEbVvwHgaqWCQgpC5WbyhTmVmA=	enc
+JobVision_DLink	wpa	U2FsdGVkX18Tk+GAvxCaiyXS1XrEmkD8X2xXIDuahKE=	enc
+JobVision-3rd	wpa	U2FsdGVkX18G8JLyInFuzwua0ZXU/0HHAS5xAdcVWIk=	enc
+JobVision	wpa	U2FsdGVkX18cZQr6sy3y096EC94psx0NsW21GvxbkLg=	enc
+Galaxy A51	wpa	U2FsdGVkX19PlnGoDPOC9WlpsYD+sPjZ/iEEFzKZj28=	enc
+Fatemeh's Galaxy A71	wpa	U2FsdGVkX18N60kLn2T57xAX0BIdLejjJPlM3rnbV5Q=	enc
+AndroidAPA50	wpa	U2FsdGVkX1/4QTa0LaW+htOi6qytXXVoSwkuTwUa53U=	enc
+DivorceHousing	wpa	U2FsdGVkX19ONGjkLga27hpLjDHC2e1c1aXYYbre9FaAWm+n4SCrJdKoSD+rp+dX	enc
 __WIFI_EOF__
 )"
 
@@ -2903,13 +2959,13 @@ apply_firewall() {
     [ -z "$port" ] && { mark_manual "fw: $name" "no local port; not portable to $backend"; continue; }
     case "$backend" in
       ufw)
-        if [ "$enabled" != "True" ]; then mark_skip "fw: $name" "disabled rule (ufw cannot store disabled rules)"; continue; fi
+        if [ "$enabled" != "True" ]; then record_line LOG "fw: $name" "disabled on Windows - not migrated"; continue; fi
         local verb="allow"; [ "$action" = "Block" ] && verb="deny"
         local dirflag="in"; case "$dirl" in *out*) dirflag="out" ;; esac
         if capture ufw "$verb" "$dirflag" "${port}/${lproto}"; then mark_set "fw: $name ($verb $dirflag ${port}/${lproto})"
         else mark_fail "fw: $name" "${LAST_ERR:-ufw rejected the rule}"; fi ;;
       firewalld)
-        if [ "$enabled" != "True" ]; then mark_skip "fw: $name" "disabled on Windows - not migrated (logged only)"; continue; fi
+        if [ "$enabled" != "True" ]; then record_line LOG "fw: $name" "disabled on Windows - not migrated"; continue; fi
         local fwaction="accept"; [ "$action" = "Block" ] && fwaction="reject"
         local rich="rule family=\"ipv4\" port port=\"${port}\" protocol=\"${lproto}\" ${fwaction}"
         if firewall-cmd --permanent --query-rich-rule="$rich" >/dev/null 2>&1; then

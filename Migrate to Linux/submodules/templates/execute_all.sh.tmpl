@@ -152,13 +152,13 @@ save_config() {  # save_config CONFIG_FILE
 show_unmatched_warning() {
   [ "${#UNMATCHED_APPS[@]}" -eq 0 ] && return 0
   printf '\n'
-  warn "WARNING: these apps were detected on Windows but were NOT found in the manifest,"
+  warn "WARNING: these apps were detected on Windows but were NOT found in the migration repository's manifest,"
   warn "so no Linux equivalent will be installed for them:"
   local a
   for a in "${UNMATCHED_APPS[@]}"; do info "  - $a"; done
-  warn "To include them, add entries to the manifest file on your Windows machine:"
+  warn "To include them, add entries to the manifest file:"
   warn "    documents/B_applications.json"
-  warn "then re-run run_project.ps1 and use the regenerated 'Execute on Linux!' scripts."
+  warn "then re-run run_project.ps1 on your Windows machine and use the regenerated 'Execute on Linux!' scripts."
   # Record them so they appear as a dedicated skip group in the final summary.
   local prev="$MODULE"; MODULE="Applications"
   for a in "${UNMATCHED_APPS[@]}"; do record_line SKIP "$a" "not in the manifest"; done

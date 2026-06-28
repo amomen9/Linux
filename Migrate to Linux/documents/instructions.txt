@@ -45,10 +45,23 @@ Manifest schema (documents/B_applications.json):
   Each installed alternative carries an "install" object the generator reads:
     install: { method, flatpakId, snap, native:{apt,dnf,zypper,pacman}, arch:[...],
                downloadUrl:{x86_64,aarch64}, webappUrl, dockerImage, githubRepo,
-               note, review }
+               repo:{apt,dnf,zypper,pacman}, postInstall:[...], note, review }
   method in: flatpak | native | snap | webapp | docker | wine-bottles |
              deb-url | github-deb | manual.  "review:true" flags non-apt names that
              still need verification on a real system of that family.
+  - install.repo: per-family shell snippet to configure a VENDOR repository before the
+    native install (e.g. Microsoft / Docker / Google repos). The generator turns it into
+    a repo_setup_<slug>() function that install_app runs before pm_install.
+  - install.postInstall: an ARRAY of self-contained shell snippets run RIGHT AFTER the
+    app installs successfully (the app's "custom post-install commands"). The generator
+    emits one --post 'CMD' per entry; install_app runs them as the logged-in desktop user
+    (via run_as_user, so gsettings/dconf work) ONLY when the app was freshly installed
+    this run. A failing command is reported but never fails the install. Example: CopyQ
+    binds Win+V (Super+V) to open its clipboard-history viewer.
+  - "forceInclude": true (top-level on an app entry) emits that app EVEN WHEN it is not
+    detected on Windows -- for Linux-only helpers the user always wants (e.g. CopyQ, the
+    clipboard manager that replaces the Windows Win+V history but has no Windows app to
+    detect). De-duped by name against detected apps and the Additional CSV.
 
 Docker capture/rebuild flow:
   submodules/docker_discovery.sh (or .ps1, identical PowerShell port) snapshots local
@@ -58,6 +71,13 @@ Docker capture/rebuild flow:
   - B_detect_installed_windows_software.ps1 automatically runs docker_discovery.ps1
     when Docker is installed on the Windows source (so docker_rebuild.sh only exists
     when the source had Docker).
+  - SERVER SOFTWARE WITH A NATIVE LINUX BUILD (e.g. Microsoft SQL Server) follows its
+    Windows topology automatically: installed on the HOST OS on Windows -> detected as a
+    program -> native host install on Linux via the manifest (mssql-server through
+    Microsoft's official apt/dnf/zypper repo; install.repo; x86_64; Ubuntu/RHEL/SLES).
+    Run as a CONTAINER on Windows -> captured by docker_discovery -> recreated as a
+    container by docker_rebuild.sh. The two paths are mutually exclusive by how it is
+    detected, so it is never installed twice.
   - The generated execute_all.sh asks the STAGE questions up front (each shown with
     its (y/n) option): drivers / apps / settings, plus "Migrate docker components?"
     (only if a sibling docker_rebuild.sh exists). It runs the chosen stages
