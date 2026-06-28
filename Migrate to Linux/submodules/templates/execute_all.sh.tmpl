@@ -188,7 +188,7 @@ install_manual_apps() {
   for entry in "${MANUAL_APPS[@]}"; do
     IFS='|' read -r name alt note url paid <<< "$entry"
     # "skip all" chosen earlier: skip this and every remaining manual app without prompting.
-    if [ "$skip_all" -eq 1 ]; then mark_skip "$name" "user skipped (skip all)"; continue; fi
+    if [ "$skip_all" -eq 1 ]; then mark_skip "${alt:-$name}" "user skipped (skip all)"; continue; fi
     slug="$(slugify "$name")"; dir="$base/$slug"; mkdir -p "$dir"
     printf '\n\n'
     if [ -n "$alt" ]; then
@@ -202,9 +202,9 @@ install_manual_apps() {
       if [ -r /dev/tty ]; then
         printf '  No free alternative exists for this application. Do you want to continue with the installation of the paid one? Answering with No means skipping this application (y/n): ' > /dev/tty
         read -r ans < /dev/tty || ans="n"
-        case "$ans" in [Yy]*) ;; *) mark_skip "$name" "paid - skipped (free-only mode)"; continue ;; esac
+        case "$ans" in [Yy]*) ;; *) mark_skip "${alt:-$name}" "paid - skipped (free-only mode)"; continue ;; esac
       else
-        mark_skip "$name" "paid - skipped (free-only mode)"; continue
+        mark_skip "${alt:-$name}" "paid - skipped (free-only mode)"; continue
       fi
     fi
     [ -n "$note" ] && info "$note"
@@ -217,15 +217,15 @@ install_manual_apps() {
     info "Then type its path in single quotes -- either a full path, or one relative to ${TARGET_HOME}/Downloads."
     info "Any valid installer extension works (.deb/.rpm/.sh/.run/.bin/.bundle/.AppImage/.tar.gz/.zip/...);"
     info "'skip' to skip this app, or 'skip all' to skip this and every remaining manual app."
-    if [ ! -r /dev/tty ]; then mark_skip "$name" "no tty for manual prompt"; continue; fi
+    if [ ! -r /dev/tty ]; then mark_skip "${alt:-$name}" "no tty for manual prompt"; continue; fi
     while :; do
       printf "  %s ('installer path'/skip/skip all): " "${alt:-$name}" > /dev/tty
       read -r ans < /dev/tty || ans="skip"
       case "$ans" in
         [Aa]|[Aa][Ll][Ll]|[Ss][Kk][Ii][Pp][Aa][Ll][Ll]|'skip all'|'Skip all'|'Skip All'|'SKIP ALL')
-          skip_all=1; mark_skip "$name" "user skipped (skip all)"; break ;;
+          skip_all=1; mark_skip "${alt:-$name}" "user skipped (skip all)"; break ;;
         [Ss]|[Ss][Kk][Ii][Pp])
-          mark_skip "$name" "user skipped"; break ;;
+          mark_skip "${alt:-$name}" "user skipped"; break ;;
         *)
           f="$(resolve_user_path "$ans")"
           if [ -z "$f" ] || [ ! -f "$f" ] || [ ! -r "$f" ]; then
@@ -234,7 +234,7 @@ install_manual_apps() {
           fi
           LAST_ERR=""
           if install_by_ext "$f"; then
-            mark_ok "$name" "installed from $f"; break
+            mark_ok "$name" "installed from $f" "$alt"; break
           else
             printf "\033[1;31m  %s -- fix the file and re-enter its path, or skip.\033[0m\n" "${LAST_ERR:-could not handle the file}" > /dev/tty
           fi
