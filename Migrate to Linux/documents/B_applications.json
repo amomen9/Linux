@@ -2560,6 +2560,121 @@
                              "installedEdition":  ""
                          },
                          {
+                             "name":  "Telegram",
+                             "version":  "N/A (popular conventional Windows software)",
+                             "publisher":  "Telegram FZ-LLC",
+                             "sourceType":  "Win32",
+                             "linuxAvailability":  "Available on Linux",
+                             "destType":  "Native",
+                             "alternatives":  {
+                                                  "name":  "Telegram Desktop",
+                                                  "competency":  "100",
+                                                  "pricingModel":  "Free (FOSS)",
+                                                  "mustInclude":  "yes",
+                                                  "canSync":  "Yes",
+                                                  "notes":  "The official Telegram Desktop client, native on Linux (Flatpak or distro package). Fully cloud-synced — log in and all chats/media appear instantly. Identical UI to the Windows client.",
+                                                  "installMethod":  "flatpak",
+                                                  "appType":  "Native (Flatpak)",
+                                                  "downloadUrl":  "https://telegram.org/dl/desktop/linux",
+                                                  "install":  {
+                                                                  "method":  "flatpak",
+                                                                  "flatpakId":  "org.telegram.desktop",
+                                                                  "native":  {
+                                                                                 "apt":  "telegram-desktop",
+                                                                                 "dnf":  "telegram-desktop",
+                                                                                 "zypper":  "telegram-desktop",
+                                                                                 "pacman":  "telegram-desktop"
+                                                                             }
+                                                              }
+                                              }
+                         },
+                         {
+                             "name":  "WhatsApp",
+                             "version":  "N/A (popular conventional Windows software)",
+                             "publisher":  "WhatsApp LLC (Meta)",
+                             "sourceType":  "Win32",
+                             "linuxAvailability":  "Native Alternative; Available as WebApp",
+                             "destType":  "Hybrid",
+                             "alternatives":  [
+                                                  {
+                                                      "name":  "WhatsApp Desktop (Linux)",
+                                                      "competency":  "90",
+                                                      "pricingModel":  "Free",
+                                                      "mustInclude":  "yes",
+                                                      "canSync":  "Yes",
+                                                      "notes":  "Unofficial native desktop client (an Electron wrapper around WhatsApp Web) — there is no official Linux build. Links to your phone via QR code; chats sync from the phone.",
+                                                      "installMethod":  "flatpak",
+                                                      "appType":  "Native (Flatpak)",
+                                                      "downloadUrl":  "https://flathub.org/apps/io.github.mimbrero.WhatsAppDesktop",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "io.github.mimbrero.WhatsAppDesktop"
+                                                                  }
+                                                  },
+                                                  {
+                                                      "name":  "WhatsApp Web (PWA)",
+                                                      "competency":  "85",
+                                                      "pricingModel":  "Free",
+                                                      "mustInclude":  "no",
+                                                      "canSync":  "Yes",
+                                                      "notes":  "The official browser version installed as a web-app shortcut. Always up to date; links to your phone via QR code. Fallback when the desktop wrapper is unavailable.",
+                                                      "installMethod":  "web",
+                                                      "appType":  "WebApp",
+                                                      "downloadUrl":  "https://web.whatsapp.com/",
+                                                      "install":  {
+                                                                      "method":  "webapp",
+                                                                      "webappUrl":  "https://web.whatsapp.com/"
+                                                                  }
+                                                  }
+                                              ]
+                         },
+                         {
+                             "name":  "Signal",
+                             "version":  "N/A (popular conventional Windows software)",
+                             "publisher":  "Signal Foundation",
+                             "sourceType":  "Win32",
+                             "linuxAvailability":  "Available on Linux",
+                             "destType":  "Native",
+                             "alternatives":  {
+                                                  "name":  "Signal Desktop",
+                                                  "competency":  "100",
+                                                  "pricingModel":  "Free (FOSS)",
+                                                  "mustInclude":  "yes",
+                                                  "canSync":  "Yes",
+                                                  "notes":  "The official Signal Desktop client, native on Linux (Flatpak or the official APT repo). End-to-end encrypted messaging/calls; links to your phone to sync.",
+                                                  "installMethod":  "flatpak",
+                                                  "appType":  "Native (Flatpak)",
+                                                  "downloadUrl":  "https://signal.org/download/linux/",
+                                                  "install":  {
+                                                                  "method":  "flatpak",
+                                                                  "flatpakId":  "org.signal.Signal"
+                                                              }
+                                              }
+                         },
+                         {
+                             "name":  "Element",
+                             "version":  "N/A (popular conventional Windows software)",
+                             "publisher":  "Element (New Vector Ltd.)",
+                             "sourceType":  "Win32",
+                             "linuxAvailability":  "Available on Linux",
+                             "destType":  "Native",
+                             "alternatives":  {
+                                                  "name":  "Element",
+                                                  "competency":  "100",
+                                                  "pricingModel":  "Free (FOSS)",
+                                                  "mustInclude":  "no",
+                                                  "canSync":  "Yes",
+                                                  "notes":  "The same Matrix chat client (Slack/Discord-style team chat, end-to-end encrypted), native on Linux. Account/rooms sync via your Matrix homeserver.",
+                                                  "installMethod":  "flatpak",
+                                                  "appType":  "Native (Flatpak)",
+                                                  "downloadUrl":  "https://element.io/download",
+                                                  "install":  {
+                                                                  "method":  "flatpak",
+                                                                  "flatpakId":  "im.riot.Riot"
+                                                              }
+                                              }
+                         },
+                         {
                              "name":  "Docker Desktop",
                              "version":  "4.70.0",
                              "publisher":  "Docker Inc.",
@@ -4260,7 +4375,9 @@
                                                       "appType":  "Native (APT package)",
                                                       "downloadUrl":  "apt install apt-/-dpkg-(cli)"
                                                   }
-                                              ]
+                                              ],
+                             "installedVersion":  "15.2.0.2",
+                             "installedEdition":  ""
                          },
                          {
                              "name":  "IrfanView",
@@ -15059,6 +15176,139 @@
                                               ]
                          },
                          {
+                             "name":  "GoLand",
+                             "version":  "N/A (popular conventional Windows software)",
+                             "publisher":  "JetBrains",
+                             "sourceType":  "Win32",
+                             "linuxAvailability":  "Available on Linux",
+                             "destType":  "Native",
+                             "alternatives":  {
+                                                  "name":  "GoLand",
+                                                  "competency":  "100",
+                                                  "pricingModel":  "Paid",
+                                                  "mustInclude":  "no",
+                                                  "canSync":  "Yes",
+                                                  "notes":  "The same Go IDE, native on Linux. Settings sync via a JetBrains account.",
+                                                  "installMethod":  "flatpak",
+                                                  "appType":  "Native (Flatpak)",
+                                                  "downloadUrl":  "https://www.jetbrains.com/go/",
+                                                  "install":  {
+                                                                  "method":  "flatpak",
+                                                                  "flatpakId":  "com.jetbrains.GoLand"
+                                                              }
+                                              }
+                         },
+                         {
+                             "name":  "JetBrains Rider",
+                             "version":  "N/A (popular conventional Windows software)",
+                             "publisher":  "JetBrains",
+                             "sourceType":  "Win32",
+                             "linuxAvailability":  "Available on Linux",
+                             "destType":  "Native",
+                             "alternatives":  {
+                                                  "name":  "JetBrains Rider",
+                                                  "competency":  "100",
+                                                  "pricingModel":  "Freemium",
+                                                  "mustInclude":  "no",
+                                                  "canSync":  "Yes",
+                                                  "notes":  "The same .NET/C++/Unity IDE, native on Linux (free for non-commercial use). Closest full-IDE replacement for Visual Studio.",
+                                                  "installMethod":  "flatpak",
+                                                  "appType":  "Native (Flatpak)",
+                                                  "downloadUrl":  "https://www.jetbrains.com/rider/",
+                                                  "install":  {
+                                                                  "method":  "flatpak",
+                                                                  "flatpakId":  "com.jetbrains.Rider"
+                                                              }
+                                              }
+                         },
+                         {
+                             "name":  "RustRover",
+                             "version":  "N/A (popular conventional Windows software)",
+                             "publisher":  "JetBrains",
+                             "sourceType":  "Win32",
+                             "linuxAvailability":  "Available on Linux",
+                             "destType":  "Native",
+                             "alternatives":  {
+                                                  "name":  "RustRover",
+                                                  "competency":  "100",
+                                                  "pricingModel":  "Freemium",
+                                                  "mustInclude":  "no",
+                                                  "canSync":  "Yes",
+                                                  "notes":  "The same Rust IDE, native on Linux (free for non-commercial use). Settings sync via a JetBrains account.",
+                                                  "installMethod":  "flatpak",
+                                                  "appType":  "Native (Flatpak)",
+                                                  "downloadUrl":  "https://www.jetbrains.com/rust/",
+                                                  "install":  {
+                                                                  "method":  "flatpak",
+                                                                  "flatpakId":  "com.jetbrains.RustRover"
+                                                              }
+                                              }
+                         },
+                         {
+                             "name":  "DataSpell",
+                             "version":  "N/A (popular conventional Windows software)",
+                             "publisher":  "JetBrains",
+                             "sourceType":  "Win32",
+                             "linuxAvailability":  "Available on Linux",
+                             "destType":  "Native",
+                             "alternatives":  {
+                                                  "name":  "DataSpell",
+                                                  "competency":  "100",
+                                                  "pricingModel":  "Paid",
+                                                  "mustInclude":  "no",
+                                                  "canSync":  "Yes",
+                                                  "notes":  "The same data-science IDE (Jupyter notebooks + Python/R), native on Linux. Settings sync via a JetBrains account.",
+                                                  "installMethod":  "flatpak",
+                                                  "appType":  "Native (Flatpak)",
+                                                  "downloadUrl":  "https://www.jetbrains.com/dataspell/",
+                                                  "install":  {
+                                                                  "method":  "flatpak",
+                                                                  "flatpakId":  "com.jetbrains.DataSpell"
+                                                              }
+                                              }
+                         },
+                         {
+                             "name":  "Cursor",
+                             "version":  "N/A (popular conventional Windows software)",
+                             "publisher":  "Anysphere",
+                             "sourceType":  "Win32",
+                             "linuxAvailability":  "Available on Linux",
+                             "destType":  "Native",
+                             "alternatives":  [
+                                                  {
+                                                      "name":  "Cursor (Linux)",
+                                                      "competency":  "100",
+                                                      "pricingModel":  "Freemium",
+                                                      "mustInclude":  "no",
+                                                      "canSync":  "Yes",
+                                                      "notes":  "The same AI-first code editor (VS Code fork), native on Linux as an AppImage/.deb. Settings sync via a Cursor account.",
+                                                      "installMethod":  "manual",
+                                                      "appType":  "Native (manual install)",
+                                                      "downloadUrl":  "https://www.cursor.com/downloads",
+                                                      "install":  {
+                                                                      "method":  "manual",
+                                                                      "downloadPage":  "https://www.cursor.com/downloads",
+                                                                      "note":  "Official Cursor Linux AppImage / .deb (no Flatpak yet)."
+                                                                  }
+                                                  },
+                                                  {
+                                                      "name":  "VS Code + Continue / Cline",
+                                                      "competency":  "85",
+                                                      "pricingModel":  "Free (FOSS)",
+                                                      "mustInclude":  "no",
+                                                      "canSync":  "Yes",
+                                                      "notes":  "VS Code with an AI assistant extension (Continue or Cline) reproduces most of Cursor\u0027s workflow with fully open tooling.",
+                                                      "installMethod":  "flatpak",
+                                                      "appType":  "Native (Flatpak)",
+                                                      "downloadUrl":  "https://code.visualstudio.com/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "com.visualstudio.code"
+                                                                  }
+                                                  }
+                                              ]
+                         },
+                         {
                              "name":  "Sublime Text",
                              "version":  "N/A (popular conventional Windows software)",
                              "publisher":  "Sublime HQ",
@@ -15959,6 +16209,257 @@
                                                                   "note":  "Native MongoDB Compass .deb/.rpm."
                                                               }
                                               }
+                         },
+                         {
+                             "name":  "pgAdmin",
+                             "version":  "N/A (popular conventional Windows software)",
+                             "publisher":  "pgAdmin Development Team",
+                             "sourceType":  "Win32",
+                             "linuxAvailability":  "Available on Linux",
+                             "destType":  "Native",
+                             "alternatives":  [
+                                                  {
+                                                      "name":  "pgAdmin 4 (Desktop)",
+                                                      "competency":  "100",
+                                                      "pricingModel":  "Free (FOSS)",
+                                                      "mustInclude":  "no",
+                                                      "canSync":  "No, manual transfer",
+                                                      "notes":  "The same PostgreSQL administration/development GUI, native on Linux via the official pgAdmin APT/RPM repository (desktop mode).",
+                                                      "installMethod":  "native",
+                                                      "appType":  "Native (manual install)",
+                                                      "downloadUrl":  "https://www.pgadmin.org/download/",
+                                                      "install":  {
+                                                                      "method":  "native",
+                                                                      "native":  {
+                                                                                     "apt":  "pgadmin4-desktop",
+                                                                                     "dnf":  "pgadmin4-desktop"
+                                                                                 },
+                                                                      "downloadPage":  "https://www.pgadmin.org/download/",
+                                                                      "note":  "From the official pgAdmin repo. Web mode (pgadmin4-web) is also available.",
+                                                                      "review":  true
+                                                                  }
+                                                  },
+                                                  {
+                                                      "name":  "DBeaver Community",
+                                                      "competency":  "90",
+                                                      "pricingModel":  "Free (FOSS)",
+                                                      "mustInclude":  "no",
+                                                      "canSync":  "No, manual transfer",
+                                                      "notes":  "Universal database GUI as a pgAdmin alternative (also handles MySQL/MSSQL/Oracle/SQLite).",
+                                                      "installMethod":  "flatpak",
+                                                      "appType":  "Native (Flatpak)",
+                                                      "downloadUrl":  "https://dbeaver.io/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "io.dbeaver.DBeaverCommunity"
+                                                                  }
+                                                  }
+                                              ]
+                         },
+                         {
+                             "name":  "TablePlus",
+                             "version":  "N/A (popular conventional Windows software)",
+                             "publisher":  "TablePlus Inc.",
+                             "sourceType":  "Win32",
+                             "linuxAvailability":  "Available on Linux",
+                             "destType":  "Native",
+                             "alternatives":  [
+                                                  {
+                                                      "name":  "TablePlus (Linux)",
+                                                      "competency":  "100",
+                                                      "pricingModel":  "Freemium",
+                                                      "mustInclude":  "no",
+                                                      "canSync":  "No, manual transfer",
+                                                      "notes":  "The same modern multi-engine database GUI, native on Linux via the official TablePlus APT repo / .deb (free tier with connection/tab limits).",
+                                                      "installMethod":  "native",
+                                                      "appType":  "Native (manual install)",
+                                                      "downloadUrl":  "https://tableplus.com/linux",
+                                                      "install":  {
+                                                                      "method":  "manual",
+                                                                      "downloadPage":  "https://tableplus.com/linux",
+                                                                      "note":  "Native TablePlus from the official Linux APT repo / .deb."
+                                                                  }
+                                                  },
+                                                  {
+                                                      "name":  "DBeaver Community",
+                                                      "competency":  "88",
+                                                      "pricingModel":  "Free (FOSS)",
+                                                      "mustInclude":  "no",
+                                                      "canSync":  "No, manual transfer",
+                                                      "notes":  "Free universal database tool as a TablePlus alternative.",
+                                                      "installMethod":  "flatpak",
+                                                      "appType":  "Native (Flatpak)",
+                                                      "downloadUrl":  "https://dbeaver.io/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "io.dbeaver.DBeaverCommunity"
+                                                                  }
+                                                  }
+                                              ]
+                         },
+                         {
+                             "name":  "Oracle SQL Developer",
+                             "version":  "N/A (popular conventional Windows software)",
+                             "publisher":  "Oracle",
+                             "sourceType":  "Win32",
+                             "linuxAvailability":  "Available on Linux",
+                             "destType":  "Native",
+                             "alternatives":  [
+                                                  {
+                                                      "name":  "Oracle SQL Developer (Linux)",
+                                                      "competency":  "100",
+                                                      "pricingModel":  "Free",
+                                                      "mustInclude":  "no",
+                                                      "canSync":  "No, manual transfer",
+                                                      "notes":  "The same Oracle DB development/admin IDE (Java app), native on Linux as an RPM or no-installer ZIP. Needs a JDK.",
+                                                      "installMethod":  "manual",
+                                                      "appType":  "Native (manual install)",
+                                                      "downloadUrl":  "https://www.oracle.com/database/sqldeveloper/technologies/download/",
+                                                      "install":  {
+                                                                      "method":  "manual",
+                                                                      "downloadPage":  "https://www.oracle.com/database/sqldeveloper/technologies/download/",
+                                                                      "note":  "Oracle SQL Developer RPM / portable ZIP (requires a JDK; Oracle login may be needed)."
+                                                                  }
+                                                  },
+                                                  {
+                                                      "name":  "DBeaver Community",
+                                                      "competency":  "85",
+                                                      "pricingModel":  "Free (FOSS)",
+                                                      "mustInclude":  "no",
+                                                      "canSync":  "No, manual transfer",
+                                                      "notes":  "Universal database GUI with Oracle support as an alternative.",
+                                                      "installMethod":  "flatpak",
+                                                      "appType":  "Native (Flatpak)",
+                                                      "downloadUrl":  "https://dbeaver.io/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "io.dbeaver.DBeaverCommunity"
+                                                                  }
+                                                  }
+                                              ]
+                         },
+                         {
+                             "name":  "Oracle APEX",
+                             "version":  "N/A (popular conventional Windows software)",
+                             "publisher":  "Oracle",
+                             "sourceType":  "WebApp",
+                             "linuxAvailability":  "Available as WebApp; Available on Linux",
+                             "destType":  "WebApp",
+                             "alternatives":  [
+                                                  {
+                                                      "name":  "Oracle APEX (browser)",
+                                                      "competency":  "100",
+                                                      "pricingModel":  "Free",
+                                                      "mustInclude":  "no",
+                                                      "canSync":  "Yes",
+                                                      "notes":  "APEX is a browser-based low-code platform that runs inside Oracle Database — there is no desktop client. Develop in any browser against a free apex.oracle.com workspace or an Oracle DB on Linux. Installed here as a web-app shortcut.",
+                                                      "installMethod":  "web",
+                                                      "appType":  "WebApp",
+                                                      "downloadUrl":  "https://apex.oracle.com/",
+                                                      "install":  {
+                                                                      "method":  "webapp",
+                                                                      "webappUrl":  "https://apex.oracle.com/"
+                                                                  }
+                                                  },
+                                                  {
+                                                      "name":  "Oracle APEX on Oracle DB (Linux)",
+                                                      "competency":  "100",
+                                                      "pricingModel":  "Free",
+                                                      "mustInclude":  "no",
+                                                      "canSync":  "No, manual transfer",
+                                                      "notes":  "Run APEX yourself by installing Oracle Database (or the free Oracle Database XE) plus ORDS on Linux; develop through the browser. Server-side, no desktop install.",
+                                                      "installMethod":  "manual",
+                                                      "appType":  "Native (manual install)",
+                                                      "downloadUrl":  "https://www.oracle.com/tools/downloads/apex-downloads/",
+                                                      "install":  {
+                                                                      "method":  "manual",
+                                                                      "downloadPage":  "https://www.oracle.com/tools/downloads/apex-downloads/",
+                                                                      "note":  "Install Oracle DB XE + ORDS + APEX on Linux, then use APEX from the browser."
+                                                                  }
+                                                  }
+                                              ]
+                         },
+                         {
+                             "name":  "Redgate SQL Toolbelt",
+                             "version":  "N/A (popular conventional Windows software)",
+                             "publisher":  "Redgate Software",
+                             "sourceType":  "Win32",
+                             "linuxAvailability":  "Not Available; Native Alternative",
+                             "destType":  "Native",
+                             "alternatives":  [
+                                                  {
+                                                      "name":  "Flyway",
+                                                      "competency":  "80",
+                                                      "pricingModel":  "Freemium",
+                                                      "mustInclude":  "no",
+                                                      "canSync":  "No, manual transfer",
+                                                      "notes":  "Redgate\u0027s own cross-platform database migrations/CI tool, native on Linux (CLI). Covers the SQL Change Automation part of the Toolbelt; the SSMS-bound GUI tools (SQL Compare/Prompt/Source Control) are Windows-only.",
+                                                      "installMethod":  "manual",
+                                                      "appType":  "Native (manual install)",
+                                                      "downloadUrl":  "https://flywaydb.org/download",
+                                                      "install":  {
+                                                                      "method":  "manual",
+                                                                      "downloadPage":  "https://documentation.red-gate.com/fd/command-line-184127404.html",
+                                                                      "note":  "Flyway CLI (.tar.gz) for Linux; requires a JDK."
+                                                                  }
+                                                  },
+                                                  {
+                                                      "name":  "DBeaver Community + Liquibase",
+                                                      "competency":  "78",
+                                                      "pricingModel":  "Free (FOSS)",
+                                                      "mustInclude":  "no",
+                                                      "canSync":  "No, manual transfer",
+                                                      "notes":  "DBeaver (universal DB GUI incl. schema compare) plus Liquibase (schema versioning/migrations) together replace most of the Toolbelt\u0027s day-to-day workflow on Linux.",
+                                                      "installMethod":  "flatpak",
+                                                      "appType":  "Native (Flatpak)",
+                                                      "downloadUrl":  "https://dbeaver.io/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "io.dbeaver.DBeaverCommunity"
+                                                                  }
+                                                  }
+                                              ]
+                         },
+                         {
+                             "name":  "dbForge Studio",
+                             "version":  "N/A (popular conventional Windows software)",
+                             "publisher":  "Devart",
+                             "sourceType":  "Win32",
+                             "linuxAvailability":  "Windows Emulator (Wine/Proton); Native Alternative",
+                             "destType":  "Hybrid",
+                             "alternatives":  [
+                                                  {
+                                                      "name":  "dbForge Studio (under Wine)",
+                                                      "competency":  "85",
+                                                      "pricingModel":  "Paid",
+                                                      "mustInclude":  "no",
+                                                      "canSync":  "No, manual transfer",
+                                                      "notes":  "Devart officially documents running dbForge Studio (for MySQL/SQL Server/PostgreSQL/Oracle) on Linux under Wine/CrossOver. No native Linux build.",
+                                                      "installMethod":  "wine",
+                                                      "appType":  "Wine/Proton",
+                                                      "downloadUrl":  "https://www.devart.com/dbforge/",
+                                                      "install":  {
+                                                                      "method":  "manual",
+                                                                      "downloadPage":  "https://www.devart.com/dbforge/linux.html",
+                                                                      "note":  "Install the Windows dbForge Studio .exe under Wine/CrossOver (Devart-documented)."
+                                                                  }
+                                                  },
+                                                  {
+                                                      "name":  "DBeaver Community",
+                                                      "competency":  "82",
+                                                      "pricingModel":  "Free (FOSS)",
+                                                      "mustInclude":  "no",
+                                                      "canSync":  "No, manual transfer",
+                                                      "notes":  "Free native universal database GUI as a dbForge Studio alternative.",
+                                                      "installMethod":  "flatpak",
+                                                      "appType":  "Native (Flatpak)",
+                                                      "downloadUrl":  "https://dbeaver.io/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "io.dbeaver.DBeaverCommunity"
+                                                                  }
+                                                  }
+                                              ]
                          },
                          {
                              "name":  "Postman",

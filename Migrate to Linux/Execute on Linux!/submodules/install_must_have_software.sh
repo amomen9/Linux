@@ -1874,6 +1874,11 @@ repo_setup_microsoft_edge() {
   app_alt 4 5 1 80 install_app --name "Internet Download Manager (IDM)" --alt "Free Download Manager (FDM)" --method native --dlpage "https://www.freedownloadmanager.org/download-fdm-for-linux.htm" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 5 5 1 75 install_app --name "Internet Download Manager (IDM)" --alt "aria2" --method native --dlpage "https://aria2.github.io/" --note "auto-guessed install from the alternative name (unverified)"
   wine_app "Internet Download Manager (IDM)" "" "" ""
+  app_alt 1 4 1 95 install_app --name "IObit Uninstaller" --alt "Synaptic Package Manager" --method native --apt "synaptic" --dlpage "https://www.nongnu.org/synaptic/" --note "Synaptic is APT-only; use your distro's software center elsewhere"
+  app_alt 2 4 1 90 install_app --name "IObit Uninstaller" --alt "BleachBit" --method native --dlpage "https://www.bleachbit.org/download/linux" --note "auto-guessed install from the alternative name (unverified)"
+  app_alt 3 4 1 85 install_app --name "IObit Uninstaller" --alt "apt / dpkg (CLI)" --method native --note "auto-guessed install from the alternative name (unverified)"
+  app_alt 4 4 1 80 install_app --name "IObit Uninstaller" --alt "GNOME Software / KDE Discover" --method native --dlpage "https://apps.gnome.org/Software/" --note "auto-guessed install from the alternative name (unverified)"
+  wine_app "IObit Uninstaller" "" "" ""
   app_alt 1 4 1 100 install_app --name "Java 8" --alt "Oracle JDK (Linux)" --method native --note "auto-guessed install from the alternative name (unverified)"
   app_alt 2 4 1 100 install_app --name "Java 8" --alt "Zulu OpenJDK (Azul)" --method native --note "auto-guessed install from the alternative name (unverified)"
   app_alt 3 4 1 100 install_app --name "Java 8" --alt "OpenJDK (Eclipse Temurin)" --method native --apt "default-jdk" --dnf "java-latest-openjdk" --zypper "java-openjdk" --pacman "jdk-openjdk" --dlpage "https://adoptium.net/temurin/releases/"
@@ -1948,11 +1953,6 @@ repo_setup_microsoft_edge() {
   app_alt 3 4 1 85 install_app --name "Notepad++" --alt "Geany" --method flatpak --flatpak "org.geany.Geany" --apt "geany" --dnf "geany" --zypper "geany" --pacman "geany" --dlpage "https://www.geany.org/download/releases/"
   app_alt 4 4 1 70 install_app --name "Notepad++" --alt "Gedit / GNOME Text Editor" --method native --note "auto-guessed install from the alternative name (unverified)"
   wine_app "Notepad++" "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.9.6.4/npp.8.9.6.4.Installer.x64.exe" "" ""
-  app_alt 1 4 1 130 install_app --name "oCam version 550.0" --alt "OBS Studio" --method flatpak --flatpak "com.obsproject.Studio" --apt "obs-studio" --dlpage "https://obsproject.com/download"
-  app_alt 2 4 1 95 install_app --name "oCam version 550.0" --alt "SimpleScreenRecorder" --method native --dlpage "https://www.maartenbaert.be/simplescreenrecorder/" --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 3 4 1 80 install_app --name "oCam version 550.0" --alt "Kooha" --method native --dlpage "https://flathub.org/apps/io.github.seadve.Kooha" --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 4 4 1 75 install_app --name "oCam version 550.0" --alt "Peek" --method native --note "auto-guessed install from the alternative name (unverified)"
-  wine_app "oCam version 550.0" "" "" ""
   app_alt 1 1 1 100 install_app --name "OpenSSH" --alt "OpenSSH (native)" --winver "8.9.1.0" --method native --apt "openssh-client" --dnf "openssh-clients" --zypper "openssh" --pacman "openssh" --dlpage "https://www.openssh.com/"
   app_alt 1 1 1 100 install_app --name "OpenSSL" --alt "OpenSSL (native)" --winver "3.3.0" --method native --apt "openssl" --dnf "openssl" --zypper "openssl" --pacman "openssl"
   app_alt 1 1 1 100 install_app --name "Pandoc" --alt "Pandoc (Linux)" --winver "3.9" --method native --apt "pandoc" --dnf "pandoc" --zypper "pandoc" --pacman "pandoc"
@@ -2120,6 +2120,7 @@ repo_setup_microsoft_edge() {
   install_app --name "Docker Engine" --alt "docker-ce + docker-ce-cli + containerd.io + docker-buildx-plugin + docker-compose-plugin (APT repo)" --method manual --url-x86 "https://docs.docker.com/engine/install/" --note "docker-ce + docker-ce-cli + containerd.io + docker-buildx-plugin + docker-compose-plugin (APT repo) | download.docker.com"
   install_app --name "Multipass" --alt "multipass (APT SnapStore replacement)" --method manual --url-x86 "https://canonical.com/multipass/install" --note "multipass (APT SnapStore replacement) | canonical.com/multipass"
   install_app --name "Microsoft OneNote" --alt "Obsidian (Flatpak/.deb) + Joplin (Flatpak) + Xournal++ (APT) + OneNote WebApp .desktop shortcut" --method manual --url-x86 "https://obsidian.md/download" --note "Obsidian (Flatpak/.deb) + Joplin (Flatpak) + Xournal++ (APT) + OneNote WebApp .desktop shortcut | obsidian.md; joplinapp.org; xournalpp.github.io; onenote.com"
+  install_app --name "WhatsApp" --alt "WhatsApp Desktop (Flatpak io.github.mimbrero.WhatsAppDesktop) + web.whatsapp.com WebApp shortcut" --method manual --url-x86 "https://www.whatsapp.com/download" --note "WhatsApp Desktop (Flatpak io.github.mimbrero.WhatsAppDesktop) + web.whatsapp.com WebApp shortcut | whatsapp.com"
 
   print_summary
 }

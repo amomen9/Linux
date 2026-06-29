@@ -1791,24 +1791,24 @@ CFG_default_browser="edge"
 WIFI_DATA="$(cat <<'__WIFI_EOF__'
 eduroam	wpa		none
 somenet	open		none
-V.momen	wpa	U2FsdGVkX18uf1Ejbk96GcLVDwKh+uSoBVAz4eRfwJI=	enc
+V.momen	wpa	U2FsdGVkX1+Wt6ZsahG8IQidWYBPmwXbk62nU+CED6s=	enc
 Tbilisi Loves You	open		none
 Tbilisi Airport Free	open		none
 Simorgh-WiFi	open		none
-Shatel	wpa	U2FsdGVkX1/8S8S3ecANg7GrLwCwAB9qaT+R/UK/Ly8=	enc
-SHAW-48EE	wpa	U2FsdGVkX1916VBFefDQ0XcRalr/3P3a0swz7zWmVdg=	enc
-Redmi Note 10 Pro Max	wpa	U2FsdGVkX1+bbW7BbDh9jEVO+QEFFngaho1Cf+TAAX4=	enc
-Parsway	wpa	U2FsdGVkX198Xo9BeaWcFvzUB2Yqd+02zbo62ybkvOo=	enc
-NZT9930134C	wpa	U2FsdGVkX1+BiEsAuqK6ne0oxCOl5pYQFNv1I5y1BFM=	enc
+Shatel	wpa	U2FsdGVkX1/nASpjZ0iwo8ANEs7o4kS+wot4syyqtQs=	enc
+SHAW-48EE	wpa	U2FsdGVkX1/l7WAOx2jCCLp/scXf1XG3jFbKqdKxjZ4=	enc
+Redmi Note 10 Pro Max	wpa	U2FsdGVkX18JZzds4zkGn1e1Kob1JI7Y//4I3GvrJ8M=	enc
+Parsway	wpa	U2FsdGVkX19h6gpAokqmomp1L8wlpcrCvNrMBWMHZkg=	enc
+NZT9930134C	wpa	U2FsdGVkX18Ya5RbVw0GIyLydEvs77BDNqWALJJvgXE=	enc
 Mofid-GoHyper!	open		none
-Jobvision-WiFi	wpa	U2FsdGVkX1+EmD1m8rQJSNOvrS2I+tDS6hxzyYQdSHo=	enc
-JobVision_DLink	wpa	U2FsdGVkX18MkxFcdL6pBJ7ZJ3SVNqqKrEJqE1GwAgs=	enc
-JobVision-3rd	wpa	U2FsdGVkX1+urvHi9lzFBRzvhW0ZvMbKDpQRZQs86Ig=	enc
-JobVision	wpa	U2FsdGVkX18j1Mjwf0JnGaO9mgYu7aVr+S6TssEVIZs=	enc
-Galaxy A51	wpa	U2FsdGVkX18rBycctTtwr3qqluoAPhAHOpAZkGqEP7U=	enc
-Fatemeh's Galaxy A71	wpa	U2FsdGVkX1/fCmQsA6IGIUD9a+FOec3seGhhZ1mhdi8=	enc
-AndroidAPA50	wpa	U2FsdGVkX1/WxmV2GIRvjDPXZu6Gwrpg/Pzs5PfpSIo=	enc
-DivorceHousing	wpa	U2FsdGVkX18N4Jux4voLPj+8d0LBgSiJ7MK85qo4n7VpDD3gDqRTXC/QSrGQh9VR	enc
+Jobvision-WiFi	wpa	U2FsdGVkX1/5KcdB6vVY8XnoqcQ2MT/3jLMl0Ny5PUA=	enc
+JobVision_DLink	wpa	U2FsdGVkX19/T7CtuVlDVpctcrVHwaBwerv2sWfAYt8=	enc
+JobVision-3rd	wpa	U2FsdGVkX1/tAeyzHaaGwrAyi+GcKOmB57tAswFTzos=	enc
+JobVision	wpa	U2FsdGVkX1+u2UDB396On9NJ2RuvhSUELus4uIb6GLg=	enc
+Galaxy A51	wpa	U2FsdGVkX19+BUvxxhPhvUmQLupZ4GXBL7nXBjzGmsc=	enc
+Fatemeh's Galaxy A71	wpa	U2FsdGVkX1+OuayWMeXhxvX4z21SAxGcSNB6apRANRQ=	enc
+AndroidAPA50	wpa	U2FsdGVkX182SueEBjcNGSTNuglcGBya3A5pVVfPixg=	enc
+DivorceHousing	wpa	U2FsdGVkX1+5X+svZ2CqoiH3ZHMIxrcIeyKQaj0o79SVAXg9a2W2kUuZ0Wbtw6z2	enc
 __WIFI_EOF__
 )"
 
@@ -2226,6 +2226,10 @@ Allow 192.168.171.x Inbound	Inbound	Allow	True	Any	Any	Any
 Allow 192.168.171.x Outbound	Outbound	Allow	True	Any	Any	Any		
 Quick Share	Inbound	Allow	True	TCP	Any	Any	C:\program files\google\nearbyshare\nearby_share.exe	
 Quick Share	Inbound	Allow	True	UDP	Any	Any	C:\program files\google\nearbyshare\nearby_share.exe	
+Microsoft Edge	Inbound	Allow	True	TCP	Any	Any	C:\program files (x86)\microsoft\edge\application\msedge.exe	
+Microsoft Edge	Inbound	Allow	True	UDP	Any	Any	C:\program files (x86)\microsoft\edge\application\msedge.exe	
+Bitvise SSH Client	Inbound	Allow	True	TCP	Any	Any	C:\program files (x86)\bitvise ssh client\bvssh.exe	
+Bitvise SSH Client	Inbound	Allow	True	UDP	Any	Any	C:\program files (x86)\bitvise ssh client\bvssh.exe	
 __FW_EOF__
 )"
 
@@ -2332,11 +2336,11 @@ SCHEDTASKS_DATA="$(cat <<'__TK_EOF__'
 ASC_PerformanceMonitor	User	onlogon	Monitor
 ASC_SkipUac_Ali	User	unsupported	ASC
 CreateExplorerShellUnelevatedTask	User	unsupported	explorer
-oCamTask	User	onlogon	oCamTask
 OneDrive Per-Machine Standalone Update Task	System	daily,23,00	OneDriveStandaloneUpdater
 OneDrive Reporting Task-S-1-5-21-134476807-1998891258-1216728456-1001	User	daily,00,52	OneDriveStandaloneUpdater
 OneDrive Startup Task-S-1-5-21-134476807-1998891258-1216728456-1001	User	onlogon	OneDriveLauncher
 RPCServiceHealthCheck	User	daily,00,45	RPCDownloader
+Uninstaller_SkipUac_Ali	User	unsupported	IObitUninstaler
 update-S-1-5-21-134476807-1998891258-1216728456-1001	User	daily,15,45	Updater
 Quick Share Relaunch	User	daily,22,10	nearby_share_launcher
 RunPlatformExperienceHelper_Daily	User	daily,10,44	platform_experience_helper
@@ -2359,6 +2363,49 @@ HOSTS_DATA="$(cat <<'__HO_EOF__'
 0.0.0.0	pf.iobit.com
 0.0.0.0	98.129.229.186
 0.0.0.0	www.iana.org
+127.0.0.1   lm.licenses.adobe.com
+127.0.0.1   lmlicenses.wip4.adobe.com
+127.0.0.1   lm-prd-da1.licenses.adobe.com
+127.0.0.1   activate.adobe.com
+127.0.0.1   activate.wip4.adobe.com
+127.0.0.1   practivate.adobe.com
+127.0.0.1   practivate-da1.adobe.com
+127.0.0.1   na1r.services.adobe.com
+127.0.0.1   hlrcv.stage.adobe.com
+127.0.0.1   uds.licenses.adobe.com
+127.0.0.1   license.adobe.com
+127.0.0.1   helpexamples.com
+127.0.0.1   activate-sea.adobe.com
+127.0.0.1   activate-sjc0.adobe.com
+127.0.0.1   ereg.adobe.com
+127.0.0.1   activate.wip3.adobe.com
+127.0.0.1   ereg.wip3.adobe.com
+127.0.0.1   wwis-dubc1-vip60.adobe.com
+127.0.0.1   genuine.adobe.com
+127.0.0.1   prod.adobegenuine.com
+127.0.0.1   lm.licenses.adobe.com
+127.0.0.1   lmlicenses.wip4.adobe.com
+127.0.0.1   lm-prd-da1.licenses.adobe.com
+127.0.0.1   activate.adobe.com
+127.0.0.1   activate.wip4.adobe.com
+127.0.0.1   practivate.adobe.com
+127.0.0.1   practivate-da1.adobe.com
+127.0.0.1   na1r.services.adobe.com
+127.0.0.1   hlrcv.stage.adobe.com
+127.0.0.1   uds.licenses.adobe.com
+127.0.0.1   license.adobe.com
+127.0.0.1   helpexamples.com
+127.0.0.1   activate-sea.adobe.com
+127.0.0.1   activate-sjc0.adobe.com
+127.0.0.1   ereg.adobe.com
+127.0.0.1   activate.wip3.adobe.com
+127.0.0.1   ereg.wip3.adobe.com
+127.0.0.1   wwis-dubc1-vip60.adobe.com
+127.0.0.1   genuine.adobe.com
+127.0.0.1   prod.adobegenuine.com
+10.112.60.14 host.docker.internal
+10.112.60.14 gateway.docker.internal
+127.0.0.1 kubernetes.docker.internal
 __HO_EOF__
 )"
 
