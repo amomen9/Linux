@@ -803,6 +803,22 @@ resolve_desktop() {  # resolve_desktop "Display Name" "exebase"
   return 1
 }
 
+# Find the actual executable for a Windows shortcut's exe base name, e.g. "vlc" ->
+# "/usr/bin/vlc". Used only as a fallback when no .desktop launcher exists, so a
+# desktop shortcut can become a valid symlink to the real binary instead of nothing.
+resolve_binary() {  # resolve_binary "exebase"  -> echoes absolute path, or returns 1
+  local exe="$1" p d
+  [ -n "$exe" ] || return 1
+  # command -v finds it on PATH; keep only an absolute path (skip builtins/aliases).
+  if p="$(command -v "$exe" 2>/dev/null)" && [ "${p#/}" != "$p" ]; then
+    printf '%s' "$p"; return 0
+  fi
+  for d in /usr/local/bin /usr/bin /bin /usr/local/sbin /usr/sbin /snap/bin; do
+    [ -x "$d/$exe" ] && { printf '%s' "$d/$exe"; return 0; }
+  done
+  return 1
+}
+
 # Append a .desktop id to the GNOME favourites list, idempotently.
 add_favorite() {  # add_favorite "app.desktop"
   local id="$1" cur
@@ -829,22 +845,41 @@ apply_shortcuts() {
   local appdir="$TARGET_HOME/.local/share/applications" kind disp exe did
   while IFS="$(printf '\t')" read -r kind disp exe; do
     [ -z "$disp$exe" ] && continue
-    did="$(resolve_desktop "$disp" "$exe")" || { mark_skip "shortcut: ${disp:-$exe}" "no installed equivalent (skipped to avoid a broken link)"; continue; }
+    did="$(resolve_desktop "$disp" "$exe")" || did=""
     case "$kind" in
       desktop)
-        local src=""
-        for d in /usr/share/applications /var/lib/flatpak/exports/share/applications "$appdir"; do
-          [ -f "$d/$did" ] && { src="$d/$did"; break; }
-        done
-        [ -z "$src" ] && { mark_skip "desktop shortcut: $disp" "resolved app file not found"; continue; }
-        mkdir -p "$TARGET_HOME/Desktop"
-        if cp -f "$src" "$TARGET_HOME/Desktop/$did" 2>/dev/null; then
-          chown "$TARGET_USER":"$TARGET_USER" "$TARGET_HOME/Desktop/$did" 2>/dev/null || true
-          chmod +x "$TARGET_HOME/Desktop/$did" 2>/dev/null || true
-          run_as_user gio set "$TARGET_HOME/Desktop/$did" metadata::trusted true >/dev/null 2>&1 || true
-          mark_set "desktop shortcut: $disp -> $did"
-        else mark_fail "desktop shortcut: $disp" "could not write to ~/Desktop"; fi ;;
-      quicklaunch|startmenu) add_favorite "$did" ;;
+        if [ -n "$did" ]; then
+          # Preferred: drop the installed app's own .desktop launcher onto the Desktop.
+          local src=""
+          for d in /usr/share/applications /var/lib/flatpak/exports/share/applications "$appdir"; do
+            [ -f "$d/$did" ] && { src="$d/$did"; break; }
+          done
+          [ -z "$src" ] && { mark_skip "desktop shortcut: $disp" "resolved app file not found"; continue; }
+          mkdir -p "$TARGET_HOME/Desktop"
+          if cp -f "$src" "$TARGET_HOME/Desktop/$did" 2>/dev/null; then
+            chown "$TARGET_USER":"$TARGET_USER" "$TARGET_HOME/Desktop/$did" 2>/dev/null || true
+            chmod +x "$TARGET_HOME/Desktop/$did" 2>/dev/null || true
+            run_as_user gio set "$TARGET_HOME/Desktop/$did" metadata::trusted true >/dev/null 2>&1 || true
+            mark_set "desktop shortcut: $disp -> $did"
+          else mark_fail "desktop shortcut: $disp" "could not write to ~/Desktop"; fi
+        else
+          # Fallback: no .desktop exists, so link to the real binary instead of leaving
+          # nothing (and NEVER a Windows .lnk). Skips only if no binary can be found.
+          local bin name link
+          if bin="$(resolve_binary "$exe")"; then
+            name="$(printf '%s' "${disp:-$exe}" | tr '/' '-')"
+            mkdir -p "$TARGET_HOME/Desktop"
+            link="$TARGET_HOME/Desktop/$name"
+            if ln -sfn "$bin" "$link" 2>/dev/null; then
+              chown -h "$TARGET_USER":"$TARGET_USER" "$link" 2>/dev/null || true
+              mark_set "desktop shortcut: $disp -> $bin (symlink)"
+            else mark_fail "desktop shortcut: $disp" "could not create a symlink in ~/Desktop"; fi
+          else
+            mark_skip "desktop shortcut: ${disp:-$exe}" "no installed app or binary found (skipped to avoid a broken link)"
+          fi
+        fi ;;
+      quicklaunch|startmenu)
+        [ -n "$did" ] && add_favorite "$did" || mark_skip "shortcut: ${disp:-$exe}" "no installed equivalent to pin" ;;
       *) mark_skip "shortcut: $disp" "unknown kind '$kind'" ;;
     esac
   done <<EOF

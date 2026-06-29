@@ -2333,6 +2333,22 @@
                                                       "downloadUrl":  "https://copilot.microsoft.com"
                                                   },
                                                   {
+                                                      "name":  "Claude Desktop (community Linux build)",
+                                                      "competency":  "90",
+                                                      "pricingModel":  "Freemium",
+                                                      "mustInclude":  "no",
+                                                      "canSync":  "Yes",
+                                                      "notes":  "Anthropic ships Claude Desktop only for Windows/macOS — there is no official Linux build (the official, supported Linux path is the Claude Code CLI). The community \u0027claude-desktop-debian\u0027 project repackages the official Electron app into native .deb/.rpm/AppImage (with APT/DNF repos), plus an unofficial Snap. Strong Copilot-style AI assistant; chats sync via your Anthropic account.",
+                                                      "installMethod":  "manual",
+                                                      "appType":  "Native (manual install)",
+                                                      "downloadUrl":  "https://github.com/aaddrick/claude-desktop-debian",
+                                                      "install":  {
+                                                                      "method":  "manual",
+                                                                      "downloadPage":  "https://github.com/aaddrick/claude-desktop-debian/releases",
+                                                                      "note":  "Unofficial community native build (.deb/.rpm/AppImage/AUR/Nix, or the claudeai-desktop Snap). Not built or supported by Anthropic; the official supported Linux option is the Claude Code CLI (npm install -g @anthropic-ai/claude-code)."
+                                                                  }
+                                                  },
+                                                  {
                                                       "name":  "Ollama + Continue.dev",
                                                       "competency":  "60",
                                                       "pricingModel":  "Free (FOSS)",

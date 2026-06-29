@@ -57,6 +57,30 @@ mega_title() {
 # exported so child stages launched by execute_all inherit them and never re-ask.
 XFER_PWD_ASKED="${XFER_PWD_ASKED:-0}"
 
+# Non-interactive transfer password: "--dec_pwd SECRET" or "--dec_pwd=SECRET" on the
+# command line supplies the sensitive-data DECRYPTION password up front (it pairs with the
+# Windows-side exporter's --enc_pwd). When given, ask_xfer_password uses it and NEVER
+# prompts. We strip the flag (and its value) from the positional parameters here -- at top
+# level, before any script's own main "$@" runs -- so the rest of the argument parsing is
+# unaffected. The rotate keeps the remaining args in order and preserves ones with spaces.
+MIGRATE_XFER_PWD_PROVIDED="${MIGRATE_XFER_PWD_PROVIDED:-0}"
+if [ "$#" -gt 0 ]; then
+  _xp_n=$#; _xp_pend=0
+  while [ "$_xp_n" -gt 0 ]; do
+    _xp_a="$1"; shift; _xp_n=$((_xp_n - 1))
+    if [ "$_xp_pend" = 1 ]; then
+      MIGRATE_XFER_PWD="$_xp_a"; MIGRATE_XFER_PWD_PROVIDED=1; _xp_pend=0; continue
+    fi
+    case "$_xp_a" in
+      --dec_pwd=*) MIGRATE_XFER_PWD="${_xp_a#--dec_pwd=}"; MIGRATE_XFER_PWD_PROVIDED=1 ;;
+      --dec_pwd)   _xp_pend=1 ;;
+      *) set -- "$@" "$_xp_a" ;;
+    esac
+  done
+  export MIGRATE_XFER_PWD MIGRATE_XFER_PWD_PROVIDED
+  unset _xp_a _xp_n _xp_pend
+fi
+
 # Best-effort verification that a candidate transfer password actually decrypts the
 # sensitive-data archive C_detect produced next to the staging dir (same AES-256-CBC /
 # PBKDF2 scheme unpack_stage uses). Exit status:
@@ -77,6 +101,8 @@ xfer_pwd_check() {
 ask_xfer_password() {
   [ "$XFER_PWD_ASKED" = "1" ] && return 0
   XFER_PWD_ASKED=1; export XFER_PWD_ASKED
+  # Supplied non-interactively via --dec_pwd: use it as-is and never prompt.
+  [ "${MIGRATE_XFER_PWD_PROVIDED:-0}" = "1" ] && { export MIGRATE_XFER_PWD; return 0; }
   [ -r /dev/tty ] || { export MIGRATE_XFER_PWD; return 0; }
 
   local RED=$'\033[1;31m' YEL=$'\033[1;33m' RST=$'\033[0m' ans tries=0 max=3
@@ -115,7 +141,9 @@ ask_xfer_password() {
 
   while :; do
     printf '  Enter the password used on Windows to encrypt your sensitive data (WiFi passwords, SSH keys, Contacts, wallpaper). Leave empty to skip restoring it: ' > /dev/tty
-    read -r MIGRATE_XFER_PWD < /dev/tty || MIGRATE_XFER_PWD=""
+    # -s masks the typed password; it also swallows the Enter, so echo our own newline.
+    read -rs MIGRATE_XFER_PWD < /dev/tty || MIGRATE_XFER_PWD=""
+    printf '\n' > /dev/tty
     tries=$((tries + 1))
     # Always pause a beat after an entry so the outcome is visible / not jarring.
     sleep 1
@@ -205,16 +233,84 @@ is_dry_run() { [ "${MIGRATE_DRY_RUN:-no}" = "yes" ]; }
 # LAST_ERR holds the 1-line reason from the most recent captured command failure.
 LAST_ERR=""
 
+# --- per-operation skip key (Ctrl+I / Command+I) -----------------------------
+# A keyboard interrupt that aborts ONLY the current operation -- the application
+# being installed right now -- without stopping the whole script (that stays on
+# Ctrl+C). Ctrl+I emits the TAB byte (0x09) in every terminal, and Command+I on
+# macOS terminals sends the same byte, so we watch the controlling terminal for
+# a TAB while each long operation runs and, when seen, kill just that operation's
+# process group and mark the app skipped. SKIPPED_BY_USER is the cross-call flag:
+# _install_app_core resets it per app and honours it instead of failing the app.
+SKIP_KEY_LABEL='Ctrl+I (Command+I on macOS)'
+SKIP_KEY_HINT="Press \033[1;34m${SKIP_KEY_LABEL}\033[0m to skip this application"
+SKIP_KEY_ENABLED="${SKIP_KEY_ENABLED:-1}"
+SKIPPED_BY_USER=0
+# True once the user has skipped the application currently being installed.
+user_skipped() { [ "${SKIPPED_BY_USER:-0}" -eq 1 ]; }
+# Whether capture can run its interruptible path (a real terminal + tools to
+# create and signal a separate process group). Otherwise capture runs plainly.
+skip_key_available() {
+  [ "${SKIP_KEY_ENABLED:-1}" = "1" ] && [ -r /dev/tty ] && have_cmd ps
+}
+
 # Run a command, show its output, and on failure capture the last output line into
 # LAST_ERR (a 1-line error reason). stdin stays attached, so interactive installers
-# still work. Returns the command's real exit code.
+# still work. Returns the command's real exit code. When a terminal is present the
+# command runs interruptibly so the user can skip just this application (see above).
 capture() {
   if is_dry_run; then printf '       \033[2m[dry-run] would run: %s\033[0m\n' "$*" >&3; LAST_ERR=""; return 0; fi
+  # Already skipped earlier in this same app? Make every later step a no-op so the
+  # install winds down quickly to the "skipped" verdict instead of trying more routes.
+  if user_skipped; then LAST_ERR="skipped by user ($SKIP_KEY_LABEL)"; return 130; fi
   local rc tmp; tmp="$(mktemp 2>/dev/null || echo /tmp/mtl_cap.$$)"
-  "$@" 2>&1 | tee "$tmp" >&3
-  rc=${PIPESTATUS[0]}
+
+  # Confirm the controlling terminal is actually usable for INPUT before going
+  # interruptible: it can look readable (-r) yet error on read in non-interactive
+  # runs, which would otherwise spin the poll loop. The probe runs in a subshell
+  # (its stderr discarded) so a failed open neither pollutes our fds nor leaks.
+  if ! skip_key_available || ! ( exec 8</dev/tty ) 2>/dev/null; then
+    "$@" 2>&1 | tee "$tmp" >&3
+    rc=${PIPESTATUS[0]}
+  else
+    # Tell the user how to skip, then run the command in its own process group so
+    # that a skip can take down the command AND its children (curl, the package
+    # manager, ...) while leaving this script untouched. The command's real exit
+    # code is smuggled out through $rcf because a backgrounded pipeline does not
+    # expose PIPESTATUS. The command gets no terminal (stdin /dev/null, fd 8
+    # closed) so it cannot steal the skip keystroke we are polling for. fd 8 is
+    # opened by the poll block itself (block-scoped, so it auto-closes cleanly).
+    printf '       %b\n' "$SKIP_KEY_HINT" >&3
+    local rcf tab; rcf="$(mktemp 2>/dev/null || echo /tmp/mtl_rc.$$)"; tab="$(printf '\t')"
+    set -m 2>/dev/null
+    { "$@" </dev/null 8<&- 2>&1; echo $? > "$rcf"; } | tee "$tmp" >&3 &
+    local pl=$! pgid key
+    set +m 2>/dev/null
+    pgid="$(ps -o pgid= -p "$pl" 2>/dev/null | tr -d ' ')"; [ -n "$pgid" ] || pgid="$pl"
+    {
+      while kill -0 "$pl" 2>/dev/null; do
+        key=""; IFS= read -rsn1 -t 1 -u 8 key 2>/dev/null
+        if [ "$key" = "$tab" ]; then
+          SKIPPED_BY_USER=1
+          # Tear down the whole operation: SIGINT first (lets curl/apt clean up),
+          # then SIGTERM, then SIGKILL. The leading "-" targets the process group.
+          kill -INT  "-$pgid" 2>/dev/null; sleep 0.3
+          kill -TERM "-$pgid" 2>/dev/null; sleep 0.2
+          kill -KILL "-$pgid" 2>/dev/null
+          printf '\n       \033[1;33mskipping this application ...\033[0m\n' >&3
+          break
+        fi
+      done
+    } 8</dev/tty
+    wait "$pl" 2>/dev/null
+    rc="$(cat "$rcf" 2>/dev/null)"; [ -n "$rc" ] || rc=1
+    user_skipped && rc=130
+    rm -f "$rcf" 2>/dev/null || true
+  fi
+
   LAST_ERR=""
-  if [ "$rc" -ne 0 ]; then
+  if user_skipped; then
+    LAST_ERR="skipped by user ($SKIP_KEY_LABEL)"
+  elif [ "$rc" -ne 0 ]; then
     LAST_ERR="$(grep -v '^[[:space:]]*$' "$tmp" 2>/dev/null | tail -n 1)"
     [ -z "$LAST_ERR" ] && LAST_ERR="exit code $rc"
   fi
@@ -722,6 +818,7 @@ install_native_version() {  # install_native_version PKG WINVER
 #  --post 'CMD' flags; the public install_app wrapper below runs them after a success.
 # =============================================================================
 _install_app_core() {
+  SKIPPED_BY_USER=0   # fresh app: clear any "skip this application" from the previous one
   local name="" alt="" method="" flatpak="" snap_pkg="" arch_list="" winver="" is_security=0 is_paid=0
   local apt="" dnf="" zypper="" pacman="" launch=""
   local url_x86="" url_arm="" url_deb="" url_rpm="" webapp_url="" docker_image="" github_repo="" note="" dlpage="" script_url=""
@@ -832,6 +929,8 @@ _install_app_core() {
       if capture download_file "$script_url" "$stmp" && capture sh "$stmp"; then
         ledger_add script "${alt:-$name} -- uninstall per the vendor's docs (e.g. ollama: sudo systemctl disable --now ollama; sudo rm -f /usr/local/bin/ollama)"
         mark_ok "$name" "installed via the official script ($script_url)" "$alt" "$launch"
+      elif user_skipped; then
+        mark_skip "${alt:-$name}" "skipped by user ($SKIP_KEY_LABEL)"
       else
         mark_fail "${alt:-$name}" "${LAST_ERR:-install script failed}"
       fi
@@ -891,6 +990,9 @@ _install_app_core() {
   local b url f rfn
   LAST_ERR=""   # so an empty value after the loop means "nothing was even attempted"
   for b in $order; do
+    # User skipped this app during an earlier backend: stop before any further
+    # vendor-repo setup / refresh, and fall through to the "skipped" verdict.
+    user_skipped && break
     case "$b" in
       flatpak)
         [ -n "$flatpak" ] || continue
@@ -944,6 +1046,12 @@ _install_app_core() {
   # (health-checked) -- or a web search if it is missing/broken -- and let the user supply
   # the installer. The preferred page is the manifest download page (--dlpage); fall back
   # to any direct/webapp/github URL the app carried.
+  # User pressed the skip key during one of the attempts above: record the app as
+  # skipped (not failed) and move on -- no download-page fallback for a deliberate skip.
+  if user_skipped; then
+    mark_skip "${alt:-$name}" "skipped by user ($SKIP_KEY_LABEL)"
+    return 0
+  fi
   if [ -n "$LAST_ERR" ]; then
     warn "package-manager install failed: $LAST_ERR"
     info "falling back to the download page for $name ..."
@@ -1791,24 +1899,24 @@ CFG_default_browser="edge"
 WIFI_DATA="$(cat <<'__WIFI_EOF__'
 eduroam	wpa		none
 somenet	open		none
-V.momen	wpa	U2FsdGVkX1+Wt6ZsahG8IQidWYBPmwXbk62nU+CED6s=	enc
+V.momen	wpa	U2FsdGVkX1/NUaya8BxJopXFYlWBsD4ngBqi0dMd6iQ=	enc
 Tbilisi Loves You	open		none
 Tbilisi Airport Free	open		none
 Simorgh-WiFi	open		none
-Shatel	wpa	U2FsdGVkX1/nASpjZ0iwo8ANEs7o4kS+wot4syyqtQs=	enc
-SHAW-48EE	wpa	U2FsdGVkX1/l7WAOx2jCCLp/scXf1XG3jFbKqdKxjZ4=	enc
-Redmi Note 10 Pro Max	wpa	U2FsdGVkX18JZzds4zkGn1e1Kob1JI7Y//4I3GvrJ8M=	enc
-Parsway	wpa	U2FsdGVkX19h6gpAokqmomp1L8wlpcrCvNrMBWMHZkg=	enc
-NZT9930134C	wpa	U2FsdGVkX18Ya5RbVw0GIyLydEvs77BDNqWALJJvgXE=	enc
+Shatel	wpa	U2FsdGVkX19d4wGYE9gTg+RKJGgg/CzFc9mWIURees4=	enc
+SHAW-48EE	wpa	U2FsdGVkX1+Xc3mp4scbPiiyOFp3RRsQM422Sy1NrtQ=	enc
+Redmi Note 10 Pro Max	wpa	U2FsdGVkX1+3ST2BkOedcJn0dpSlUVROdotiakduRco=	enc
+Parsway	wpa	U2FsdGVkX1+bUuoVTr3fNnF4kij9FuhJoc93UoYVaeo=	enc
+NZT9930134C	wpa	U2FsdGVkX1+gxseFYH/tOdNu1iLJehXnw0N7VQflGxc=	enc
 Mofid-GoHyper!	open		none
-Jobvision-WiFi	wpa	U2FsdGVkX1/5KcdB6vVY8XnoqcQ2MT/3jLMl0Ny5PUA=	enc
-JobVision_DLink	wpa	U2FsdGVkX19/T7CtuVlDVpctcrVHwaBwerv2sWfAYt8=	enc
-JobVision-3rd	wpa	U2FsdGVkX1/tAeyzHaaGwrAyi+GcKOmB57tAswFTzos=	enc
-JobVision	wpa	U2FsdGVkX1+u2UDB396On9NJ2RuvhSUELus4uIb6GLg=	enc
-Galaxy A51	wpa	U2FsdGVkX19+BUvxxhPhvUmQLupZ4GXBL7nXBjzGmsc=	enc
-Fatemeh's Galaxy A71	wpa	U2FsdGVkX1+OuayWMeXhxvX4z21SAxGcSNB6apRANRQ=	enc
-AndroidAPA50	wpa	U2FsdGVkX182SueEBjcNGSTNuglcGBya3A5pVVfPixg=	enc
-DivorceHousing	wpa	U2FsdGVkX1+5X+svZ2CqoiH3ZHMIxrcIeyKQaj0o79SVAXg9a2W2kUuZ0Wbtw6z2	enc
+Jobvision-WiFi	wpa	U2FsdGVkX18npOfdeVmMO3MHlKRCrgTCAud9YskR3fU=	enc
+JobVision_DLink	wpa	U2FsdGVkX1+57nnh8xXzRFqN/SYan3c7ER5TGYIiy7I=	enc
+JobVision-3rd	wpa	U2FsdGVkX19kmZU2sB5Afsf0A9IZOn28XBWxAe33kec=	enc
+JobVision	wpa	U2FsdGVkX1+uYGfFrwr5gflLSGOv9q6DvjIq95HEmTw=	enc
+Galaxy A51	wpa	U2FsdGVkX1+wdG8l5EmKHEHqC44SuWsI+IdZevrD7DM=	enc
+Fatemeh's Galaxy A71	wpa	U2FsdGVkX1+Zi1zWWc8ItfjVHlrYKCVJlFUe9JkK6hI=	enc
+AndroidAPA50	wpa	U2FsdGVkX18bbP2CUlksw1HbcUZY/xsJYby2jyaIBsw=	enc
+DivorceHousing	wpa	U2FsdGVkX18aktxIQrCZQYLevoFaS7wIAyIFplfLG7SxFh9ha9soVg4x6evknVMQ	enc
 __WIFI_EOF__
 )"
 
@@ -2295,7 +2403,6 @@ system	AnyDesk	AnyDesk
 system	Dropbox	Dropbox
 system	TeamsMachineInstaller	Program
 system	Lightshot	Program
-system	Babylon Client	Program
 system	SunJavaUpdateSched	jusched
 __ST_EOF__
 )"
@@ -3160,6 +3267,22 @@ resolve_desktop() {  # resolve_desktop "Display Name" "exebase"
   return 1
 }
 
+# Find the actual executable for a Windows shortcut's exe base name, e.g. "vlc" ->
+# "/usr/bin/vlc". Used only as a fallback when no .desktop launcher exists, so a
+# desktop shortcut can become a valid symlink to the real binary instead of nothing.
+resolve_binary() {  # resolve_binary "exebase"  -> echoes absolute path, or returns 1
+  local exe="$1" p d
+  [ -n "$exe" ] || return 1
+  # command -v finds it on PATH; keep only an absolute path (skip builtins/aliases).
+  if p="$(command -v "$exe" 2>/dev/null)" && [ "${p#/}" != "$p" ]; then
+    printf '%s' "$p"; return 0
+  fi
+  for d in /usr/local/bin /usr/bin /bin /usr/local/sbin /usr/sbin /snap/bin; do
+    [ -x "$d/$exe" ] && { printf '%s' "$d/$exe"; return 0; }
+  done
+  return 1
+}
+
 # Append a .desktop id to the GNOME favourites list, idempotently.
 add_favorite() {  # add_favorite "app.desktop"
   local id="$1" cur
@@ -3186,22 +3309,41 @@ apply_shortcuts() {
   local appdir="$TARGET_HOME/.local/share/applications" kind disp exe did
   while IFS="$(printf '\t')" read -r kind disp exe; do
     [ -z "$disp$exe" ] && continue
-    did="$(resolve_desktop "$disp" "$exe")" || { mark_skip "shortcut: ${disp:-$exe}" "no installed equivalent (skipped to avoid a broken link)"; continue; }
+    did="$(resolve_desktop "$disp" "$exe")" || did=""
     case "$kind" in
       desktop)
-        local src=""
-        for d in /usr/share/applications /var/lib/flatpak/exports/share/applications "$appdir"; do
-          [ -f "$d/$did" ] && { src="$d/$did"; break; }
-        done
-        [ -z "$src" ] && { mark_skip "desktop shortcut: $disp" "resolved app file not found"; continue; }
-        mkdir -p "$TARGET_HOME/Desktop"
-        if cp -f "$src" "$TARGET_HOME/Desktop/$did" 2>/dev/null; then
-          chown "$TARGET_USER":"$TARGET_USER" "$TARGET_HOME/Desktop/$did" 2>/dev/null || true
-          chmod +x "$TARGET_HOME/Desktop/$did" 2>/dev/null || true
-          run_as_user gio set "$TARGET_HOME/Desktop/$did" metadata::trusted true >/dev/null 2>&1 || true
-          mark_set "desktop shortcut: $disp -> $did"
-        else mark_fail "desktop shortcut: $disp" "could not write to ~/Desktop"; fi ;;
-      quicklaunch|startmenu) add_favorite "$did" ;;
+        if [ -n "$did" ]; then
+          # Preferred: drop the installed app's own .desktop launcher onto the Desktop.
+          local src=""
+          for d in /usr/share/applications /var/lib/flatpak/exports/share/applications "$appdir"; do
+            [ -f "$d/$did" ] && { src="$d/$did"; break; }
+          done
+          [ -z "$src" ] && { mark_skip "desktop shortcut: $disp" "resolved app file not found"; continue; }
+          mkdir -p "$TARGET_HOME/Desktop"
+          if cp -f "$src" "$TARGET_HOME/Desktop/$did" 2>/dev/null; then
+            chown "$TARGET_USER":"$TARGET_USER" "$TARGET_HOME/Desktop/$did" 2>/dev/null || true
+            chmod +x "$TARGET_HOME/Desktop/$did" 2>/dev/null || true
+            run_as_user gio set "$TARGET_HOME/Desktop/$did" metadata::trusted true >/dev/null 2>&1 || true
+            mark_set "desktop shortcut: $disp -> $did"
+          else mark_fail "desktop shortcut: $disp" "could not write to ~/Desktop"; fi
+        else
+          # Fallback: no .desktop exists, so link to the real binary instead of leaving
+          # nothing (and NEVER a Windows .lnk). Skips only if no binary can be found.
+          local bin name link
+          if bin="$(resolve_binary "$exe")"; then
+            name="$(printf '%s' "${disp:-$exe}" | tr '/' '-')"
+            mkdir -p "$TARGET_HOME/Desktop"
+            link="$TARGET_HOME/Desktop/$name"
+            if ln -sfn "$bin" "$link" 2>/dev/null; then
+              chown -h "$TARGET_USER":"$TARGET_USER" "$link" 2>/dev/null || true
+              mark_set "desktop shortcut: $disp -> $bin (symlink)"
+            else mark_fail "desktop shortcut: $disp" "could not create a symlink in ~/Desktop"; fi
+          else
+            mark_skip "desktop shortcut: ${disp:-$exe}" "no installed app or binary found (skipped to avoid a broken link)"
+          fi
+        fi ;;
+      quicklaunch|startmenu)
+        [ -n "$did" ] && add_favorite "$did" || mark_skip "shortcut: ${disp:-$exe}" "no installed equivalent to pin" ;;
       *) mark_skip "shortcut: $disp" "unknown kind '$kind'" ;;
     esac
   done <<EOF

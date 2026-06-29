@@ -10,7 +10,7 @@ It is a complete, **automated Windows → Linux migration kit** that:
 
 - **Inventories every app installed on your Windows PC** and rates each one for Linux: is it native, is there a great alternative, how good is that alternative, is it free, and is it worth installing.
 - **Installs all the keepers on Linux unattended** - native packages, Flatpaks, Docker images, vendor `.deb`s, and even the original Windows apps under Wine where that is the best option.
-- **Extracts your common Windows settings** (power/lid behaviour, display resolution & scaling, keyboard layout, telemetry, auto-update) and **re-applies them on Linux for every user**.
+- **Extracts ~26 categories of Windows settings** - power/lid, display resolution & scaling, keyboard layout + repeat, mouse/touchpad, accessibility, telemetry/location, timezone & NTP, locale, proxy, theme/accent/night-light, lock-screen timeout, auto-update, **hosts, printers, Wi-Fi networks and firewall rules**, plus post-install items (taskbar/Start-menu/desktop shortcuts, startup items, services, scheduled tasks, default browser, **your `~/.ssh`, Contacts and wallpaper**) - and **re-applies them on Linux for every user**. Secrets (Wi-Fi passwords, SSH keys, Contacts) travel inside one OpenSSL-encrypted bundle guarded by a single transfer password.
 - **Inventories every device driver** and **installs the Linux equivalents**, pulling firmware straight from the manufacturer via `fwupd`/LVFS.
 
 Everything in this folder is already generated for **this machine**, so in most cases you just **copy it to your new Linux box and run one command** - no AI, no manual research required.
@@ -126,21 +126,43 @@ Dry-run needs no root, makes no changes and writes nothing - it just prints the 
    sudo ./apply_settings.sh
    ```
 
-   It applies the captured settings (**to all users** - see note below):
+   It applies the captured settings (**to all users** - see note below). `apply_settings.sh`
+   runs in **two phases** - `pre` (before apps install) and `post` (after) - so settings
+   that depend on the apps existing (shortcuts, default browser) come last. `execute_all.sh`
+   sequences both phases for you. The full category set:
 
-   - **Power:** lid-close action (battery & AC) → `logind.conf`
+   **Pre-phase (applied before apps):**
+   - **Power:** lid-close action (battery & AC) → `logind.conf`; sleep timeouts
    - **Display:** resolution → `xrandr`, scaling → system-wide dconf default
-   - **Keyboard:** layout → `localectl` + `setxkbmap`, shortcut reference
+   - **Keyboard:** layout → `localectl` + `setxkbmap`; key-repeat delay/rate; NumLock
+   - **Mouse / Touchpad:** pointer size, speed, acceleration, button swap, tap-to-click, natural-scroll
+   - **Accessibility:** sticky/slow/mouse keys, high-contrast, magnifier
    - **Telemetry:** disable `whoopsie`, `apport`, `apt-daily.timer`, `motd-news.timer`, etc.
    - **Location:** disable `geoclue`, MAC randomization, GNOME location (system-wide)
    - **Screen:** lock-screen / blank timeout → system-wide dconf (`"never"` disables lock & blanking)
+   - **Time:** timezone → `timedatectl`; non-Microsoft NTP server → `systemd-timesyncd`
+   - **Locale:** `LANG=` → `localectl`
+   - **Proxy:** GNOME `org.gnome.system.proxy` (manual / auto-config)
+   - **Appearance:** dark/light scheme, accent colour (GNOME 47+), night-light
+   - **Hosts:** custom `/etc/hosts` entries merged in
+   - **Printers:** network/shared printers → CUPS (`lpadmin`, best-effort)
+   - **Static IP/DNS:** recorded as a **manual note** (never auto-applied, so it can't break your network)
+   - **Wi-Fi:** known networks + passwords → `nmcli` (passwords decrypted from the transfer bundle)
+   - **Firewall:** rules → `ufw`/`firewalld`; program-scoped rules → **OpenSnitch** (installed on demand)
    - **Auto-update:** install `system_update.service` + `system_update.timer` from the repo
 
+   **Post-phase (applied after apps, unpacks the encrypted bundle first):**
+   - **Shortcuts:** taskbar / Start-menu / Desktop pins → installed `.desktop` favourites
+   - **Startup items / Services / Scheduled tasks:** re-created when they resolve to an installed app/unit
+   - **Default browser:** `xdg-settings` (once the equivalent is installed)
+   - **`~/.ssh`** (keys, perms 600/700), **Contacts**, **wallpaper** → restored from the encrypted bundle
+
    > **Applied to all users.** GNOME/desktop keys (scaling, location, lock-screen
-   > timeout) are written as **system-wide dconf defaults** in `/etc/dconf/db/local.d`
-   > - not `gsettings set` as root (which only touches root's own profile). Together
-   > with the system-wide `logind`/`systemd`/`localectl`/APT changes, every setting
-   > applies to **every user** on the machine (current and future) on next login.
+   > timeout, mouse, a11y, appearance, …) are written as **system-wide dconf defaults**
+   > in `/etc/dconf/db/local.d` - not `gsettings set` as root (which only touches root's
+   > own profile). Together with the system-wide `logind`/`systemd`/`localectl`/APT/
+   > NetworkManager changes, every setting applies to **every user** on the machine
+   > (current and future) on next login.
    >
 
 ### Workflow 3 - Migrate device drivers
@@ -318,11 +340,13 @@ This runs config → software → drivers in sequence. No administrator rights r
 
 | Column                 | Source  | Meaning                                                                                  |
 | ---------------------- | ------- | ---------------------------------------------------------------------------------------- |
-| **Category**     | from PC | `Power`, `Display`, `Keyboard`, `Telemetry`, `AutoUpdate`, `Screen`.         |
-| **ConfigKey**    | from PC | Specific setting key (e.g.`lid_close_on_ac`, `resolution`, `lock_screen_timeout`). |
-| **WindowsValue** | from PC | The extracted value (e.g.`sleep`, `1920x1080`, `10 min` / `never`).              |
+| **Category**     | from PC | One of ~26: `Power`, `Display`, `Keyboard`, `Mouse`, `Touchpad`, `Accessibility`, `Telemetry`, `Screen`, `Time`, `Locale`, `Proxy`, `Appearance`, `DefaultApps`, `Hosts`, `Printers`, `NetConfig`, `Wifi`, `Firewall`, `AutoUpdate`, `Shortcuts`, `Startup`, `Services`, `ScheduledTasks`, `SSH`, `Contacts`, `Wallpaper`. |
+| **ConfigKey**    | from PC | Specific setting key (e.g.`lid_close_on_ac`, `resolution`, `lock_screen_timeout`, `wifi_profile`, `fw_rule`). |
+| **WindowsValue** | from PC | The extracted value (e.g.`sleep`, `1920x1080`, `10 min` / `never`). Multi-field categories (Wi-Fi, firewall, shortcuts) pipe-pack their fields. |
 | **LinuxCommand** | from PC | Input language tags for keyboard mapping (optional).                                     |
 | **Notes**        | from PC | Human-readable note about the Linux mapping.                                             |
+| **Phase**        | from PC | `pre` (applied before apps install) or `post` (after - needs the apps/desktop to exist). |
+| **Scope**        | from PC | `System` (machine-wide) or `User` (GNOME keys, written as system-wide dconf defaults so they reach every user). |
 
 ### The CSV columns (driver inventory - `A_installed_windows_drivers.csv`)
 
@@ -439,6 +463,40 @@ When `apply_settings.sh` runs, every `_apply_*` function produces structured lin
 A summary prints at the end showing OK / Failed / Info-only counts.
 
 **Firewall rules with Windows service-keyword ports.** Some Windows firewall rules use named ports (e.g. `PlayToDiscovery`, `mDNS`, `WSDEVENTS`, `RPC-EPMap`) instead of numbers. Known keywords are translated to their real port (e.g. `PlayToDiscovery`→3702, `mDNS`→5353); any keyword without a portable Linux equivalent is **skipped with a note** rather than reported as a failure.
+
+**Program-scoped firewall rules → OpenSnitch.** A Windows rule can be bound to a specific `.exe` (or a service), and some rules allow a program on *any* port - neither can be expressed as a Linux port rule. For these, the apply step installs **OpenSnitch** (on first use) and writes one rule per program (keyed on the executable name) into `/etc/opensnitchd/rules/`. Plain port rules still go to `ufw`/`firewalld`.
+
+---
+
+## Transfer password & encrypted personal data
+
+Your **secrets never travel in clear text.** A single **transfer password** (OpenSSL
+AES-256-CBC / PBKDF2) protects everything sensitive the migration carries:
+
+- **Wi-Fi pre-shared keys** - encrypted inline in `C_windows_configs.csv`.
+- **Your `~/.ssh` (private keys included), Contacts folder and desktop wallpaper** -
+  staged, `tar`'d, and encrypted into **one** file,
+  `Execute on Linux!/migrated_user_data.tar.enc`. The clear-text staging directory is
+  then **deleted**, so no unencrypted personal data is ever left on disk.
+
+**On Windows:** `run_project.ps1` shows the project banner and asks for the password
+**once, up front** (15-second timeout), then hands it to the settings detector. If you
+skip it (or OpenSSL/`tar` aren't available), Wi-Fi is exported **without** passwords and
+the personal-data bundle is simply **not created** - nothing is left in the clear. For
+unattended runs, pass `-EncPwd "secret"` (aliases: `-enc_pwd`, `--enc_pwd=secret`).
+OpenSSL is located on `PATH`, in Git-for-Windows, or installed via `winget` on demand.
+
+**On Linux:** `execute_all.sh` asks for the same password **once, up front**, and
+**verifies it actually decrypts the bundle** so a typo is caught immediately instead of
+failing halfway through. If OpenSSL is missing it offers to install it (without it, your
+sensitive data can't be restored). For unattended runs, pass `--dec_pwd "secret"` (or
+`--dec_pwd=secret`). The bundle is unpacked during the **post** settings phase, restoring
+`~/.ssh` (with `600`/`700` perms), `~/Contacts` and the wallpaper; Wi-Fi keys are
+decrypted as each network is recreated with `nmcli`.
+
+> The **same** password must be used on both sides. Fonts are deliberately **not**
+> bundled (they would bloat the archive) - the software installer asks for a font
+> directory instead.
 
 ---
 

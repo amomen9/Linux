@@ -107,6 +107,54 @@ Docker capture/rebuild flow:
     successful install is ledgered and an uninstall_migrated_apps.sh is written to the
     user's home folder.
 
+Settings migration (much broader than the original 6 categories):
+  - C_detect_windows_settings.ps1 now extracts ~26 categories into
+    documents/C_windows_configs.csv. Each row carries SEVEN columns:
+    Category, ConfigKey, WindowsValue, LinuxCommand, Notes, Phase, Scope.
+      * Phase = pre | post  -> pre rows are applied BEFORE apps install; post rows
+        AFTER (they need the apps/desktop to exist: shortcuts/pins -> .desktop
+        favourites, startup items, services, scheduled tasks, default browser,
+        ~/.ssh, Contacts, wallpaper).
+      * Scope = User | System -> whose setting it is. System rows are machine-wide
+        (logind/systemd/localectl/APT/NetworkManager). User rows that are GNOME keys
+        are written as SYSTEM-WIDE dconf defaults (/etc/dconf/db/local.d) so they
+        reach EVERY user, never `gsettings set` as root.
+    Categories: Power, Display, Keyboard, Telemetry, AutoUpdate, Screen, Mouse,
+    Touchpad, Accessibility, Time (timezone + non-Microsoft NTP), Locale, Proxy,
+    Appearance (dark/light, accent, night-light), DefaultApps (default browser),
+    Hosts, Printers, NetConfig (static IP/DNS - manual note only), Wifi, Firewall,
+    Shortcuts, Startup, Services, ScheduledTasks, SSH, Contacts, Wallpaper.
+  - apply_settings.sh runs in PHASES: `apply_settings.sh pre`, `apply_settings.sh
+    post`, or no arg = both. execute_all.sh runs pre BEFORE the app install and post
+    AFTER it.
+  - FIREWALL -> ufw/firewalld port rules; program-scoped Windows rules (bound to a
+    specific .exe, or "any port") cannot be expressed as port rules, so they are
+    recreated with OpenSnitch (installed on first use). Windows service-keyword ports
+    (PlayToDiscovery/mDNS/...) are translated to real ports or skipped with a note.
+
+TRANSFER PASSWORD + ENCRYPTED PERSONAL-DATA BUNDLE:
+  - One SHARED transfer password (OpenSSL AES-256-CBC / PBKDF2, "Salted__" format)
+    protects every exported secret: WiFi pre-shared keys (encrypted inline in the
+    CSV) AND the personal-data archive.
+  - Personal files (~/.ssh in full incl. private keys, the Contacts folder, the
+    desktop wallpaper) are staged into "Execute on Linux!/migrated_user_data/", then
+    tar'd and encrypted into ONE file "Execute on Linux!/migrated_user_data.tar.enc";
+    the clear-text staging dir is then DELETED, so no unencrypted personal data is
+    ever left on disk. No password / no openssl / no tar => personal data is simply
+    not migrated (never left in the clear).
+  - WINDOWS side: run_project.ps1 shows a mega-title and prompts for the password
+    ONCE up front (15s timeout), then hands it to C_detect via $env:MIGRATE_XFER_PWD
+    (shared helper submodules/_xfer_password.ps1: Show-MegaTitle / Get-XferPassword).
+    Non-interactive: -EncPwd / -enc_pwd / --enc_pwd[=]SECRET. openssl is resolved
+    from PATH / Git-for-Windows / winget-installed on demand.
+  - LINUX side: execute_all.sh asks for the password ONCE up front
+    (ask_xfer_password, cached in MIGRATE_XFER_PWD) and VERIFIES it actually decrypts
+    the archive (xfer_pwd_check) so a typo is caught early; if openssl is missing it
+    offers to install it (sensitive data cannot be restored otherwise). Non-
+    interactive: --dec_pwd[=]SECRET. The post settings phase unpacks the archive
+    (unpack_stage) and restores ~/.ssh (perms 600/700), Contacts and wallpaper; WiFi
+    keys are decrypted as each profile is recreated with nmcli.
+
 To regenerate the installer after editing the manifest or CSVs:
   .\run_project.ps1 -SkipDetection      (regenerate scripts only)
   .\run_project.ps1                      (full: detection + generation)
@@ -798,9 +846,16 @@ POST-INSTALL
  (files: C_detect_windows_settings.ps1, <Target OS>/apply_settings.sh)
 
 GOAL
-  Extract six categories of common Windows user settings, write them to
-  C_windows_configs.csv (in the parent Migrate to Linux/ directory), then apply
-  them on the target Linux distro using the per-distro apply_settings.sh.
+  Extract ~26 categories of common Windows user settings, write them to
+  C_windows_configs.csv (in the documents/ directory), then apply them on the target
+  Linux distro using the universal apply_settings.sh. CATEGORIES 1-6 below are the
+  original core set; CATEGORIES 7+ (mouse, accessibility, keyboard repeat, time,
+  locale, proxy, touchpad, appearance, default apps, hosts, printers, static net,
+  WiFi, firewall) and the POST-INSTALL items (shortcuts, startup, services,
+  scheduled tasks, SSH, Contacts, wallpaper) are documented in the CURRENT
+  ARCHITECTURE block at the top of this file and in the apply functions. Every CSV
+  row carries Phase (pre|post) and Scope (User|System) columns; apply_settings.sh is
+  invoked as `apply_settings.sh pre` then `apply_settings.sh post`.
 
   NOTE - SINGLE-FILE DESIGN: the apply functions and the dispatch table were
   formerly split into a separate settings_config.sh that apply_settings.sh sourced.
@@ -946,6 +1001,87 @@ CATEGORY 6 - LOCK SCREEN TIMEOUT (idle → lock/blank)
                     org/gnome/desktop/screensaver idle-activation-enabled false.
     * "<N> min"  -> session idle-delay uint32 <N*60>, screensaver lock-enabled true,
                     screensaver lock-delay uint32 0.
+
+CATEGORY 7 - MOUSE & TOUCHPAD
+  Windows: HKCU\Control Panel\Mouse (MouseSensitivity 1..20, MouseSpeed accel flag,
+  SwapMouseButtons, DoubleClickSpeed) + Cursors\CursorBaseSize; PrecisionTouchPad
+  (TapsEnabled, ScrollDirection). Rows: Mouse|mouse_size/speed/accel/swap/dblclick,
+  Touchpad|touchpad_tap/natural.
+  Linux: org.gnome.desktop.peripherals.mouse speed(-1..1)/accel-profile/left-handed/
+  double-click; interface cursor-size; peripherals.touchpad tap-to-click/natural-scroll.
+
+CATEGORY 8 - ACCESSIBILITY
+  Windows: the \Flags bitmask (bit0=on) of StickyKeys / Keyboard Response (slow keys) /
+  MouseKeys / HighContrast, plus ScreenMagnifier RunningState. Rows: Accessibility|
+  a11y_stickykeys/slowkeys/mousekeys/highcontrast/magnifier ('true'/'false').
+  Linux: org.gnome.desktop.a11y.keyboard stickykeys/slowkeys/mousekeys-enable,
+  a11y.interface high-contrast, a11y.applications screen-magnifier-enabled.
+
+CATEGORY 9 - KEYBOARD REPEAT + NUMLOCK
+  Windows: HKCU\Control Panel\Keyboard KeyboardDelay(0..3->250..1000ms),
+  KeyboardSpeed(0..31 cps -> ms between repeats), InitialKeyboardIndicators NumLock bit.
+  Rows: Keyboard|key_repeat_delay/key_repeat_rate/numlock.
+  Linux: org.gnome.desktop.peripherals.keyboard delay/repeat-interval (uint32 ms)/
+  numlock-state.
+
+CATEGORY 10 - TIME (TIMEZONE + NTP) [Scope=System]
+  Windows: TimeZoneInfo.Local.Id -> IANA id (TryConvertWindowsIdToIanaId on PS7, else a
+  built-in map); W32Time\Parameters NtpServer (only if NON-Microsoft, else pool.ntp.org).
+  Rows: Time|timezone, Time|ntp_server.
+  Linux: timedatectl set-timezone; systemd-timesyncd NTP=; timedatectl set-ntp true.
+
+CATEGORY 10b - DESKTOP/SYSTEM EXTRAS
+  Locale [System]:   HKCU\...\International LocaleName -> LANG=xx_XX.UTF-8 (localectl).
+  Proxy:             WinINET Internet Settings (AutoConfigURL / ProxyServer) ->
+                     org.gnome.system.proxy mode/host/port/autoconfig-url.
+  Appearance:        Themes\Personalize AppsUseLightTheme -> interface color-scheme;
+                     DWM AccentColor -> nearest GNOME accent (GNOME 47+); blue-light
+                     reduction blob -> settings-daemon color night-light-enabled.
+  DefaultApps [post]: https UserChoice ProgId -> default_browser (xdg-settings, applied
+                     post-install once the browser exists).
+  Hosts [System]:    custom (non-boilerplate) /etc/hosts entries -> merged into Linux
+                     /etc/hosts.
+  Printers [System]: network/shared printers (IP_/WSD/http ports) -> CUPS lpadmin
+                     (best-effort). Local USB printer drivers are not portable.
+  NetConfig [System]: manual static IP/DNS adapters -> recorded as a MANUAL NOTE only
+                     (never auto-applied, so migration cannot break the user's network).
+  Power sleep [System]: STANDBYIDLE AC/DC -> power sleep-inactive-ac/battery-timeout.
+
+CATEGORY 11 - WIFI  [Scope=System]
+  Windows: `netsh wlan show profiles` + `... profile name=<n> key=clear` -> SSID, auth
+  (open|wpa), and the pre-shared key. The key is encrypted with the TRANSFER PASSWORD
+  (OpenSSL AES-256-CBC/PBKDF2, base64) so it travels safely; with no password/openssl,
+  profiles are exported WITHOUT passwords. Fields pipe-packed: ssid|auth|secret|sectype
+  (sectype = enc|none). Row: Wifi|wifi_profile.
+  Linux (_apply_wifi): nmcli connection add type wifi; encrypted keys are decrypted with
+  MIGRATE_XFER_PWD before `wifi-sec.psk` is set. Needs NetworkManager (else manual note).
+
+CATEGORY 12 - FIREWALL  [Scope=System]
+  Windows: Get-NetFirewallRule + PortFilter/ApplicationFilter/ServiceFilter. Fields
+  pipe-packed: name|direction|action|enabled|proto|localport|remoteport|program|service.
+  Row: Firewall|fw_rule.
+  Linux: port rules -> ufw / firewalld (per-backend range syntax); service-keyword ports
+  (PlayToDiscovery->3702, mDNS->5353, ...) are translated or skipped-with-a-note; a rule
+  bound to a specific program (or an "any port" rule too broad for a port firewall) is
+  recreated with OpenSnitch (installed on first use; one /etc/opensnitchd/rules/*.json
+  per program keyed on the exe). See firewall-migration-opensnitch design notes.
+
+POST-INSTALL CATEGORIES (Phase=post; applied AFTER apps install, by `apply_settings.sh
+post` which first unpacks migrated_user_data.tar.enc via unpack_stage):
+  Shortcuts [User]:   Quick Launch / Start-menu pinned / Desktop .lnk -> resolved to an
+                      installed .desktop (favourite / desktop file). Packed: display|exeBase.
+  Startup [User/Sys]: HKCU/HKLM Run + Startup folders -> autostart if it resolves to an
+                      installed app (Scope follows HKCU=User / HKLM=System).
+  Services [System]:  auto-start non-Windows services -> systemctl enable if a clearly
+                      matching unit exists (else log-only).
+  ScheduledTasks:     non-Microsoft enabled tasks -> a cron entry if the program resolves
+                      to an installed app. Packed: name|scope|schedule|exeBase.
+  SSH [User]:         the whole ~/.ssh (private keys included) -> restored into ~/.ssh
+                      with perms 600/700 from the encrypted archive.
+  Contacts [User]:    %USERPROFILE%\Contacts -> ~/Contacts (.contact files are XML).
+  Wallpaper [User]:   current desktop wallpaper image -> org.gnome.desktop.background
+                      picture-uri. (Fonts are deliberately NOT bundled - the installer
+                      asks for a font directory instead, to keep the archive small.)
 
 APPLY_SETTINGS.SH STRUCTURE (single self-contained file)
   apply_settings.sh holds EVERYTHING - there is no separate settings_config.sh.

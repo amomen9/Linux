@@ -94,8 +94,26 @@ param(
 
     # ---- Orchestration ----
     [switch] $SkipDetection,
-    [switch] $SkipGenerator
+    [switch] $SkipGenerator,
+
+    # Encryption password for the exported sensitive data (WiFi/SSH/Contacts/wallpaper).
+    # When supplied, the interactive transfer-password prompt is skipped. Usable as
+    # -EncPwd "secret", -enc_pwd "secret", or the literal --enc_pwd / --enc_pwd=secret.
+    [Alias('enc_pwd')]
+    [string] $EncPwd,
+
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]] $ExtraArgs
 )
+
+# Accept the literal "--enc_pwd SECRET" / "--enc_pwd=SECRET" form (mirrors the .sh --dec_pwd).
+if (-not $EncPwd -and $ExtraArgs) {
+    for ($i = 0; $i -lt $ExtraArgs.Count; $i++) {
+        $a = [string]$ExtraArgs[$i]
+        if ($a -like '--enc_pwd=*') { $EncPwd = $a.Substring(10) }
+        elseif ($a -eq '--enc_pwd' -and ($i + 1) -lt $ExtraArgs.Count) { $EncPwd = [string]$ExtraArgs[$i + 1]; $i++ }
+    }
+}
 
 $ErrorActionPreference = 'Stop'
 
@@ -468,7 +486,10 @@ $xferPwd = ''
 if (Test-Path $xferPromptShared) {
     . $xferPromptShared
     Show-MegaTitle
-    if (-not $SkipDetection) { $xferPwd = Get-XferPassword -TimeoutSec 15 }
+    if ($EncPwd) { $xferPwd = $EncPwd }                                  # supplied on cmd line: no prompt
+    elseif (-not $SkipDetection) { $xferPwd = Get-XferPassword -TimeoutSec 15 }
+} elseif ($EncPwd) {
+    $xferPwd = $EncPwd
 }
 
 # ---------------------------------------------------------------------------

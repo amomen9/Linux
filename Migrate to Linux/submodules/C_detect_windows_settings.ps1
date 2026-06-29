@@ -46,10 +46,28 @@
 
 [CmdletBinding()]
 param(
-    [string] $OutputPath
+    [string] $OutputPath,
+
+    # Encryption password for the exported sensitive data. When supplied (directly, or by
+    # run_project via $env:MIGRATE_XFER_PWD), the interactive prompt is skipped. Usable as
+    # -EncPwd "secret", -enc_pwd "secret", or the literal --enc_pwd / --enc_pwd=secret.
+    [Alias('enc_pwd')]
+    [string] $EncPwd,
+
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]] $ExtraArgs
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Accept the literal "--enc_pwd SECRET" / "--enc_pwd=SECRET" form (mirrors the .sh --dec_pwd).
+if (-not $EncPwd -and $ExtraArgs) {
+    for ($i = 0; $i -lt $ExtraArgs.Count; $i++) {
+        $a = [string]$ExtraArgs[$i]
+        if ($a -like '--enc_pwd=*') { $EncPwd = $a.Substring(10) }
+        elseif ($a -eq '--enc_pwd' -and ($i + 1) -lt $ExtraArgs.Count) { $EncPwd = [string]$ExtraArgs[$i + 1]; $i++ }
+    }
+}
 
 if (-not $OutputPath) {
     $scriptDir = $PSScriptRoot
@@ -71,7 +89,9 @@ if (-not $OutputPath) {
 $xferPromptShared = Join-Path $PSScriptRoot '_xfer_password.ps1'
 if (Test-Path $xferPromptShared) { . $xferPromptShared }
 
-if ($env:MIGRATE_XFER_PROMPTED -eq '1') {
+if ($EncPwd) {
+    $xferPwd = $EncPwd                                # supplied on cmd line: no prompt
+} elseif ($env:MIGRATE_XFER_PROMPTED -eq '1') {
     $xferPwd = [string]$env:MIGRATE_XFER_PWD          # already prompted by run_project
 } elseif (Get-Command Get-XferPassword -ErrorAction SilentlyContinue) {
     Show-MegaTitle

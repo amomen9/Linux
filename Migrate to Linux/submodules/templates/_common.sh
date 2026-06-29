@@ -49,6 +49,30 @@ mega_title() {
 # exported so child stages launched by execute_all inherit them and never re-ask.
 XFER_PWD_ASKED="${XFER_PWD_ASKED:-0}"
 
+# Non-interactive transfer password: "--dec_pwd SECRET" or "--dec_pwd=SECRET" on the
+# command line supplies the sensitive-data DECRYPTION password up front (it pairs with the
+# Windows-side exporter's --enc_pwd). When given, ask_xfer_password uses it and NEVER
+# prompts. We strip the flag (and its value) from the positional parameters here -- at top
+# level, before any script's own main "$@" runs -- so the rest of the argument parsing is
+# unaffected. The rotate keeps the remaining args in order and preserves ones with spaces.
+MIGRATE_XFER_PWD_PROVIDED="${MIGRATE_XFER_PWD_PROVIDED:-0}"
+if [ "$#" -gt 0 ]; then
+  _xp_n=$#; _xp_pend=0
+  while [ "$_xp_n" -gt 0 ]; do
+    _xp_a="$1"; shift; _xp_n=$((_xp_n - 1))
+    if [ "$_xp_pend" = 1 ]; then
+      MIGRATE_XFER_PWD="$_xp_a"; MIGRATE_XFER_PWD_PROVIDED=1; _xp_pend=0; continue
+    fi
+    case "$_xp_a" in
+      --dec_pwd=*) MIGRATE_XFER_PWD="${_xp_a#--dec_pwd=}"; MIGRATE_XFER_PWD_PROVIDED=1 ;;
+      --dec_pwd)   _xp_pend=1 ;;
+      *) set -- "$@" "$_xp_a" ;;
+    esac
+  done
+  export MIGRATE_XFER_PWD MIGRATE_XFER_PWD_PROVIDED
+  unset _xp_a _xp_n _xp_pend
+fi
+
 # Best-effort verification that a candidate transfer password actually decrypts the
 # sensitive-data archive C_detect produced next to the staging dir (same AES-256-CBC /
 # PBKDF2 scheme unpack_stage uses). Exit status:
@@ -69,6 +93,8 @@ xfer_pwd_check() {
 ask_xfer_password() {
   [ "$XFER_PWD_ASKED" = "1" ] && return 0
   XFER_PWD_ASKED=1; export XFER_PWD_ASKED
+  # Supplied non-interactively via --dec_pwd: use it as-is and never prompt.
+  [ "${MIGRATE_XFER_PWD_PROVIDED:-0}" = "1" ] && { export MIGRATE_XFER_PWD; return 0; }
   [ -r /dev/tty ] || { export MIGRATE_XFER_PWD; return 0; }
 
   local RED=$'\033[1;31m' YEL=$'\033[1;33m' RST=$'\033[0m' ans tries=0 max=3
@@ -107,7 +133,9 @@ ask_xfer_password() {
 
   while :; do
     printf '  Enter the password used on Windows to encrypt your sensitive data (WiFi passwords, SSH keys, Contacts, wallpaper). Leave empty to skip restoring it: ' > /dev/tty
-    read -r MIGRATE_XFER_PWD < /dev/tty || MIGRATE_XFER_PWD=""
+    # -s masks the typed password; it also swallows the Enter, so echo our own newline.
+    read -rs MIGRATE_XFER_PWD < /dev/tty || MIGRATE_XFER_PWD=""
+    printf '\n' > /dev/tty
     tries=$((tries + 1))
     # Always pause a beat after an entry so the outcome is visible / not jarring.
     sleep 1
@@ -197,16 +225,84 @@ is_dry_run() { [ "${MIGRATE_DRY_RUN:-no}" = "yes" ]; }
 # LAST_ERR holds the 1-line reason from the most recent captured command failure.
 LAST_ERR=""
 
+# --- per-operation skip key (Ctrl+I / Command+I) -----------------------------
+# A keyboard interrupt that aborts ONLY the current operation -- the application
+# being installed right now -- without stopping the whole script (that stays on
+# Ctrl+C). Ctrl+I emits the TAB byte (0x09) in every terminal, and Command+I on
+# macOS terminals sends the same byte, so we watch the controlling terminal for
+# a TAB while each long operation runs and, when seen, kill just that operation's
+# process group and mark the app skipped. SKIPPED_BY_USER is the cross-call flag:
+# _install_app_core resets it per app and honours it instead of failing the app.
+SKIP_KEY_LABEL='Ctrl+I (Command+I on macOS)'
+SKIP_KEY_HINT="Press \033[1;34m${SKIP_KEY_LABEL}\033[0m to skip this application"
+SKIP_KEY_ENABLED="${SKIP_KEY_ENABLED:-1}"
+SKIPPED_BY_USER=0
+# True once the user has skipped the application currently being installed.
+user_skipped() { [ "${SKIPPED_BY_USER:-0}" -eq 1 ]; }
+# Whether capture can run its interruptible path (a real terminal + tools to
+# create and signal a separate process group). Otherwise capture runs plainly.
+skip_key_available() {
+  [ "${SKIP_KEY_ENABLED:-1}" = "1" ] && [ -r /dev/tty ] && have_cmd ps
+}
+
 # Run a command, show its output, and on failure capture the last output line into
 # LAST_ERR (a 1-line error reason). stdin stays attached, so interactive installers
-# still work. Returns the command's real exit code.
+# still work. Returns the command's real exit code. When a terminal is present the
+# command runs interruptibly so the user can skip just this application (see above).
 capture() {
   if is_dry_run; then printf '       \033[2m[dry-run] would run: %s\033[0m\n' "$*" >&3; LAST_ERR=""; return 0; fi
+  # Already skipped earlier in this same app? Make every later step a no-op so the
+  # install winds down quickly to the "skipped" verdict instead of trying more routes.
+  if user_skipped; then LAST_ERR="skipped by user ($SKIP_KEY_LABEL)"; return 130; fi
   local rc tmp; tmp="$(mktemp 2>/dev/null || echo /tmp/mtl_cap.$$)"
-  "$@" 2>&1 | tee "$tmp" >&3
-  rc=${PIPESTATUS[0]}
+
+  # Confirm the controlling terminal is actually usable for INPUT before going
+  # interruptible: it can look readable (-r) yet error on read in non-interactive
+  # runs, which would otherwise spin the poll loop. The probe runs in a subshell
+  # (its stderr discarded) so a failed open neither pollutes our fds nor leaks.
+  if ! skip_key_available || ! ( exec 8</dev/tty ) 2>/dev/null; then
+    "$@" 2>&1 | tee "$tmp" >&3
+    rc=${PIPESTATUS[0]}
+  else
+    # Tell the user how to skip, then run the command in its own process group so
+    # that a skip can take down the command AND its children (curl, the package
+    # manager, ...) while leaving this script untouched. The command's real exit
+    # code is smuggled out through $rcf because a backgrounded pipeline does not
+    # expose PIPESTATUS. The command gets no terminal (stdin /dev/null, fd 8
+    # closed) so it cannot steal the skip keystroke we are polling for. fd 8 is
+    # opened by the poll block itself (block-scoped, so it auto-closes cleanly).
+    printf '       %b\n' "$SKIP_KEY_HINT" >&3
+    local rcf tab; rcf="$(mktemp 2>/dev/null || echo /tmp/mtl_rc.$$)"; tab="$(printf '\t')"
+    set -m 2>/dev/null
+    { "$@" </dev/null 8<&- 2>&1; echo $? > "$rcf"; } | tee "$tmp" >&3 &
+    local pl=$! pgid key
+    set +m 2>/dev/null
+    pgid="$(ps -o pgid= -p "$pl" 2>/dev/null | tr -d ' ')"; [ -n "$pgid" ] || pgid="$pl"
+    {
+      while kill -0 "$pl" 2>/dev/null; do
+        key=""; IFS= read -rsn1 -t 1 -u 8 key 2>/dev/null
+        if [ "$key" = "$tab" ]; then
+          SKIPPED_BY_USER=1
+          # Tear down the whole operation: SIGINT first (lets curl/apt clean up),
+          # then SIGTERM, then SIGKILL. The leading "-" targets the process group.
+          kill -INT  "-$pgid" 2>/dev/null; sleep 0.3
+          kill -TERM "-$pgid" 2>/dev/null; sleep 0.2
+          kill -KILL "-$pgid" 2>/dev/null
+          printf '\n       \033[1;33mskipping this application ...\033[0m\n' >&3
+          break
+        fi
+      done
+    } 8</dev/tty
+    wait "$pl" 2>/dev/null
+    rc="$(cat "$rcf" 2>/dev/null)"; [ -n "$rc" ] || rc=1
+    user_skipped && rc=130
+    rm -f "$rcf" 2>/dev/null || true
+  fi
+
   LAST_ERR=""
-  if [ "$rc" -ne 0 ]; then
+  if user_skipped; then
+    LAST_ERR="skipped by user ($SKIP_KEY_LABEL)"
+  elif [ "$rc" -ne 0 ]; then
     LAST_ERR="$(grep -v '^[[:space:]]*$' "$tmp" 2>/dev/null | tail -n 1)"
     [ -z "$LAST_ERR" ] && LAST_ERR="exit code $rc"
   fi
@@ -714,6 +810,7 @@ install_native_version() {  # install_native_version PKG WINVER
 #  --post 'CMD' flags; the public install_app wrapper below runs them after a success.
 # =============================================================================
 _install_app_core() {
+  SKIPPED_BY_USER=0   # fresh app: clear any "skip this application" from the previous one
   local name="" alt="" method="" flatpak="" snap_pkg="" arch_list="" winver="" is_security=0 is_paid=0
   local apt="" dnf="" zypper="" pacman="" launch=""
   local url_x86="" url_arm="" url_deb="" url_rpm="" webapp_url="" docker_image="" github_repo="" note="" dlpage="" script_url=""
@@ -824,6 +921,8 @@ _install_app_core() {
       if capture download_file "$script_url" "$stmp" && capture sh "$stmp"; then
         ledger_add script "${alt:-$name} -- uninstall per the vendor's docs (e.g. ollama: sudo systemctl disable --now ollama; sudo rm -f /usr/local/bin/ollama)"
         mark_ok "$name" "installed via the official script ($script_url)" "$alt" "$launch"
+      elif user_skipped; then
+        mark_skip "${alt:-$name}" "skipped by user ($SKIP_KEY_LABEL)"
       else
         mark_fail "${alt:-$name}" "${LAST_ERR:-install script failed}"
       fi
@@ -883,6 +982,9 @@ _install_app_core() {
   local b url f rfn
   LAST_ERR=""   # so an empty value after the loop means "nothing was even attempted"
   for b in $order; do
+    # User skipped this app during an earlier backend: stop before any further
+    # vendor-repo setup / refresh, and fall through to the "skipped" verdict.
+    user_skipped && break
     case "$b" in
       flatpak)
         [ -n "$flatpak" ] || continue
@@ -936,6 +1038,12 @@ _install_app_core() {
   # (health-checked) -- or a web search if it is missing/broken -- and let the user supply
   # the installer. The preferred page is the manifest download page (--dlpage); fall back
   # to any direct/webapp/github URL the app carried.
+  # User pressed the skip key during one of the attempts above: record the app as
+  # skipped (not failed) and move on -- no download-page fallback for a deliberate skip.
+  if user_skipped; then
+    mark_skip "${alt:-$name}" "skipped by user ($SKIP_KEY_LABEL)"
+    return 0
+  fi
   if [ -n "$LAST_ERR" ]; then
     warn "package-manager install failed: $LAST_ERR"
     info "falling back to the download page for $name ..."
