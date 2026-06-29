@@ -538,6 +538,14 @@ WINE (WINDOWS EMULATOR) - OPTIONAL, FOR NON-CROSS-PLATFORM APPS
     emits a `wine_app "<name>" "<windowsInstaller-url>"` call for every DETECTED app that
     is a Win32 desktop app with no native "Available on Linux" build (e.g. Notepad++,
     WinRAR, IDM).
+  * 32-BIT (i386) APPS USE A WIN32 PREFIX. The prefix arch is per-app (WINE_ARCH, default
+    win64). A FRESH install of a 32-bit installer (is_32bit_pe) is given a WINEARCH=win32
+    prefix -- a win64 prefix's WoW64 fails to load 32-bit kernel32 (c0000135) on several
+    distros even with wine32 installed; a win32 prefix runs 32-bit apps directly. A leftover
+    wrong-arch prefix from a previous FAILED attempt is recreated (fresh-install only, so no
+    working app/data is lost). 64-bit apps keep win64 UNCHANGED. On an UPGRADE the existing
+    prefix's arch is kept as-is (never switched/wiped). The c0000135 self-heal also falls
+    back to win32 + rebuild + one retry, for installers whose arch could not be detected.
   * Install Wine via the native package manager (add i386 first on apt). Then, per app:
       - If the manifest entry has a "windowsInstaller" URL (a trusted, official, DIRECT
         installer link; currently Notepad++ and WinRAR), DOWNLOAD it and run it under

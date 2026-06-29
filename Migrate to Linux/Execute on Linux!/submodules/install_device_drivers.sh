@@ -912,9 +912,9 @@ resolve_user_path() {  # resolve_user_path RAW
 run_wine() {  # run_wine CMD [ARGS...]
   local prefix="${WINE_PREFIX_DIR:-$TARGET_HOME/.wine}"
   if [ "$(id -u)" -eq 0 ] && [ "$TARGET_USER" != "root" ]; then
-    sudo -u "$TARGET_USER" env HOME="$TARGET_HOME" WINEARCH=win64 WINEPREFIX="$prefix" WINEDEBUG=-all "$@"
+    sudo -u "$TARGET_USER" env HOME="$TARGET_HOME" WINEARCH="${WINE_ARCH:-win64}" WINEPREFIX="$prefix" WINEDEBUG=-all "$@"
   else
-    env HOME="$TARGET_HOME" WINEARCH=win64 WINEPREFIX="$prefix" WINEDEBUG=-all "$@"
+    env HOME="$TARGET_HOME" WINEARCH="${WINE_ARCH:-win64}" WINEPREFIX="$prefix" WINEDEBUG=-all "$@"
   fi
 }
 
@@ -926,10 +926,10 @@ run_wine_gui() {  # run_wine_gui CMD [ARGS...]
   local prefix="${WINE_PREFIX_DIR:-$TARGET_HOME/.wine}"
   local disp="${DISPLAY:-:0}" xauth="${XAUTHORITY:-$TARGET_HOME/.Xauthority}" wld="${WAYLAND_DISPLAY:-}"
   if [ "$(id -u)" -eq 0 ] && [ "$TARGET_USER" != "root" ]; then
-    sudo -u "$TARGET_USER" env HOME="$TARGET_HOME" WINEARCH=win64 WINEPREFIX="$prefix" WINEDEBUG=-all \
+    sudo -u "$TARGET_USER" env HOME="$TARGET_HOME" WINEARCH="${WINE_ARCH:-win64}" WINEPREFIX="$prefix" WINEDEBUG=-all \
       DISPLAY="$disp" XAUTHORITY="$xauth" ${wld:+WAYLAND_DISPLAY="$wld"} "$@"
   else
-    env HOME="$TARGET_HOME" WINEARCH=win64 WINEPREFIX="$prefix" WINEDEBUG=-all \
+    env HOME="$TARGET_HOME" WINEARCH="${WINE_ARCH:-win64}" WINEPREFIX="$prefix" WINEDEBUG=-all \
       DISPLAY="$disp" XAUTHORITY="$xauth" ${wld:+WAYLAND_DISPLAY="$wld"} "$@"
   fi
 }
@@ -1254,7 +1254,7 @@ wine_tune_appearance() {  # wine_tune_appearance NAME PREFIX
 # app is readable. Marks the result.
 wine_app() {  # wine_app NAME [WINDOWS_INSTALLER_URL] [NOT_RECOMMENDED_REASON] [RECOMMENDED_ACTION]
   [ "${MIGRATE_WINE_NONCROSS:-no}" = "yes" ] || return 0
-  local name="$1" winurl="${2:-}" nrreason="${3:-}" nraction="${4:-}" ans f winpath="" slug dir rc prefix is_upgrade=0
+  local name="$1" winurl="${2:-}" nrreason="${3:-}" nraction="${4:-}" ans f winpath="" slug dir rc prefix is_upgrade=0 WINE_ARCH=win64 win32_retried=0
   if [ "${WINE_SKIP_ALL:-0}" = "1" ]; then mark_skip "$name (wine - Windows emulator)" "user skipped (skip all)"; return 0; fi
   if is_dry_run; then mark_plan "$name (wine - Windows emulator)" "${nrreason:+NOT RECOMMENDED; }${winurl:+auto-download + }run under wine in a per-app prefix; font 2.5x"; return 0; fi
   printf '\n\n\033[1;34m==> Install under wine (Windows emulator): %s\033[0m\n' "$name" >&3
@@ -1311,10 +1311,27 @@ wine_app() {  # wine_app NAME [WINDOWS_INSTALLER_URL] [NOT_RECOMMENDED_REASON] [
       esac
     done
   fi
-  # 2b) if the installer targets 32-bit x86 (PE .exe OR .msi), make sure wine has WoW64
-  #     support BEFORE the prefix is initialised -- a 64-bit-only wine fails with c0000135
-  #     ("could not load kernel32.dll") on 32-bit apps.
-  is_32bit_pe "$winpath" && { info "installer is 32-bit (i386) -- enabling 32-bit wine (Windows emulator) support ..."; ensure_wine_i386; }
+  # 2b) Choose the wine prefix ARCHITECTURE before the prefix is initialised.
+  #   * Upgrade in place: keep whatever arch the existing (working) prefix already is --
+  #     never change it, so a working app and its data are preserved.
+  #   * Fresh install of a 32-bit (i386) installer: use a 32-bit (win32) prefix. A 64-bit
+  #     (win64) prefix needs functional WoW64 to load 32-bit kernel32; on several distros
+  #     that fails with c0000135 even when wine32 is installed. A win32 prefix runs 32-bit
+  #     apps directly. 64-bit apps keep the default win64 prefix (UNCHANGED).
+  if [ "$is_upgrade" -eq 1 ]; then
+    grep -q '#arch=win32' "$prefix/system.reg" 2>/dev/null && WINE_ARCH=win32
+  elif is_32bit_pe "$winpath"; then
+    info "installer is 32-bit (i386) -- using a 32-bit (win32) wine prefix ..."
+    ensure_wine_i386; WINE_ARCH=win32
+    # A leftover prefix of the wrong arch (e.g. a previous FAILED win64 attempt) cannot be
+    # reused as win32. This branch is fresh-install only (no Start-Menu .lnk existed), so no
+    # working app or user data is present -- safe to recreate it as win32.
+    if [ -d "$prefix" ] && [ -n "$(ls -A "$prefix" 2>/dev/null)" ] && ! grep -q '#arch=win32' "$prefix/system.reg" 2>/dev/null; then
+      info "removing a leftover non-32-bit wine prefix so it can be created as win32 ..."
+      rm -rf "$prefix" 2>/dev/null || true; mkdir -p "$prefix"
+      chown -R "$TARGET_USER":"$TARGET_USER" "$TARGET_HOME/.local/share/wineprefixes" 2>/dev/null || true
+    fi
+  fi
   run_wine wineboot -u >/dev/null 2>&1 || true
   # winetricks font baseline for better rendering/compatibility (best-effort).
   if ensure_winetricks; then run_wine winetricks -q corefonts >/dev/null 2>&1 || true; fi
@@ -1326,14 +1343,16 @@ wine_app() {  # wine_app NAME [WINDOWS_INSTALLER_URL] [NOT_RECOMMENDED_REASON] [
   info "      the script force-closes it automatically after a timeout and then continues."
   local wlog; wlog="$(mktemp 2>/dev/null || echo /tmp/mtl_wine.$$)"
   wine_run_installer "$winpath" "$wlog"; rc=$?
-  # Self-heal the classic 32-bit bootstrap failure: if wine could not load kernel32.dll
-  # (c0000135) -- e.g. an installer whose 32-bit-ness we could not detect up front -- and
-  # WoW64 support is not in yet, install 32-bit wine, rebuild the (worthless, half-booted)
-  # prefix from scratch so syswow64 is populated, and retry the install once.
-  if [ "$rc" -ne 0 ] && [ "${_WINE_I386_READY:-0}" != "1" ] \
+  # Self-heal the classic 32-bit bootstrap failure: wine could not load kernel32.dll
+  # (c0000135) -- the 32-bit subsystem failed. This also covers an installer whose
+  # 32-bit-ness we could not detect up front (e.g. no `file` command). Enable 32-bit wine,
+  # fall back to a 32-bit (win32) prefix (a win64 prefix's WoW64 fails this way on some
+  # distros), rebuild the (worthless, half-booted) prefix, and retry the install ONCE. Only
+  # ever triggered on an install FAILURE, so there is no working app / data to lose.
+  if [ "$rc" -ne 0 ] && [ "$win32_retried" != "1" ] \
      && grep -qiE 'c0000135|could not load (kernel32|ntdll)' "$wlog" 2>/dev/null; then
-    warn "wine is missing 32-bit (i386) support -- enabling it and retrying the install ..."
-    ensure_wine_i386
+    warn "wine could not load kernel32 (c0000135) -- enabling 32-bit support, switching to a 32-bit (win32) prefix, and retrying ..."
+    ensure_wine_i386; WINE_ARCH=win32; win32_retried=1
     rm -rf "$prefix" 2>/dev/null || true; mkdir -p "$prefix"
     chown -R "$TARGET_USER":"$TARGET_USER" "$TARGET_HOME/.local/share/wineprefixes" 2>/dev/null || true
     run_wine wineboot -u >/dev/null 2>&1 || true
