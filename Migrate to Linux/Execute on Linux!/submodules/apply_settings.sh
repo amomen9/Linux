@@ -1791,24 +1791,24 @@ CFG_default_browser="edge"
 WIFI_DATA="$(cat <<'__WIFI_EOF__'
 eduroam	wpa		none
 somenet	open		none
-V.momen	wpa	U2FsdGVkX19lRZdqxS0uku9aBvdCTECQ7fEdLzVIWIw=	enc
+V.momen	wpa	U2FsdGVkX18uf1Ejbk96GcLVDwKh+uSoBVAz4eRfwJI=	enc
 Tbilisi Loves You	open		none
 Tbilisi Airport Free	open		none
 Simorgh-WiFi	open		none
-Shatel	wpa	U2FsdGVkX1+kkFnYaC+IIde6n1UZwjByK2vOeAfP+5E=	enc
-SHAW-48EE	wpa	U2FsdGVkX18ipoLKMN586cdLlB+MD59Fe0Eh9gAXwSg=	enc
-Redmi Note 10 Pro Max	wpa	U2FsdGVkX19/9TbV/SR6w+RysnZTNsTCNR5V+036Mxc=	enc
-Parsway	wpa	U2FsdGVkX1/t31f1h4EIhQ86gi649+Noc5iHdaP2hA4=	enc
-NZT9930134C	wpa	U2FsdGVkX1+o1vjdXO3AP5SRg+WemPfODY324lis8bw=	enc
+Shatel	wpa	U2FsdGVkX1/8S8S3ecANg7GrLwCwAB9qaT+R/UK/Ly8=	enc
+SHAW-48EE	wpa	U2FsdGVkX1916VBFefDQ0XcRalr/3P3a0swz7zWmVdg=	enc
+Redmi Note 10 Pro Max	wpa	U2FsdGVkX1+bbW7BbDh9jEVO+QEFFngaho1Cf+TAAX4=	enc
+Parsway	wpa	U2FsdGVkX198Xo9BeaWcFvzUB2Yqd+02zbo62ybkvOo=	enc
+NZT9930134C	wpa	U2FsdGVkX1+BiEsAuqK6ne0oxCOl5pYQFNv1I5y1BFM=	enc
 Mofid-GoHyper!	open		none
-Jobvision-WiFi	wpa	U2FsdGVkX18xPVEOIGnJWtukr7VTBYhWxQBwnlT9/oQ=	enc
-JobVision_DLink	wpa	U2FsdGVkX182BRNVDVwDD/8kkd+u2Fh6N9PRaA28rM4=	enc
-JobVision-3rd	wpa	U2FsdGVkX1+tZ9Ih2qMNBueQzkanblqXc/WOd04lQfw=	enc
-JobVision	wpa	U2FsdGVkX1+28+hYTt+UH+u687qrNwYrQCNBBZDR91Y=	enc
-Galaxy A51	wpa	U2FsdGVkX1+g8VmFogn0nTgaL0QktIf+iY9llj/Ygi4=	enc
-Fatemeh's Galaxy A71	wpa	U2FsdGVkX1+iqbR2EaCctFmNvXIgflQJFuHUekyXhdY=	enc
-AndroidAPA50	wpa	U2FsdGVkX1/KZuTxlyaXb/30j0kHccjGO3Kt5S0c1fs=	enc
-DivorceHousing	wpa	U2FsdGVkX1/z+s/0aeHNMJlo7KFJyR/mpmTvcqjvjCxPG09Vpncl7Rx0vI5dKlGj	enc
+Jobvision-WiFi	wpa	U2FsdGVkX1+EmD1m8rQJSNOvrS2I+tDS6hxzyYQdSHo=	enc
+JobVision_DLink	wpa	U2FsdGVkX18MkxFcdL6pBJ7ZJ3SVNqqKrEJqE1GwAgs=	enc
+JobVision-3rd	wpa	U2FsdGVkX1+urvHi9lzFBRzvhW0ZvMbKDpQRZQs86Ig=	enc
+JobVision	wpa	U2FsdGVkX18j1Mjwf0JnGaO9mgYu7aVr+S6TssEVIZs=	enc
+Galaxy A51	wpa	U2FsdGVkX18rBycctTtwr3qqluoAPhAHOpAZkGqEP7U=	enc
+Fatemeh's Galaxy A71	wpa	U2FsdGVkX1/fCmQsA6IGIUD9a+FOec3seGhhZ1mhdi8=	enc
+AndroidAPA50	wpa	U2FsdGVkX1/WxmV2GIRvjDPXZu6Gwrpg/Pzs5PfpSIo=	enc
+DivorceHousing	wpa	U2FsdGVkX18N4Jux4voLPj+8d0LBgSiJ7MK85qo4n7VpDD3gDqRTXC/QSrGQh9VR	enc
 __WIFI_EOF__
 )"
 
