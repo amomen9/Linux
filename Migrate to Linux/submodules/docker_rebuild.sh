@@ -38,6 +38,7 @@ docker volume inspect 'postgresql-data' >/dev/null 2>&1 || docker volume create 
 
 # --- images ----------------------------------------------------------------
 docker image inspect 'nginx:latest' >/dev/null 2>&1 || docker pull 'nginx:latest'
+docker image inspect 'opensuse/tumbleweed:latest' >/dev/null 2>&1 || docker pull 'opensuse/tumbleweed:latest'
 docker image inspect 'portainer/portainer-ee:latest' >/dev/null 2>&1 || docker pull 'portainer/portainer-ee:latest'
 docker image inspect 'postgres:latest' >/dev/null 2>&1 || docker pull 'postgres:latest'
 

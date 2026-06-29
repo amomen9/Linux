@@ -1921,8 +1921,10 @@ list_source_drivers() {
   info "Bluetooth Peripheral Device [] -> Not Applicable"
   info "Spp1 [] -> Not Applicable"
   info "NVIDIA GeForce RTX 5070 Ti Laptop GPU [DISPLAY] -> Kernel Module (DKMS); Proprietary Driver"
+  info "SAMSUNG Mobile USB Modem [MODEM] -> Needs Review"
   info "Lenovo DisplayHDR [MONITOR] -> Not Applicable"
-  info "(68 additional devices are covered by in-kernel/generic drivers.)"
+  info "SM-S938B [WPD] -> Needs Review"
+  info "(69 additional devices are covered by in-kernel/generic drivers.)"
 }
 
 main() {

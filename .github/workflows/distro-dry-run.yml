@@ -70,7 +70,21 @@ jobs:
           elif command -v dnf >/dev/null 2>&1; then
             dnf install -y bash coreutils findutils gawk which
           elif command -v zypper >/dev/null 2>&1; then
-            zypper --non-interactive install bash coreutils findutils gawk which
+            # openSUSE Tumbleweed is rolling: a fresh container's cached repo
+            # metadata / signing key can be stale, which makes a bare
+            # "zypper install" stall on a bad mirror or auto-decline a rotated
+            # GPG key. Refresh with key auto-import first, and retry a couple of
+            # times so a single transient mirror/key hiccup doesn't fail the job.
+            ok=0
+            for try in 1 2 3; do
+              if zypper --non-interactive --gpg-auto-import-keys refresh \
+                 && zypper --non-interactive install bash coreutils findutils gawk which; then
+                ok=1; break
+              fi
+              echo "zypper bootstrap attempt $try failed; retrying ..." >&2
+              sleep 5
+            done
+            [ "$ok" = 1 ] || { echo "::error::zypper bootstrap failed after 3 attempts"; exit 1; }
           elif command -v pacman >/dev/null 2>&1; then
             pacman -Sy --noconfirm bash coreutils findutils gawk which
           fi

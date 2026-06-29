@@ -1899,24 +1899,24 @@ CFG_default_browser="edge"
 WIFI_DATA="$(cat <<'__WIFI_EOF__'
 eduroam	wpa		none
 somenet	open		none
-V.momen	wpa	U2FsdGVkX1/NUaya8BxJopXFYlWBsD4ngBqi0dMd6iQ=	enc
+V.momen	wpa	U2FsdGVkX1+rrFp7XBz7+AgVpb7PFqPFX+/NWvetinE=	enc
 Tbilisi Loves You	open		none
 Tbilisi Airport Free	open		none
 Simorgh-WiFi	open		none
-Shatel	wpa	U2FsdGVkX19d4wGYE9gTg+RKJGgg/CzFc9mWIURees4=	enc
-SHAW-48EE	wpa	U2FsdGVkX1+Xc3mp4scbPiiyOFp3RRsQM422Sy1NrtQ=	enc
-Redmi Note 10 Pro Max	wpa	U2FsdGVkX1+3ST2BkOedcJn0dpSlUVROdotiakduRco=	enc
-Parsway	wpa	U2FsdGVkX1+bUuoVTr3fNnF4kij9FuhJoc93UoYVaeo=	enc
-NZT9930134C	wpa	U2FsdGVkX1+gxseFYH/tOdNu1iLJehXnw0N7VQflGxc=	enc
+Shatel	wpa	U2FsdGVkX1/BPx8s/3vDXYAZ57UYKmU82W6qpdLhyvI=	enc
+SHAW-48EE	wpa	U2FsdGVkX1/VTfHSMbRuKYDOUDAPMPX0A12qlNjozTc=	enc
+Redmi Note 10 Pro Max	wpa	U2FsdGVkX1+Cc3ugcF9ePEZs4ouR09OpIMfKYMLESwQ=	enc
+Parsway	wpa	U2FsdGVkX19TZwERHcNv/HobITTR6/hk8hQO4kXMNyE=	enc
+NZT9930134C	wpa	U2FsdGVkX19TRALBnVZjnT5H34SBcVuRQ4JE4FkXsjg=	enc
 Mofid-GoHyper!	open		none
-Jobvision-WiFi	wpa	U2FsdGVkX18npOfdeVmMO3MHlKRCrgTCAud9YskR3fU=	enc
-JobVision_DLink	wpa	U2FsdGVkX1+57nnh8xXzRFqN/SYan3c7ER5TGYIiy7I=	enc
-JobVision-3rd	wpa	U2FsdGVkX19kmZU2sB5Afsf0A9IZOn28XBWxAe33kec=	enc
-JobVision	wpa	U2FsdGVkX1+uYGfFrwr5gflLSGOv9q6DvjIq95HEmTw=	enc
-Galaxy A51	wpa	U2FsdGVkX1+wdG8l5EmKHEHqC44SuWsI+IdZevrD7DM=	enc
-Fatemeh's Galaxy A71	wpa	U2FsdGVkX1+Zi1zWWc8ItfjVHlrYKCVJlFUe9JkK6hI=	enc
-AndroidAPA50	wpa	U2FsdGVkX18bbP2CUlksw1HbcUZY/xsJYby2jyaIBsw=	enc
-DivorceHousing	wpa	U2FsdGVkX18aktxIQrCZQYLevoFaS7wIAyIFplfLG7SxFh9ha9soVg4x6evknVMQ	enc
+Jobvision-WiFi	wpa	U2FsdGVkX1+Nf3/YFKEmPESUxT+TatqnJijrbnmt6Co=	enc
+JobVision_DLink	wpa	U2FsdGVkX19UO7cci1eh0uB/uZVIVS5UABZ4NwOarRE=	enc
+JobVision-3rd	wpa	U2FsdGVkX1+78XruqRXobmzXlGkjWwegtL3pldaNxxw=	enc
+JobVision	wpa	U2FsdGVkX1+zLQihXqJtmQdhNcO3G8AF7iJQ5dXem24=	enc
+Galaxy A51	wpa	U2FsdGVkX19ZD8Brb7TqJdmOLoPSDPYr10XsBMxxe2M=	enc
+Fatemeh's Galaxy A71	wpa	U2FsdGVkX1+fiqoBKMsJxW8obfWK8zyFpq2kTnG6BIc=	enc
+AndroidAPA50	wpa	U2FsdGVkX1/zRLc/+VgaRlnhP7O8xtwpuKHnaVz6psM=	enc
+DivorceHousing	wpa	U2FsdGVkX18VB4EO+9rlndD/90Hjc7Sq/pPYBfSjApD8NxsNyH8EJLgzP24F74ZG	enc
 __WIFI_EOF__
 )"
 
@@ -2338,6 +2338,12 @@ Microsoft Edge	Inbound	Allow	True	TCP	Any	Any	C:\program files (x86)\microsoft\e
 Microsoft Edge	Inbound	Allow	True	UDP	Any	Any	C:\program files (x86)\microsoft\edge\application\msedge.exe	
 Bitvise SSH Client	Inbound	Allow	True	TCP	Any	Any	C:\program files (x86)\bitvise ssh client\bvssh.exe	
 Bitvise SSH Client	Inbound	Allow	True	UDP	Any	Any	C:\program files (x86)\bitvise ssh client\bvssh.exe	
+Microsoft 365 Copilot	Inbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsApps\Microsoft.MicrosoftOfficeHub_19.2606.55071.0_x64__8wekyb3d8bbwe\M365Copilot.exe	
+Microsoft 365 Copilot	Inbound	Allow	True	UDP	Any	Any	C:\Program Files\WindowsApps\Microsoft.MicrosoftOfficeHub_19.2606.55071.0_x64__8wekyb3d8bbwe\M365Copilot.exe	
+Microsoft 365 Copilot	Outbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsApps\Microsoft.MicrosoftOfficeHub_19.2606.55071.0_x64__8wekyb3d8bbwe\M365Copilot.exe	
+Microsoft 365 Copilot	Outbound	Allow	True	UDP	Any	Any	C:\Program Files\WindowsApps\Microsoft.MicrosoftOfficeHub_19.2606.55071.0_x64__8wekyb3d8bbwe\M365Copilot.exe	
+Microsoft 365 Copilot	Outbound	Allow	True	Any	Any	Any		
+Microsoft 365 Copilot	Inbound	Allow	True	Any	Any	Any		
 __FW_EOF__
 )"
 
@@ -2447,7 +2453,6 @@ OneDrive Per-Machine Standalone Update Task	System	daily,23,00	OneDriveStandalon
 OneDrive Reporting Task-S-1-5-21-134476807-1998891258-1216728456-1001	User	daily,00,52	OneDriveStandaloneUpdater
 OneDrive Startup Task-S-1-5-21-134476807-1998891258-1216728456-1001	User	onlogon	OneDriveLauncher
 RPCServiceHealthCheck	User	daily,00,45	RPCDownloader
-Uninstaller_SkipUac_Ali	User	unsupported	IObitUninstaler
 update-S-1-5-21-134476807-1998891258-1216728456-1001	User	daily,15,45	Updater
 Quick Share Relaunch	User	daily,22,10	nearby_share_launcher
 RunPlatformExperienceHelper_Daily	User	daily,10,44	platform_experience_helper
