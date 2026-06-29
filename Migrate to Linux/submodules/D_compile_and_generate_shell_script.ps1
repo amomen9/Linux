@@ -127,6 +127,7 @@ function New-InstallCall {
     Add-Flag $parts '--webapp' (Get-Prop $Install 'webappUrl')
     Add-Flag $parts '--docker' (Get-Prop $Install 'dockerImage')
     Add-Flag $parts '--github' (Get-Prop $Install 'githubRepo')
+    Add-Flag $parts '--script-url' (Get-Prop $Install 'scriptUrl')
     # Download page (req): the app's saved vendor download page, opened (after a health
     # check) when package managers are unavailable/failed. Prefer install.downloadPage,
     # then the alternative's downloadUrl ($DlPage). Only real http(s) URLs, never pseudo

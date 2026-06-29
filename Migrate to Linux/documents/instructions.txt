@@ -45,10 +45,13 @@ Manifest schema (documents/B_applications.json):
   Each installed alternative carries an "install" object the generator reads:
     install: { method, flatpakId, snap, native:{apt,dnf,zypper,pacman}, arch:[...],
                downloadUrl:{x86_64,aarch64}, webappUrl, dockerImage, githubRepo,
-               repo:{apt,dnf,zypper,pacman}, postInstall:[...], note, review }
+               scriptUrl, repo:{apt,dnf,zypper,pacman}, postInstall:[...], note, review }
   method in: flatpak | native | snap | webapp | docker | wine-bottles |
-             deb-url | github-deb | manual.  "review:true" flags non-apt names that
-             still need verification on a real system of that family.
+             deb-url | github-deb | script | manual.  "review:true" flags non-apt names
+             that still need verification on a real system of that family.
+  - install.scriptUrl (method "script"): the vendor's official install script. install_app
+    DOWNLOADS it first (so an HTML/error page is never piped to a shell) then runs it as
+    root. Used for Ollama (https://ollama.com/install.sh -> ollama CLI + systemd service).
   - install.repo: per-family shell snippet to configure a VENDOR repository before the
     native install (e.g. Microsoft / Docker / Google repos). The generator turns it into
     a repo_setup_<slug>() function that install_app runs before pm_install.
@@ -554,6 +557,21 @@ WINE (WINDOWS EMULATOR) - OPTIONAL, FOR NON-CROSS-PLATFORM APPS
     error (that mutex is per-prefix, not host-wide, and is cleared by wineserver -k).
   * Each app gets its OWN isolated Wine prefix (~/.local/share/wineprefixes/<slug>),
     created/owned by $SUDO_USER; apply a winetricks font baseline (corefonts) best-effort.
+  * IDEMPOTENT: if a Start-Menu .lnk for the app already exists in its prefix (it was
+    installed on a previous run), wine_app does NOT blindly re-install. Re-installing into
+    the same persistent prefix re-applies the app's setup on top of itself and can COMPOUND
+    its saved UI metrics (e.g. IDM's toolbar/font), making the window grow on every run.
+    The DPI itself is ALWAYS an ABSOLUTE set to 240 (never current*2.5), so it does not
+    accumulate; the growth came purely from re-launching + re-applying the FIRST-INSTALL
+    appearance setup on every run. Behaviour:
+      - MIGRATE_UPDATE_EXISTING != yes -> SKIP the re-install (the app is already present).
+      - MIGRATE_UPDATE_EXISTING  = yes -> UPGRADE IN PLACE: keep the prefix (so the user's
+        data/settings are preserved -- an upgrade must NOT wipe them), refresh only the
+        program binaries, and do NOT redo the first-install appearance setup. The base DPI
+        write, the WINE_CFG_DPI/WINE_CFG_DESKTOP/WINE_APPEARANCE_ALL state, and the
+        interactive wine_tune_appearance pass run on FIRST INSTALL ONLY; on upgrades the
+        existing appearance is left exactly as the user has it, so it can never bloat.
+    To reset a prefix already bloated by past runs, delete it once (it then reinstalls clean).
   * After install, force Wine DPI to 240 (LogPixels = 0xF0, i.e. 2.5x of the 96 default)
     via `wine reg add`, run as $SUDO_USER, so fonts/UI are readable. Generate .desktop
     launchers for any Start-Menu .lnk shortcuts the installer created.

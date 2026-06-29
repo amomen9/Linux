@@ -532,7 +532,8 @@ fw_port_alias() {  # fw_port_alias VALUE -> numeric port/range, or VALUE unchang
     iphttps|iphttpsin|iphttpsout|iptls|iptlsin|iptlsout) printf '443' ;;          # IP-HTTPS / IP-over-TLS tunnelling
     teredo|teredoin|teredoout)                           printf '3544' ;;         # Teredo IPv6 tunnelling
     mdns|mdnsin|mdnsout)                                 printf '5353' ;;         # multicast DNS
-    ply2disc)                                            printf '3702' ;;         # Play-To device discovery (WS-Discovery)
+    ply2disc|playtodiscovery|playto)                     printf '3702' ;;         # Play-To device discovery (WS-Discovery)
+    wsd|wsdevents|wsdeventssecure)                        printf '5357' ;;         # Web Services on Devices (WSDAPI)
     ssdp|ssdpin|ssdpout)                                 printf '1900' ;;         # SSDP / UPnP discovery
     dhcp)                                                printf '68' ;;           # DHCP client
     dns)                                                 printf '53' ;;           # DNS
@@ -719,12 +720,15 @@ apply_firewall() {
     # Apply each port element separately (a Windows value can be a list like "1900,2869"
     # or a range like "49152-65535"), across each transport. This avoids any backend
     # multi-port syntax quirk; fw_apply_one translates the range separator per backend.
-    applied=0; problem=""; oldifs="$IFS"
+    applied=0; problem=""; unportable=""; oldifs="$IFS"
     IFS=','
     for p in $port; do
       IFS="$oldifs"
       e="$(printf '%s' "$p" | tr -d '[:space:]')"; [ -z "$e" ] && continue
-      case "$e" in *[!0-9-]*|-*|*-|*-*-*) problem="unsupported port value '$e'"; break ;; esac
+      # A still-non-numeric value here is a Windows-specific service keyword (e.g. a Cast/
+      # WSD/RPC keyword fw_port_alias does not know) with no portable Linux port -- that is
+      # a SKIP, not a failure. Only a real backend rejection below counts as a failure.
+      case "$e" in *[!0-9-]*|-*|*-|*-*-*) unportable="Windows service-keyword port '$e' has no portable Linux equivalent"; break ;; esac
       for pp in $protos; do
         if fw_apply_one "$e" "$pp" "$action" "$dirl"; then applied=$((applied+1))
         else problem="${LAST_ERR:-$backend rejected ${e}/${pp}}"; break; fi
@@ -735,6 +739,8 @@ apply_firewall() {
 
     if [ -n "$problem" ]; then
       mark_fail "fw: $name" "$problem (port='${port}', proto='${proto}')"
+    elif [ -n "$unportable" ] && [ "$applied" -eq 0 ]; then
+      mark_skip "fw: $name" "$unportable"
     elif [ "$applied" -gt 0 ]; then
       mark_set "fw: $name (${action} ${dirl} ${port}/${proto})"
     else

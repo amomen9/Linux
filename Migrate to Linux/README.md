@@ -438,6 +438,8 @@ When `apply_settings.sh` runs, every `_apply_*` function produces structured lin
 
 A summary prints at the end showing OK / Failed / Info-only counts.
 
+**Firewall rules with Windows service-keyword ports.** Some Windows firewall rules use named ports (e.g. `PlayToDiscovery`, `mDNS`, `WSDEVENTS`, `RPC-EPMap`) instead of numbers. Known keywords are translated to their real port (e.g. `PlayToDiscovery`→3702, `mDNS`→5353); any keyword without a portable Linux equivalent is **skipped with a note** rather than reported as a failure.
+
 ---
 
 ## Installing on Linux - Software
@@ -502,6 +504,7 @@ Any app can carry **custom commands that run right after it installs**, declared
 
 - **Apps Microsoft (and others) also ship for Linux** install as the **same app, natively** - e.g. **Microsoft SQL Server**: if it ran on the **host OS** on Windows it is installed natively from Microsoft's official repo (`mssql-server`, x86_64, Ubuntu/RHEL/SLES); if it ran as a **Docker container** it is recreated as a container by the Docker rebuild step. The two paths can't double‑install because they're chosen by how the app was detected.
 - **Linux-only helpers you always want** can be marked `"forceInclude": true` in the manifest so they install **even though no matching Windows app exists to detect**. **CopyQ** (the clipboard manager that replaces the Windows Win+V history) is included this way.
+- **Apps with an official install script** (manifest method `script`) install **automatically** instead of falling back to a manual prompt — e.g. **Ollama** via `https://ollama.com/install.sh`. The script is downloaded first (so an error/HTML page is never piped to a shell) and then run.
 
 ### Windows-only apps under Wine (the Windows emulator)
 
@@ -510,6 +513,7 @@ For apps with no native Linux build, the installer can **also install the origin
 - Where a trusted official installer URL is recorded in the manifest (the `windowsInstaller` field; currently **Notepad++** and **WinRAR**), it is **downloaded and run automatically**. Otherwise you are asked for the installer path - type it **in single quotes**, a full path or one relative to your `~/Downloads` (any extension: `.exe`, `.msi`, `.bat`, …) - or `skip` / `skip all`.
 - Each Wine app gets its **own isolated Wine prefix**, its **font/DPI scaled to 2.5×** for readability, and `.desktop` launchers for any Start-Menu shortcuts the installer creates.
 - **Installs never hang the script.** Many Windows installers auto-launch the app (or a tray/updater) when they finish, which used to keep the script stuck inside Wine. The installer now runs in the background with a timeout (`MIGRATE_WINE_INSTALL_TIMEOUT`, default 600s) and then runs `wineserver -k` to close anything left running, so it always continues. If a *"Setup finished / Run now"* window appears, just **close it** to move on immediately. (Because each app has its own prefix that's cleared after install, Wine also won't hit Windows' *"another setup is already running"* error.)
+- **Re-runs don't re-install (and don't bloat the UI).** If an app is already installed in its prefix, a later run **skips** re-installing it. The DPI is always an **absolute** 2.5× (96→240), never multiplied by the current value, so it never accumulates; the growth some apps showed (e.g. IDM's toolbar) came from re-running the first-launch appearance setup every time. With `MIGRATE_UPDATE_EXISTING=yes` the app is **upgraded in place** — the prefix (and your data/settings) is kept and only the program binaries are refreshed; the **first-install appearance setup (DPI/window/tuning) is not redone**, so an upgrade preserves exactly what you have and can't bloat. If a prefix was already bloated by earlier runs, delete it once (`~/.local/share/wineprefixes/<app>`) to reinstall it clean.
 - **First-launch appearance tuning** (interactive): right after a Wine app installs, the installer **launches it once so you can see it**, then walks you through its **visual settings** - **font scaling (DPI)** and **window size** - prompting for each with its current value (press Enter to keep it; bad input is rejected in red and re-asked). It then **closes the app, applies your values, relaunches it**, and asks whether the look is right: **`y`** = yes, **`r`** = start over, or **`a`** = yes and **apply the same settings to every later Wine install** automatically. (Skipped automatically when there is no interactive terminal, keeping the 2.5× default.)
 - It is independent of the alternatives count: with alternatives **> 0** you get the Linux alternative(s) **and** the Wine version; with **0** you get **only** the Wine version. (That is why the "how many best alternatives" question says *"excluding wine"*.)
 

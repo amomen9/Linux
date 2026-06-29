@@ -636,7 +636,7 @@ install_native_version() {  # install_native_version PKG WINVER
 _install_app_core() {
   local name="" alt="" method="" flatpak="" snap_pkg="" arch_list="" winver="" is_security=0 is_paid=0
   local apt="" dnf="" zypper="" pacman="" launch=""
-  local url_x86="" url_arm="" url_deb="" url_rpm="" webapp_url="" docker_image="" github_repo="" note="" dlpage=""
+  local url_x86="" url_arm="" url_deb="" url_rpm="" webapp_url="" docker_image="" github_repo="" note="" dlpage="" script_url=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --name)    name="$2"; shift 2 ;;
@@ -659,6 +659,7 @@ _install_app_core() {
       --docker)  docker_image="$2"; shift 2 ;;
       --github)  github_repo="$2"; shift 2 ;;
       --dlpage)  dlpage="$2"; shift 2 ;;
+      --script-url) script_url="$2"; shift 2 ;;
       --note)     note="$2"; shift 2 ;;
       --security) is_security=1; shift ;;
       --paid)     is_paid=1; shift ;;
@@ -683,6 +684,7 @@ _install_app_core() {
       webapp)       plan="web-app shortcut -> $webapp_url" ;;
       docker)       plan="docker container: $docker_image" ;;
       wine-bottles) plan="Bottles (flatpak) for a Windows app" ;;
+      script)       plan="vendor install script -> $script_url" ;;
       manual)       plan="manual download-by-user" ;;
       *)
         if   [ -n "$flatpak" ];                          then plan="flatpak $flatpak"
@@ -733,6 +735,20 @@ _install_app_core() {
   case "$method" in
     webapp)
       webapp_desktop "$name" "$webapp_url" "$alt" "$launch"; return 0 ;;
+    script)
+      # Vendor's official install script (e.g. Ollama: curl -fsSL https://ollama.com/install.sh | sh).
+      # Downloaded first (so an HTML/error page is never piped to a shell), then run as root.
+      if [ -z "$script_url" ]; then mark_manual "${alt:-$name}" "${note:-no install-script URL provided}"; return 0; fi
+      info "installing $name via its official install script ($script_url) ..."
+      local stmp; stmp="$(mktemp 2>/dev/null || echo /tmp/mtl_script.$$)"
+      if capture download_file "$script_url" "$stmp" && capture sh "$stmp"; then
+        ledger_add script "${alt:-$name} -- uninstall per the vendor's docs (e.g. ollama: sudo systemctl disable --now ollama; sudo rm -f /usr/local/bin/ollama)"
+        mark_ok "$name" "installed via the official script ($script_url)" "$alt" "$launch"
+      else
+        mark_fail "${alt:-$name}" "${LAST_ERR:-install script failed}"
+      fi
+      rm -f "$stmp" 2>/dev/null || true
+      return 0 ;;
     wine-bottles)
       if ensure_flatpak && capture install_flatpak com.usebottles.bottles; then
         mark_ok "$name" "via Bottles (flatpak) - configure the Windows app inside Bottles"
@@ -1237,7 +1253,7 @@ wine_tune_appearance() {  # wine_tune_appearance NAME PREFIX
 # app is readable. Marks the result.
 wine_app() {  # wine_app NAME [WINDOWS_INSTALLER_URL] [NOT_RECOMMENDED_REASON] [RECOMMENDED_ACTION]
   [ "${MIGRATE_WINE_NONCROSS:-no}" = "yes" ] || return 0
-  local name="$1" winurl="${2:-}" nrreason="${3:-}" nraction="${4:-}" ans f winpath="" slug dir rc prefix
+  local name="$1" winurl="${2:-}" nrreason="${3:-}" nraction="${4:-}" ans f winpath="" slug dir rc prefix is_upgrade=0
   if [ "${WINE_SKIP_ALL:-0}" = "1" ]; then mark_skip "$name (wine - Windows emulator)" "user skipped (skip all)"; return 0; fi
   if is_dry_run; then mark_plan "$name (wine - Windows emulator)" "${nrreason:+NOT RECOMMENDED; }${winurl:+auto-download + }run under wine in a per-app prefix; font 2.5x"; return 0; fi
   printf '\n\n\033[1;34m==> Install under wine (Windows emulator): %s\033[0m\n' "$name" >&3
@@ -1245,6 +1261,21 @@ wine_app() {  # wine_app NAME [WINDOWS_INSTALLER_URL] [NOT_RECOMMENDED_REASON] [
   slug="$(slugify "$name")"
   # Per-app wine prefix (isolated, so one Windows app cannot break another).
   prefix="$TARGET_HOME/.local/share/wineprefixes/$slug"; WINE_PREFIX_DIR="$prefix"
+  # Handle an app that is ALREADY installed in its (persistent) per-app prefix.
+  #   * not updating -> SKIP the re-install (the app is already there).
+  #   * updating     -> upgrade IN PLACE: keep the prefix (and the user's data/settings),
+  #                     and do NOT redo the FIRST-INSTALL appearance setup (font/DPI, virtual
+  #                     desktop, the interactive tuning). Re-launching + re-applying that on
+  #                     every run is what made some apps' UI grow; and an upgrade must PRESERVE
+  #                     what the user already has, not reset it. So an upgrade only refreshes
+  #                     the program binaries; the appearance is left exactly as it was.
+  if [ -n "$(wine_primary_lnk "$prefix" 2>/dev/null)" ]; then
+    if [ "${MIGRATE_UPDATE_EXISTING:-no}" != "yes" ]; then
+      mark_skip "$name (wine - Windows emulator)" "already installed under wine (delete '$prefix' to reinstall)"
+      return 0
+    fi
+    is_upgrade=1; info "upgrading $name under wine in place (keeping your data and current appearance) ..."
+  fi
   mkdir -p "$prefix" && chown -R "$TARGET_USER":"$TARGET_USER" "$TARGET_HOME/.local/share/wineprefixes" 2>/dev/null || true
   dir="${MIGRATE_MANUAL_DIR:-$DOWNLOAD_DIR/manual}/wine-$slug"; mkdir -p "$dir"
   # 1) auto-download the Windows installer if the manifest provided a URL (recommended
@@ -1307,15 +1338,25 @@ wine_app() {  # wine_app NAME [WINDOWS_INSTALLER_URL] [NOT_RECOMMENDED_REASON] [
     run_wine wineboot -u >/dev/null 2>&1 || true
     wine_run_installer "$winpath" "$wlog"; rc=$?
   fi
-  # font size 2.5x: default wine DPI 96 -> 240 (LogPixels 0xF0), applied right after install.
-  run_wine wine reg add 'HKEY_CURRENT_USER\Control Panel\Desktop' /v LogPixels /t REG_DWORD /d 0x000000F0 /f >/dev/null 2>&1 || true
+  # font size 2.5x: default wine DPI 96 -> 240 (LogPixels 0xF0). FIRST INSTALL ONLY -- on an
+  # in-place upgrade the user's existing DPI/appearance is left untouched (never re-applied,
+  # so it can never accumulate / grow).
+  if [ "$is_upgrade" -eq 0 ]; then
+    run_wine wine reg add 'HKEY_CURRENT_USER\Control Panel\Desktop' /v LogPixels /t REG_DWORD /d 0x000000F0 /f >/dev/null 2>&1 || true
+  fi
   if [ "$rc" -eq 0 ]; then
     ledger_add wine "$prefix"
     wine_make_launchers "$name" "$prefix" "$slug"
-    mark_ok "$name (wine - Windows emulator)" "installed under wine (per-app prefix); font/DPI 2.5x (240)"
-    # First-launch appearance tuning: launch the app, let the user adjust the visual
-    # factors, apply + confirm (or reuse the "yes all" settings). No-op without a tty.
-    wine_tune_appearance "$name" "$prefix"
+    if [ "$is_upgrade" -eq 1 ]; then
+      mark_ok "$name (wine - Windows emulator)" "upgraded under wine in place (data + appearance preserved)"
+    else
+      mark_ok "$name (wine - Windows emulator)" "installed under wine (per-app prefix); font/DPI 2.5x (240)"
+      # First-launch appearance tuning: launch the app, let the user adjust the visual
+      # factors, apply + confirm (or reuse the "yes all" settings). No-op without a tty.
+      # First install ONLY -- WINE_CFG_DPI / WINE_CFG_DESKTOP / WINE_APPEARANCE_ALL and the
+      # registry are never touched again on later upgrades.
+      wine_tune_appearance "$name" "$prefix"
+    fi
   else
     # Surface the most informative line from wine's output (skip fixme/diag noise),
     # then explain likely causes and the exact command to reproduce it interactively.
@@ -2661,7 +2702,8 @@ fw_port_alias() {  # fw_port_alias VALUE -> numeric port/range, or VALUE unchang
     iphttps|iphttpsin|iphttpsout|iptls|iptlsin|iptlsout) printf '443' ;;          # IP-HTTPS / IP-over-TLS tunnelling
     teredo|teredoin|teredoout)                           printf '3544' ;;         # Teredo IPv6 tunnelling
     mdns|mdnsin|mdnsout)                                 printf '5353' ;;         # multicast DNS
-    ply2disc)                                            printf '3702' ;;         # Play-To device discovery (WS-Discovery)
+    ply2disc|playtodiscovery|playto)                     printf '3702' ;;         # Play-To device discovery (WS-Discovery)
+    wsd|wsdevents|wsdeventssecure)                        printf '5357' ;;         # Web Services on Devices (WSDAPI)
     ssdp|ssdpin|ssdpout)                                 printf '1900' ;;         # SSDP / UPnP discovery
     dhcp)                                                printf '68' ;;           # DHCP client
     dns)                                                 printf '53' ;;           # DNS
@@ -2848,12 +2890,15 @@ apply_firewall() {
     # Apply each port element separately (a Windows value can be a list like "1900,2869"
     # or a range like "49152-65535"), across each transport. This avoids any backend
     # multi-port syntax quirk; fw_apply_one translates the range separator per backend.
-    applied=0; problem=""; oldifs="$IFS"
+    applied=0; problem=""; unportable=""; oldifs="$IFS"
     IFS=','
     for p in $port; do
       IFS="$oldifs"
       e="$(printf '%s' "$p" | tr -d '[:space:]')"; [ -z "$e" ] && continue
-      case "$e" in *[!0-9-]*|-*|*-|*-*-*) problem="unsupported port value '$e'"; break ;; esac
+      # A still-non-numeric value here is a Windows-specific service keyword (e.g. a Cast/
+      # WSD/RPC keyword fw_port_alias does not know) with no portable Linux port -- that is
+      # a SKIP, not a failure. Only a real backend rejection below counts as a failure.
+      case "$e" in *[!0-9-]*|-*|*-|*-*-*) unportable="Windows service-keyword port '$e' has no portable Linux equivalent"; break ;; esac
       for pp in $protos; do
         if fw_apply_one "$e" "$pp" "$action" "$dirl"; then applied=$((applied+1))
         else problem="${LAST_ERR:-$backend rejected ${e}/${pp}}"; break; fi
@@ -2864,6 +2909,8 @@ apply_firewall() {
 
     if [ -n "$problem" ]; then
       mark_fail "fw: $name" "$problem (port='${port}', proto='${proto}')"
+    elif [ -n "$unportable" ] && [ "$applied" -eq 0 ]; then
+      mark_skip "fw: $name" "$unportable"
     elif [ "$applied" -gt 0 ]; then
       mark_set "fw: $name (${action} ${dirl} ${port}/${proto})"
     else
