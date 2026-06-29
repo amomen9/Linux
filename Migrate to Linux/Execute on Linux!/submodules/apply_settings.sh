@@ -1651,24 +1651,24 @@ CFG_default_browser="edge"
 WIFI_DATA="$(cat <<'__WIFI_EOF__'
 eduroam	wpa		none
 somenet	open		none
-V.momen	wpa	U2FsdGVkX192ug9w430Wm0Ceh06qyxgP64ZTp9ReZvY=	enc
+V.momen	wpa	U2FsdGVkX18ng8s4q6SAu8qeEFfuGDWmMEsypSA3WyI=	enc
 Tbilisi Loves You	open		none
 Tbilisi Airport Free	open		none
 Simorgh-WiFi	open		none
-Shatel	wpa	U2FsdGVkX18uVEu2ZEgBTcQvGBEGLLbyFy4UG37/T0A=	enc
-SHAW-48EE	wpa	U2FsdGVkX1+a0dDGM/gEG51O+Y1TYeyDV1JjscZYZZI=	enc
-Redmi Note 10 Pro Max	wpa	U2FsdGVkX19jQcWE1HIvbMd6zQ0TgueSJIiKlBtox2E=	enc
-Parsway	wpa	U2FsdGVkX19ShJQp/TbaSqFEmqwFKcAXREVg4BIczZw=	enc
-NZT9930134C	wpa	U2FsdGVkX1+unGJe6zKDwCS5cLAQFNUycYyFe54SUMg=	enc
+Shatel	wpa	U2FsdGVkX1/Id/HO6+bI/aTQrJyJpo15t1wQTno6okY=	enc
+SHAW-48EE	wpa	U2FsdGVkX18MNtFTG8QJ1aAR045THnwATxtoVGw4qjo=	enc
+Redmi Note 10 Pro Max	wpa	U2FsdGVkX19RB/ks5pBAZS2qfmjDjYKuYaEGKHsV4Go=	enc
+Parsway	wpa	U2FsdGVkX18kW/rjuywlhReQH7Ca8bk4RoieqA28oT0=	enc
+NZT9930134C	wpa	U2FsdGVkX1/y+cSeydGLiRkjExAvQcFvNboBZiXNecc=	enc
 Mofid-GoHyper!	open		none
-Jobvision-WiFi	wpa	U2FsdGVkX19BHtKG015tFRD9z0ijA3LduXjZBUDFbms=	enc
-JobVision_DLink	wpa	U2FsdGVkX180kPobT0ns8bpMmlBMSJSxbG/96f2upaA=	enc
-JobVision-3rd	wpa	U2FsdGVkX1+Ofgz5gbbpJe1yuPhI1t9Kgg6lUUnOOsU=	enc
-JobVision	wpa	U2FsdGVkX19mL1iP0uz9Za6iCVx5WneLUEkVzh2h1Ac=	enc
-Galaxy A51	wpa	U2FsdGVkX19CVLI2uaEtqQA31RIc72ySaRqs3tB9bQk=	enc
-Fatemeh's Galaxy A71	wpa	U2FsdGVkX19t/CeJQE+LCRZRIrnC1eRl573KelncW6o=	enc
-AndroidAPA50	wpa	U2FsdGVkX1+p7HKKZ1nFZ7JeEZXcV9pRFeQu3YK2fpA=	enc
-DivorceHousing	wpa	U2FsdGVkX1/QfNfxC3IWBSLKgsj+AEuGubuXL22JX/f1/UbnquDPE7FPRh6YIHzT	enc
+Jobvision-WiFi	wpa	U2FsdGVkX18XXXxaPC09gZhhpmDHQQtu669OWuso8kc=	enc
+JobVision_DLink	wpa	U2FsdGVkX1/GHwQCFbSSWilwB9zS0bDn0FtYnwZPjhU=	enc
+JobVision-3rd	wpa	U2FsdGVkX188Js/2GrXn2kw47DxpMVAonb33v+oEmiw=	enc
+JobVision	wpa	U2FsdGVkX1/Co3zQYBtY7LhXMeeXQNGbjsAzLDjVk4E=	enc
+Galaxy A51	wpa	U2FsdGVkX18z0G0IhFNyrEt8EtEId5sXGPwoGZnRLnE=	enc
+Fatemeh's Galaxy A71	wpa	U2FsdGVkX19rc02P+PjBALbgWn51QHhwNo3W5Bi4ikc=	enc
+AndroidAPA50	wpa	U2FsdGVkX19STO69ZZu0JtcD2u9D9yLdx24906/QLrg=	enc
+DivorceHousing	wpa	U2FsdGVkX19A8vx99en6WoZRnS789sETe4xcwnu+ATCZ8qeMylFc3Zj9jXNJwmnR	enc
 __WIFI_EOF__
 )"
 
@@ -2205,7 +2205,7 @@ Lenovo Professional Ultraslim Wireless Combo Gen2 OSD task	User	onlogon	Ultrasli
 Firefox Default Browser Agent 308046B0AF4A39CB	User	daily,13,49	default-browser-agent
 Autorun for Ali	User	onlogon	PowerToys
 SoftLandingCreativeManagementTask	User	unsupported	
-SoftLandingDeferralTask-{911ed058-46a3-4e60-94f7-48f0ef88e5ab}	User	daily,02,47	
+SoftLandingDeferralTask-{b154b073-3f78-4a3e-bd33-ef240538b16f}	User	daily,12,32	
 __TK_EOF__
 )"
 
