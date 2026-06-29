@@ -56,13 +56,68 @@ mega_title() {
 # same answer instead of prompting again mid-run. Idempotent; the flag and the answer are
 # exported so child stages launched by execute_all inherit them and never re-ask.
 XFER_PWD_ASKED="${XFER_PWD_ASKED:-0}"
+
+# Best-effort verification that a candidate transfer password actually decrypts the
+# sensitive-data archive C_detect produced next to the staging dir (same AES-256-CBC /
+# PBKDF2 scheme unpack_stage uses). Exit status:
+#   0 = verified correct   1 = verified WRONG   2 = cannot verify (no archive / no tools)
+# This lets ask_xfer_password catch a mistyped password up front instead of failing
+# silently later when the WiFi/SSH/Contacts restore steps try to use it.
+xfer_pwd_check() {
+  local pw="$1" archive="${MIGRATE_STAGE}.tar.enc"
+  [ -f "$archive" ] || return 2
+  have_cmd openssl && have_cmd tar || return 2
+  if openssl enc -d -aes-256-cbc -pbkdf2 -salt -pass pass:"$pw" -in "$archive" 2>/dev/null \
+       | tar -tf - >/dev/null 2>&1; then
+    return 0
+  fi
+  return 1
+}
+
 ask_xfer_password() {
   [ "$XFER_PWD_ASKED" = "1" ] && return 0
   XFER_PWD_ASKED=1; export XFER_PWD_ASKED
-  if [ -r /dev/tty ]; then
+  [ -r /dev/tty ] || { export MIGRATE_XFER_PWD; return 0; }
+
+  local RED=$'\033[1;31m' RST=$'\033[0m' ans tries=0 max=3
+  while :; do
     printf '  Enter the password used on Windows to encrypt your sensitive data (WiFi passwords, SSH keys, Contacts, wallpaper). Leave empty to skip restoring it: ' > /dev/tty
     read -r MIGRATE_XFER_PWD < /dev/tty || MIGRATE_XFER_PWD=""
-  fi
+    tries=$((tries + 1))
+    # Always pause a beat after an entry so the outcome is visible / not jarring.
+    sleep 1
+    # A blank answer is an intentional "skip restore" -- nothing to verify.
+    [ -z "$MIGRATE_XFER_PWD" ] && break
+    # 0 = correct, 2 = un-verifiable (no archive/tools) -> accept either silently.
+    xfer_pwd_check "$MIGRATE_XFER_PWD"
+    case $? in 0|2) break ;; esac
+
+    # Verified WRONG. Up to $max total entries get a retry; after that, fall back to
+    # the plain continue/exit choice with a note on how to still restore the data.
+    if [ "$tries" -lt "$max" ]; then
+      printf '%s  Password entered incorrectly! (r)etry, (y) continue without restoring your sensitive data, or (n) exit? %s' "$RED" "$RST" > /dev/tty
+      while :; do
+        read -r ans < /dev/tty || ans="n"
+        case "$ans" in
+          [Rr]*) break ;;                        # back to the top: ask the password again
+          [Yy]*) MIGRATE_XFER_PWD=""; break 2 ;;  # continue without restoring
+          [Nn]*) exit 1 ;;                        # quit the script
+          *) printf '%s  Please answer r, y or n: %s' "$RED" "$RST" > /dev/tty ;;
+        esac
+      done
+    else
+      printf '%s  Password entered incorrectly! Continue without restoring your sensitive data? (y/n)  To restore it you must exit now (n) and re-run the script. %s' "$RED" "$RST" > /dev/tty
+      while :; do
+        read -r ans < /dev/tty || ans="n"
+        case "$ans" in
+          [Yy]*) MIGRATE_XFER_PWD=""; break 2 ;;  # continue without restoring
+          [Nn]*) exit 1 ;;                        # quit the script
+          *) printf '%s  Please answer y or n: %s' "$RED" "$RST" > /dev/tty ;;
+        esac
+      done
+    fi
+  done
+
   export MIGRATE_XFER_PWD
 }
 

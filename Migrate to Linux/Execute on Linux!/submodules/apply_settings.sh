@@ -56,13 +56,68 @@ mega_title() {
 # same answer instead of prompting again mid-run. Idempotent; the flag and the answer are
 # exported so child stages launched by execute_all inherit them and never re-ask.
 XFER_PWD_ASKED="${XFER_PWD_ASKED:-0}"
+
+# Best-effort verification that a candidate transfer password actually decrypts the
+# sensitive-data archive C_detect produced next to the staging dir (same AES-256-CBC /
+# PBKDF2 scheme unpack_stage uses). Exit status:
+#   0 = verified correct   1 = verified WRONG   2 = cannot verify (no archive / no tools)
+# This lets ask_xfer_password catch a mistyped password up front instead of failing
+# silently later when the WiFi/SSH/Contacts restore steps try to use it.
+xfer_pwd_check() {
+  local pw="$1" archive="${MIGRATE_STAGE}.tar.enc"
+  [ -f "$archive" ] || return 2
+  have_cmd openssl && have_cmd tar || return 2
+  if openssl enc -d -aes-256-cbc -pbkdf2 -salt -pass pass:"$pw" -in "$archive" 2>/dev/null \
+       | tar -tf - >/dev/null 2>&1; then
+    return 0
+  fi
+  return 1
+}
+
 ask_xfer_password() {
   [ "$XFER_PWD_ASKED" = "1" ] && return 0
   XFER_PWD_ASKED=1; export XFER_PWD_ASKED
-  if [ -r /dev/tty ]; then
+  [ -r /dev/tty ] || { export MIGRATE_XFER_PWD; return 0; }
+
+  local RED=$'\033[1;31m' RST=$'\033[0m' ans tries=0 max=3
+  while :; do
     printf '  Enter the password used on Windows to encrypt your sensitive data (WiFi passwords, SSH keys, Contacts, wallpaper). Leave empty to skip restoring it: ' > /dev/tty
     read -r MIGRATE_XFER_PWD < /dev/tty || MIGRATE_XFER_PWD=""
-  fi
+    tries=$((tries + 1))
+    # Always pause a beat after an entry so the outcome is visible / not jarring.
+    sleep 1
+    # A blank answer is an intentional "skip restore" -- nothing to verify.
+    [ -z "$MIGRATE_XFER_PWD" ] && break
+    # 0 = correct, 2 = un-verifiable (no archive/tools) -> accept either silently.
+    xfer_pwd_check "$MIGRATE_XFER_PWD"
+    case $? in 0|2) break ;; esac
+
+    # Verified WRONG. Up to $max total entries get a retry; after that, fall back to
+    # the plain continue/exit choice with a note on how to still restore the data.
+    if [ "$tries" -lt "$max" ]; then
+      printf '%s  Password entered incorrectly! (r)etry, (y) continue without restoring your sensitive data, or (n) exit? %s' "$RED" "$RST" > /dev/tty
+      while :; do
+        read -r ans < /dev/tty || ans="n"
+        case "$ans" in
+          [Rr]*) break ;;                        # back to the top: ask the password again
+          [Yy]*) MIGRATE_XFER_PWD=""; break 2 ;;  # continue without restoring
+          [Nn]*) exit 1 ;;                        # quit the script
+          *) printf '%s  Please answer r, y or n: %s' "$RED" "$RST" > /dev/tty ;;
+        esac
+      done
+    else
+      printf '%s  Password entered incorrectly! Continue without restoring your sensitive data? (y/n)  To restore it you must exit now (n) and re-run the script. %s' "$RED" "$RST" > /dev/tty
+      while :; do
+        read -r ans < /dev/tty || ans="n"
+        case "$ans" in
+          [Yy]*) MIGRATE_XFER_PWD=""; break 2 ;;  # continue without restoring
+          [Nn]*) exit 1 ;;                        # quit the script
+          *) printf '%s  Please answer y or n: %s' "$RED" "$RST" > /dev/tty ;;
+        esac
+      done
+    fi
+  done
+
   export MIGRATE_XFER_PWD
 }
 
@@ -1703,24 +1758,24 @@ CFG_default_browser="edge"
 WIFI_DATA="$(cat <<'__WIFI_EOF__'
 eduroam	wpa		none
 somenet	open		none
-V.momen	wpa	U2FsdGVkX1/9tveRhjnEoKFSZiezv8vodFZClN94/k4=	enc
+V.momen	wpa	U2FsdGVkX19lRZdqxS0uku9aBvdCTECQ7fEdLzVIWIw=	enc
 Tbilisi Loves You	open		none
 Tbilisi Airport Free	open		none
 Simorgh-WiFi	open		none
-Shatel	wpa	U2FsdGVkX1/79bYRtwGDx5wLc8UMgPCmAsTUlJlsxAw=	enc
-SHAW-48EE	wpa	U2FsdGVkX1862hB/4Nqo4gmKcdmR4+fZR8Ff0YFpJqc=	enc
-Redmi Note 10 Pro Max	wpa	U2FsdGVkX1+uZtng++TTPG5x2W/fbd70t8rp3WckRCg=	enc
-Parsway	wpa	U2FsdGVkX192vyymRldA4RElo1Y0uS16uUx+IRSWZAU=	enc
-NZT9930134C	wpa	U2FsdGVkX1/aiE3gpyH5ODOCvITZE5y4aVlmodiAAPI=	enc
+Shatel	wpa	U2FsdGVkX1+kkFnYaC+IIde6n1UZwjByK2vOeAfP+5E=	enc
+SHAW-48EE	wpa	U2FsdGVkX18ipoLKMN586cdLlB+MD59Fe0Eh9gAXwSg=	enc
+Redmi Note 10 Pro Max	wpa	U2FsdGVkX19/9TbV/SR6w+RysnZTNsTCNR5V+036Mxc=	enc
+Parsway	wpa	U2FsdGVkX1/t31f1h4EIhQ86gi649+Noc5iHdaP2hA4=	enc
+NZT9930134C	wpa	U2FsdGVkX1+o1vjdXO3AP5SRg+WemPfODY324lis8bw=	enc
 Mofid-GoHyper!	open		none
-Jobvision-WiFi	wpa	U2FsdGVkX18lHb1QQhdr2p7WB96dKbMhrW8sc237obc=	enc
-JobVision_DLink	wpa	U2FsdGVkX196WW/X56qOxDacg4zQ6VBeCbq1Hv2DhE4=	enc
-JobVision-3rd	wpa	U2FsdGVkX19twhynr7LcmPOih1F+opQOpYg7rkG4qqQ=	enc
-JobVision	wpa	U2FsdGVkX19wBgBDaXnZT7S5lz879oMqxdhQ2yiDdX4=	enc
-Galaxy A51	wpa	U2FsdGVkX1/ccHKE1QHuV8Hil2W6VzaVhyRVlvyI9HE=	enc
-Fatemeh's Galaxy A71	wpa	U2FsdGVkX18s+vetjbR7PF1QNUbyYK/S2RGZX/oAlYs=	enc
-AndroidAPA50	wpa	U2FsdGVkX1+24gBI9NX89cpPDa36fhzZ1GDeJbRBMA8=	enc
-DivorceHousing	wpa	U2FsdGVkX18vragR7yb5xsKkl/jjZJxQlBgACXcSVIdbeGAER0Px6l6BxP8GXIIP	enc
+Jobvision-WiFi	wpa	U2FsdGVkX18xPVEOIGnJWtukr7VTBYhWxQBwnlT9/oQ=	enc
+JobVision_DLink	wpa	U2FsdGVkX182BRNVDVwDD/8kkd+u2Fh6N9PRaA28rM4=	enc
+JobVision-3rd	wpa	U2FsdGVkX1+tZ9Ih2qMNBueQzkanblqXc/WOd04lQfw=	enc
+JobVision	wpa	U2FsdGVkX1+28+hYTt+UH+u687qrNwYrQCNBBZDR91Y=	enc
+Galaxy A51	wpa	U2FsdGVkX1+g8VmFogn0nTgaL0QktIf+iY9llj/Ygi4=	enc
+Fatemeh's Galaxy A71	wpa	U2FsdGVkX1+iqbR2EaCctFmNvXIgflQJFuHUekyXhdY=	enc
+AndroidAPA50	wpa	U2FsdGVkX1/KZuTxlyaXb/30j0kHccjGO3Kt5S0c1fs=	enc
+DivorceHousing	wpa	U2FsdGVkX1/z+s/0aeHNMJlo7KFJyR/mpmTvcqjvjCxPG09Vpncl7Rx0vI5dKlGj	enc
 __WIFI_EOF__
 )"
 
