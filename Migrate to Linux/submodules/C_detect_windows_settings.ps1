@@ -757,7 +757,15 @@ try {
         # rules about the remote/destination port (the apply step picks per direction).
         $lport = if ($pf -and $pf.LocalPort)  { (@($pf.LocalPort)  -join ',') } else { '' }
         $rport = if ($pf -and $pf.RemotePort) { (@($pf.RemotePort) -join ',') } else { '' }
-        $packed = (@($r.DisplayName, $r.Direction, $r.Action, $r.Enabled, $proto, $lport, $rport) | ForEach-Object { ([string]$_ -replace '\|', ' ') }) -join '|'
+        # Program / service scope: Windows can bind a rule to a specific .exe (or a service).
+        # Linux port firewalls cannot express that, so the apply step recreates program-scoped
+        # rules with OpenSnitch. "Any"/blank means the rule is not program-scoped.
+        $af = $null; $sf = $null
+        try { $af = $r | Get-NetFirewallApplicationFilter -ErrorAction SilentlyContinue -Verbose:$false } catch {}
+        try { $sf = $r | Get-NetFirewallServiceFilter     -ErrorAction SilentlyContinue -Verbose:$false } catch {}
+        $program = if ($af -and $af.Program -and $af.Program -ne 'Any') { [string]$af.Program } else { '' }
+        $service = if ($sf -and $sf.Service -and $sf.Service -ne 'Any') { [string]$sf.Service } else { '' }
+        $packed = (@($r.DisplayName, $r.Direction, $r.Action, $r.Enabled, $proto, $lport, $rport, $program, $service) | ForEach-Object { ([string]$_ -replace '\|', ' ') }) -join '|'
         Add-Row 'Firewall' 'fw_rule' $packed '' 'Linux: ufw / firewalld' -Scope 'System'
         $fwNames.Add([string]$r.DisplayName)
         $fwCount++

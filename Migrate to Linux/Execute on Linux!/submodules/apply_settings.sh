@@ -992,17 +992,39 @@ ensure_winetricks() {
 }
 
 # Run the Windows installer at PATH under wine, best-effort silent for the common
-# installer types, teeing wine's output both to LOG (for failure analysis) and to the
-# console. Returns wine's own exit status. Factored out so the install can be retried
-# after enabling 32-bit (WoW64) wine support.
+# installer types. Output is written to LOG (shown afterwards) -- deliberately NOT through
+# a live "tee" pipe. Many installers AUTO-LAUNCH the application (or leave a tray icon /
+# updater) the moment they finish; a launched process inherits the console pipe and holds
+# it open, which would block the pipeline and HANG the whole script. So we run the
+# installer in the background, wait for it to finish on its own (bounded by
+# MIGRATE_WINE_INSTALL_TIMEOUT, default 600s), then "wineserver -k" to terminate every
+# remaining Windows process in this (isolated, per-app) prefix -- so wine fully exits, the
+# prefix is left idle, and the script continues. Killing the prefix between installs also
+# clears any msiexec mutex, so wine never reports "another setup is already running".
+# Returns wine's own exit status. Factored out so the install can be retried after
+# enabling 32-bit (WoW64) wine support.
 wine_run_installer() {  # wine_run_installer PATH LOG
-  local p="$1" log="$2"
-  case "$p" in
-    *.msi|*.MSI)             run_wine wine msiexec /i "$p" /qn 2>&1 | tee "$log" >&3 ;;
-    *.bat|*.BAT|*.cmd|*.CMD) run_wine wine cmd /c "$p" 2>&1 | tee "$log" >&3 ;;
-    *)                       run_wine wine "$p" /S 2>&1 | tee "$log" >&3 ;;
-  esac
-  return "${PIPESTATUS[0]}"
+  local p="$1" log="$2" rc to="${MIGRATE_WINE_INSTALL_TIMEOUT:-600}" waited=0 wpid
+  (
+    case "$p" in
+      *.msi|*.MSI)             run_wine wine msiexec /i "$p" /qn ;;
+      *.bat|*.BAT|*.cmd|*.CMD) run_wine wine cmd /c "$p" ;;
+      *)                       run_wine wine "$p" /S ;;
+    esac
+  ) > "$log" 2>&1 &
+  wpid=$!
+  # Wait for the installer process to exit on its own, up to the timeout.
+  while kill -0 "$wpid" 2>/dev/null && [ "$waited" -lt "$to" ]; do sleep 2; waited=$((waited+2)); done
+  if kill -0 "$wpid" 2>/dev/null; then
+    warn "the installer is still busy after ${to}s -- terminating wine so the script can continue (the app was most likely installed)."
+    run_wine wineserver -k >/dev/null 2>&1 || true
+  fi
+  wait "$wpid" 2>/dev/null; rc=$?
+  # Terminate anything the installer auto-launched (the app itself, a tray icon, an
+  # updater) so the prefix is idle and wine has fully exited before we move on.
+  run_wine wineserver -k >/dev/null 2>&1 || true
+  cat "$log" >&3 2>/dev/null || true
+  return "$rc"
 }
 
 # After a wine install, scan the per-app prefix for Start Menu .lnk shortcuts and emit
@@ -1267,6 +1289,9 @@ wine_app() {  # wine_app NAME [WINDOWS_INSTALLER_URL] [NOT_RECOMMENDED_REASON] [
   # 3) run the installer under wine (best-effort silent), then scale the font/DPI 2.5x.
   #    Capture wine's full output so a meaningful failure reason can be reported.
   info "installing $name under wine (Windows emulator) ..."
+  info "NOTE: this install runs unattended. If the app or a 'Setup finished / Run now'"
+  info "      window opens, just CLOSE that window so the installer can finish -- otherwise"
+  info "      the script force-closes it automatically after a timeout and then continues."
   local wlog; wlog="$(mktemp 2>/dev/null || echo /tmp/mtl_wine.$$)"
   wine_run_installer "$winpath" "$wlog"; rc=$?
   # Self-heal the classic 32-bit bootstrap failure: if wine could not load kernel32.dll
@@ -1585,441 +1610,441 @@ CFG_default_browser="edge"
 WIFI_DATA="$(cat <<'__WIFI_EOF__'
 eduroam	wpa		none
 somenet	open		none
-V.momen	wpa	U2FsdGVkX1+7ykn4RVTqhIxFoxjZ6qfOnvLyQuZEvGo=	enc
+V.momen	wpa	U2FsdGVkX192ug9w430Wm0Ceh06qyxgP64ZTp9ReZvY=	enc
 Tbilisi Loves You	open		none
 Tbilisi Airport Free	open		none
 Simorgh-WiFi	open		none
-Shatel	wpa	U2FsdGVkX1/P0MLI9KvbOq+KBHEFxW1HhSC/z3QQSy0=	enc
-SHAW-48EE	wpa	U2FsdGVkX19WqYDy8BqCppHRYq6vBFOA9W09uEvhiV8=	enc
-Redmi Note 10 Pro Max	wpa	U2FsdGVkX1/MFBksuymo1xMcsnN78RwnK50VC63fBKI=	enc
-Parsway	wpa	U2FsdGVkX1++O3O8SFVOfiYcAlay411MHBV1nf3E2I8=	enc
-NZT9930134C	wpa	U2FsdGVkX1+7HawcJs5hCX6ZeocYsI63qodEERj/Vd4=	enc
+Shatel	wpa	U2FsdGVkX18uVEu2ZEgBTcQvGBEGLLbyFy4UG37/T0A=	enc
+SHAW-48EE	wpa	U2FsdGVkX1+a0dDGM/gEG51O+Y1TYeyDV1JjscZYZZI=	enc
+Redmi Note 10 Pro Max	wpa	U2FsdGVkX19jQcWE1HIvbMd6zQ0TgueSJIiKlBtox2E=	enc
+Parsway	wpa	U2FsdGVkX19ShJQp/TbaSqFEmqwFKcAXREVg4BIczZw=	enc
+NZT9930134C	wpa	U2FsdGVkX1+unGJe6zKDwCS5cLAQFNUycYyFe54SUMg=	enc
 Mofid-GoHyper!	open		none
-Jobvision-WiFi	wpa	U2FsdGVkX18Q1JfDW/+FrHaj16UJ96F5sKQOwIK/MD8=	enc
-JobVision_DLink	wpa	U2FsdGVkX1+/aS5ap3gjPflRy2BGwdL5tDGX4M31BaM=	enc
-JobVision-3rd	wpa	U2FsdGVkX18z+Tj9qrRXT8tV1hZml9TsymHk5fiY7i0=	enc
-JobVision	wpa	U2FsdGVkX19m6kLXER9ECBzGhxOQGG4oU/Uf7JvEreQ=	enc
-Galaxy A51	wpa	U2FsdGVkX19yyTf+XgiovhNeKGYOrM22sZ6ylqyzXjo=	enc
-Fatemeh's Galaxy A71	wpa	U2FsdGVkX1/hLImCmHSPnwCoPw//s6D0FJ4fcYcXPsg=	enc
-AndroidAPA50	wpa	U2FsdGVkX1+91hM569oLuwVThIO+D8IXEah3r4V1THY=	enc
-DivorceHousing	wpa	U2FsdGVkX18+lDaytfYs2PDrQv+wlOdrHg+qUxuMOkFlaGVQRCh5DoF4yiatMuuI	enc
+Jobvision-WiFi	wpa	U2FsdGVkX19BHtKG015tFRD9z0ijA3LduXjZBUDFbms=	enc
+JobVision_DLink	wpa	U2FsdGVkX180kPobT0ns8bpMmlBMSJSxbG/96f2upaA=	enc
+JobVision-3rd	wpa	U2FsdGVkX1+Ofgz5gbbpJe1yuPhI1t9Kgg6lUUnOOsU=	enc
+JobVision	wpa	U2FsdGVkX19mL1iP0uz9Za6iCVx5WneLUEkVzh2h1Ac=	enc
+Galaxy A51	wpa	U2FsdGVkX19CVLI2uaEtqQA31RIc72ySaRqs3tB9bQk=	enc
+Fatemeh's Galaxy A71	wpa	U2FsdGVkX19t/CeJQE+LCRZRIrnC1eRl573KelncW6o=	enc
+AndroidAPA50	wpa	U2FsdGVkX1+p7HKKZ1nFZ7JeEZXcV9pRFeQu3YK2fpA=	enc
+DivorceHousing	wpa	U2FsdGVkX1/QfNfxC3IWBSLKgsj+AEuGubuXL22JX/f1/UbnquDPE7FPRh6YIHzT	enc
 __WIFI_EOF__
 )"
 
 # Firewall rules, one per line:  name<TAB>dir<TAB>action<TAB>enabled<TAB>proto<TAB>port
 FIREWALL_DATA="$(cat <<'__FW_EOF__'
-Microsoft Edge WebView2 mDNS [UDP]	Inbound	Allow	True	UDP	5353	Any
-Remote Desktop - (TCP-WSS-In)	Inbound	Allow	False	TCP	3392	Any
-Remote Desktop - Shadow (TCP-In)	Inbound	Allow	False	TCP	Any	Any
-Remote Desktop - User Mode (UDP-In)	Inbound	Allow	False	UDP	3389	Any
-Remote Desktop - User Mode (TCP-In)	Inbound	Allow	False	TCP	3389	Any
-Hyper-V Replica HTTP Listener (TCP-In)	Inbound	Allow	False	TCP	80	Any
-Hyper-V (RPC)	Inbound	Allow	True	TCP	RPC	Any
-Hyper-V (RPC-EPMAP)	Inbound	Allow	True	TCP	RPCEPMap	Any
-Hyper-V - WMI (DCOM-In)	Inbound	Allow	True	TCP	135	Any
-Hyper-V Management Clients - WMI (TCP-Out)	Outbound	Allow	True	TCP	Any	Any
-Hyper-V (MIG-TCP-In)	Inbound	Allow	True	TCP	6600	Any
-Hyper-V - WMI (TCP-Out)	Outbound	Allow	True	TCP	Any	Any
-Hyper-V Management Clients - WMI (Async-In)	Inbound	Allow	True	TCP	Any	Any
-Hyper-V Management Clients - WMI (TCP-In)	Inbound	Allow	True	TCP	Any	Any
-Hyper-V Management Clients - WMI (DCOM-In)	Inbound	Allow	True	TCP	135	Any
-Hyper-V (REMOTE_DESKTOP_TCP_IN)	Inbound	Allow	True	TCP	2179	Any
-Hyper-V - WMI (Async-In)	Inbound	Allow	True	TCP	Any	Any
-Hyper-V - WMI (TCP-In)	Inbound	Allow	True	TCP	Any	Any
-Hyper-V Replica HTTPS Listener (TCP-In)	Inbound	Allow	False	TCP	443	Any
-File and Printer Sharing (Restrictive) (Echo Request - ICMPv6-In)	Inbound	Allow	False	ICMPv6	RPC	Any
-File and Printer Sharing (LLMNR-UDP-Out)	Outbound	Allow	False	UDP	Any	5355
-File and Printer Sharing (LLMNR-UDP-In)	Inbound	Allow	False	UDP	5355	Any
-File and Printer Sharing (Echo Request - ICMPv4-In)	Inbound	Allow	False	ICMPv4	RPC	Any
-File and Printer Sharing (NB-Datagram-In)	Inbound	Allow	False	UDP	138	Any
-File and Printer Sharing (NB-Name-Out)	Outbound	Allow	False	UDP	Any	137
-WFD ASP Coordination Protocol (UDP-In)	Inbound	Allow	True	UDP	7235	7235
-WFD Driver-only (UDP-Out)	Outbound	Allow	True	UDP	Any	Any
-File and Printer Sharing (Echo Request - ICMPv6-In)	Inbound	Allow	False	ICMPv6	RPC	Any
-Inbound Rule for Remote Shutdown (RPC-EP-In)	Inbound	Allow	False	TCP	RPCEPMap	Any
-File and Printer Sharing (Restrictive) (Echo Request - ICMPv4-Out)	Outbound	Allow	False	ICMPv4	RPC	Any
-File and Printer Sharing (Restrictive) (Spooler Service - RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any
-File and Printer Sharing (Echo Request - ICMPv6-In)	Inbound	Allow	False	ICMPv6	RPC	Any
-File and Printer Sharing (NB-Session-Out)	Outbound	Allow	False	TCP	Any	139
-WFD Driver-only (TCP-Out)	Outbound	Allow	True	TCP	Any	Any
-File and Printer Sharing (NB-Datagram-Out)	Outbound	Allow	False	UDP	Any	138
-File and Printer Sharing (Restrictive) (Echo Request - ICMPv4-In)	Inbound	Allow	False	ICMPv4	RPC	Any
-File and Printer Sharing (Spooler Service Worker - RPC)	Inbound	Allow	False	TCP	RPC	Any
-File and Printer Sharing (Echo Request - ICMPv6-Out)	Outbound	Allow	False	ICMPv6	RPC	Any
-File and Printer Sharing (SMB-In)	Inbound	Allow	False	TCP	445	Any
-WFD Driver-only (UDP-In)	Inbound	Allow	True	UDP	Any	Any
-WFD Driver-only (TCP-In)	Inbound	Allow	True	TCP	Any	Any
-File and Printer Sharing (Restrictive) (SMB-Out)	Outbound	Allow	False	TCP	Any	445
-File and Printer Sharing (SMB-In)	Inbound	Allow	False	TCP	445	Any
-File and Printer Sharing (Restrictive) (Spooler Service Worker - RPC)	Inbound	Allow	False	TCP	RPC	Any
-File and Printer Sharing (Echo Request - ICMPv4-In)	Inbound	Allow	False	ICMPv4	RPC	Any
-File and Printer Sharing (NB-Session-In)	Inbound	Allow	False	TCP	139	Any
-File and Printer Sharing (Restrictive) (Spooler Service - RPC)	Inbound	Allow	False	TCP	RPC	Any
-File and Printer Sharing (NB-Name-In)	Inbound	Allow	False	UDP	137	Any
-File and Printer Sharing (Echo Request - ICMPv6-Out)	Outbound	Allow	False	ICMPv6	RPC	Any
-File and Printer Sharing (Spooler Service - RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any
-File and Printer Sharing (Restrictive) (LLMNR-UDP-Out)	Outbound	Allow	False	UDP	Any	5355
-File and Printer Sharing (Restrictive) (LLMNR-UDP-In)	Inbound	Allow	False	UDP	5355	Any
-File and Printer Sharing (NB-Session-Out)	Outbound	Allow	False	TCP	Any	139
-WFD ASP Coordination Protocol (UDP-Out)	Outbound	Allow	True	UDP	7235	7235
-File and Printer Sharing (NB-Name-In)	Inbound	Allow	False	UDP	137	Any
-File and Printer Sharing (NB-Datagram-In)	Inbound	Allow	False	UDP	138	Any
-File and Printer Sharing (Spooler Service Worker - RPC)	Inbound	Allow	False	TCP	RPC	Any
-File and Printer Sharing (Restrictive) (SMB-In)	Inbound	Allow	False	TCP	445	Any
-File and Printer Sharing (SMB-Out)	Outbound	Allow	False	TCP	Any	445
-File and Printer Sharing (Echo Request - ICMPv4-Out)	Outbound	Allow	False	ICMPv4	RPC	Any
-File and Printer Sharing (SMB-Out)	Outbound	Allow	False	TCP	Any	445
-File and Printer Sharing (NB-Name-Out)	Outbound	Allow	False	UDP	Any	137
-Inbound Rule for Remote Shutdown (TCP-In)	Inbound	Allow	False	TCP	RPC	Any
-File and Printer Sharing (Echo Request - ICMPv4-Out)	Outbound	Allow	False	ICMPv4	RPC	Any
-File and Printer Sharing (Spooler Service - RPC)	Inbound	Allow	False	TCP	RPC	Any
-File and Printer Sharing (NB-Datagram-Out)	Outbound	Allow	False	UDP	Any	138
-File and Printer Sharing (NB-Session-In)	Inbound	Allow	False	TCP	139	Any
-File and Printer Sharing (Restrictive) (Echo Request - ICMPv6-Out)	Outbound	Allow	False	ICMPv6	RPC	Any
-File and Printer Sharing (Spooler Service - RPC)	Inbound	Allow	False	TCP	RPC	Any
-File and Printer Sharing (Spooler Service - RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any
-Media Center Extenders - qWave (TCP-In)	Inbound	Allow	False	TCP	2177	Any
-Windows Media Player Network Sharing Service (TCP-Out)	Outbound	Allow	False	TCP	Any	Any
-Windows Media Player Network Sharing Service (qWave-UDP-In)	Inbound	Allow	False	UDP	2177	Any
-BranchCache Peer Discovery (WSD-Out)	Outbound	Allow	False	UDP	Any	3702
-Windows Media Player (TCP-Out)	Outbound	Allow	False	TCP	Any	Any
-Windows Media Player (UDP-Out)	Outbound	Allow	False	UDP	Any	Any
-BranchCache Content Retrieval (HTTP-In)	Inbound	Allow	False	TCP	80	Any
-Windows Media Player Network Sharing Service (HTTP-Streaming-In)	Inbound	Allow	False	TCP	10243	Any
-Windows Media Player Network Sharing Service (Streaming-UDP-Out)	Outbound	Allow	False	UDP	Any	Any
-Cast to Device streaming server (RTSP-Streaming-In)	Inbound	Allow	True	TCP	23554,23555,23556	Any
-Cast to Device streaming server (HTTP-Streaming-In)	Inbound	Allow	True	TCP	10246	Any
-Cast to Device streaming server (HTTP-Streaming-In)	Inbound	Allow	True	TCP	10246	Any
-Windows Media Player x86 (TCP-Out)	Outbound	Allow	False	TCP	Any	Any
-Windows Media Player x86 (UDP-Out)	Outbound	Allow	False	UDP	Any	Any
-Media Center Extenders - Media Streaming (TCP-Out)	Outbound	Allow	False	TCP	Any	Any
-Media Center Extenders - SSDP (UDP-Out)	Outbound	Allow	False	UDP	Any	1900
-BranchCache Content Retrieval (HTTP-Out)	Outbound	Allow	False	TCP	Any	80
-Media Center Extenders - Media Streaming (TCP-In)	Inbound	Allow	False	TCP	2869	Any
-Key Management Service (TCP-In)	Inbound	Allow	False	TCP	1688	Any
-Cast to Device streaming server (RTCP-Streaming-In)	Inbound	Allow	True	UDP	Any	Any
-Windows Media Player Network Sharing Service (UDP-Out)	Outbound	Allow	False	UDP	Any	Any
-Cast to Device streaming server (RTSP-Streaming-In)	Inbound	Allow	True	TCP	23554,23555,23556	Any
-Media Center Extenders - Media Streaming (UDP-Out)	Outbound	Allow	False	UDP	1900	Any
-Media Center Extenders - WMDRM-ND/RTP/RTCP (UDP-Out)	Outbound	Allow	False	UDP	Any	Any
-Media Center Extenders - RTSP (TCP-Out)	Outbound	Allow	False	TCP	Any	Any
-Cast to Device UPnP Events (TCP-In)	Inbound	Allow	True	TCP	2869	Any
-Wireless Portable Devices (UPnPHost-Out)	Outbound	Allow	False	TCP	Any	2869
-Wireless Portable Devices (SSDP-Out)	Outbound	Allow	False	UDP	Any	1900
-Cast to Device streaming server (RTP-Streaming-Out)	Outbound	Allow	True	UDP	Any	Any
-Wireless Portable Devices (SSDP-In)	Inbound	Allow	False	UDP	1900	Any
-Media Center Extenders - Device Validation (TCP-Out)	Outbound	Allow	False	TCP	Any	Any
-Cast to Device SSDP Discovery (UDP-In)	Inbound	Allow	True	UDP	PlayToDiscovery	Any
-BranchCache Hosted Cache Client (HTTP-Out)	Outbound	Allow	False	TCP	Any	80,443
-Windows Media Player Network Sharing Service (TCP-Out)	Outbound	Allow	False	TCP	Any	Any
-Media Center Extenders - Service (TCP-Out)	Outbound	Allow	False	TCP	Any	Any
-Media Center Extenders - UPnP (TCP-Out)	Outbound	Allow	False	TCP	Any	Any
-Windows Media Player Network Sharing Service (qWave-TCP-Out)	Outbound	Allow	False	TCP	Any	2177
-Windows Media Player Network Sharing Service (qWave-UDP-Out)	Outbound	Allow	False	UDP	Any	2177
-Media Center Extenders - SSDP (UDP-In)	Inbound	Allow	False	UDP	1900	Any
-Cast to Device functionality (qWave-TCP-In)	Inbound	Allow	True	TCP	2177	Any
-Cast to Device streaming server (HTTP-Streaming-In)	Inbound	Allow	True	TCP	10246	Any
-Windows Media Player Network Sharing Service (qWave-UDP-Out)	Outbound	Allow	False	UDP	Any	2177
-Windows Media Player Network Sharing Service (HTTP-Streaming-In)	Inbound	Allow	False	TCP	10243	Any
-Windows Media Player Network Sharing Service (UDP-Out)	Outbound	Allow	False	UDP	Any	Any
-Wireless Portable Devices (UPnP-Out)	Outbound	Allow	False	TCP	Any	2869
-Windows Media Player Network Sharing Service (HTTP-Streaming-Out)	Outbound	Allow	False	TCP	Any	10243
-Wireless Portable Devices (UPnP-In)	Inbound	Allow	False	TCP	2869	Any
-Windows Media Player Network Sharing Service (SSDP-In)	Inbound	Allow	False	UDP	1900	Any
-File and Printer Sharing over SMBDirect (iWARP-In)	Inbound	Allow	False	TCP	5445	Any
-Windows Media Player Network Sharing Service (UPnP-Out)	Outbound	Allow	False	TCP	Any	Any
-Windows Media Player Network Sharing Service (Streaming-TCP-Out)	Outbound	Allow	False	TCP	Any	Any
-Windows Media Player Network Sharing Service (qWave-TCP-Out)	Outbound	Allow	False	TCP	Any	2177
-Key Management Service (TCP-In)	Inbound	Allow	False	TCP	1688	Any
-Windows Media Player Network Sharing Service (SSDP-Out)	Outbound	Allow	False	UDP	Any	1900
-Media Center Extenders - XSP (TCP-In)	Inbound	Allow	False	TCP	3390	Any
-Cast to Device functionality (qWave-UDP-Out)	Outbound	Allow	True	UDP	Any	2177
-Media Center Extenders - qWave (TCP-Out)	Outbound	Allow	False	TCP	Any	2177
-Media Center Extenders - qWave (UDP-Out)	Outbound	Allow	False	UDP	Any	2177
-Media Center Extenders - RTSP (TCP-In)	Inbound	Allow	False	TCP	554,8554,8555,8556,8557,8558	Any
-Windows Media Player Network Sharing Service (Streaming-UDP-In)	Inbound	Allow	False	UDP	Any	Any
-Cloud Identity (TCP-Out)	Outbound	Allow	True	TCP	Any	443
-Windows Media Player Network Sharing Service (HTTP-Streaming-Out)	Outbound	Allow	False	TCP	Any	10243
-Cast to Device functionality (qWave-UDP-In)	Inbound	Allow	True	UDP	2177	Any
-Windows Media Player Network Sharing Service (Streaming-UDP-In)	Inbound	Allow	False	UDP	Any	Any
-Wireless Portable Devices (TCP-Out)	Outbound	Allow	False	TCP	Any	15740
-Windows Media Player Network Sharing Service (TCP-In)	Inbound	Allow	False	TCP	Any	Any
-Windows Media Player Network Sharing Service (UDP-In)	Inbound	Allow	False	UDP	Any	Any
-Windows Media Player x86 (UDP-In)	Inbound	Allow	False	UDP	Any	Any
-Media Center Extenders - WMDRM-ND/RTP/RTCP (UDP-In)	Inbound	Allow	False	UDP	7777,7778,7779,7780,7781,5004,5005,50004,50005,50006,50007,50008,50009,50010,50011,50012,50013	Any
-Cast to Device streaming server (RTSP-Streaming-In)	Inbound	Allow	True	TCP	23554,23555,23556	Any
-Windows Media Player Network Sharing Service (qWave-TCP-In)	Inbound	Allow	False	TCP	2177	Any
-Windows Media Player Network Sharing Service (TCP-In)	Inbound	Allow	False	TCP	Any	Any
-Windows Media Player Network Sharing Service (UDP-In)	Inbound	Allow	False	UDP	Any	Any
-Windows Media Player Network Sharing Service (UPnPHost-Out)	Outbound	Allow	False	TCP	Any	Any
-BranchCache Hosted Cache Server (HTTP-In)	Inbound	Allow	False	TCP	80,443	Any
-Windows Media Player Network Sharing Service (Streaming-UDP-Out)	Outbound	Allow	False	UDP	Any	Any
-Windows Media Player Network Sharing Service (UPnP-In)	Inbound	Allow	False	TCP	2869	Any
-Cast to Device streaming server (RTCP-Streaming-In)	Inbound	Allow	True	UDP	Any	Any
-Windows Media Player Network Sharing Service (qWave-UDP-In)	Inbound	Allow	False	UDP	2177	Any
-Windows Media Player Network Sharing Service (qWave-TCP-In)	Inbound	Allow	False	TCP	2177	Any
-Media Center Extenders - Device Provisioning (TCP-Out)	Outbound	Allow	False	TCP	Any	Any
-Cast to Device streaming server (RTP-Streaming-Out)	Outbound	Allow	True	UDP	Any	Any
-Cast to Device streaming server (RTP-Streaming-Out)	Outbound	Allow	True	UDP	Any	Any
-Media Center Extenders - qWave (UDP-In)	Inbound	Allow	False	UDP	2177	Any
-Wireless Portable Devices (TCP-Out)	Outbound	Allow	False	TCP	Any	15740
-Media Center Extenders - HTTP Streaming (TCP-In)	Inbound	Allow	False	TCP	10244	Any
-Cast to Device streaming server (RTCP-Streaming-In)	Inbound	Allow	True	UDP	Any	Any
-BranchCache Peer Discovery (WSD-In)	Inbound	Allow	False	UDP	3702	Any
-Cast to Device functionality (qWave-TCP-Out)	Outbound	Allow	True	TCP	Any	2177
-BranchCache Hosted Cache Server(HTTP-Out)	Outbound	Allow	False	TCP	80,443	Any
-Windows Media Player (UDP-In)	Inbound	Allow	False	UDP	Any	Any
-Windows Media Player Network Sharing Service (Streaming-TCP-Out)	Outbound	Allow	False	TCP	Any	Any
-mDNS (UDP-In)	Inbound	Allow	True	UDP	5353	Any
-Core Networking Diagnostics - ICMP Echo Request (ICMPv6-In)	Inbound	Allow	False	ICMPv6	RPC	Any
-Core Networking - Group Policy (TCP-Out)	Outbound	Allow	True	TCP	Any	Any
-Network Discovery (NB-Name-Out)	Outbound	Allow	False	UDP	Any	137
-Distributed Transaction Coordinator (TCP-In)	Inbound	Allow	False	TCP	Any	Any
-Routing and Remote Access (GRE-Out)	Outbound	Allow	False	47	Any	Any
-Network Discovery (NB-Name-Out)	Outbound	Allow	True	UDP	Any	137
-Windows Remote Management - Compatibility Mode (HTTP-In)	Inbound	Allow	False	TCP	80	Any
-Core Networking Diagnostics - ICMP Echo Request (ICMPv4-In)	Inbound	Allow	False	ICMPv4	RPC	Any
-Network Discovery (UPnPHost-Out)	Outbound	Allow	True	TCP	Any	2869
-Remote Assistance (TCP-In)	Inbound	Allow	True	TCP	Any	Any
-Windows Peer to Peer Collaboration Foundation (TCP-In)	Inbound	Allow	False	TCP	Any	Any
-mDNS (UDP-In)	Inbound	Allow	True	UDP	5353	Any
-Core Networking - Time Exceeded (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC	Any
-Netlogon Service Authz (RPC)	Inbound	Allow	False	TCP	RPC	Any
-Windows Management Instrumentation (WMI-Out)	Outbound	Allow	False	TCP	Any	Any
-Remote Volume Management - Virtual Disk Service (RPC)	Inbound	Allow	False	TCP	RPC	Any
-Core Networking - Dynamic Host Configuration Protocol for IPv6(DHCPV6-Out)	Outbound	Allow	True	UDP	546	547
-Distributed Transaction Coordinator (TCP-In)	Inbound	Allow	False	TCP	Any	Any
-DIAL protocol server (HTTP-In)	Inbound	Allow	True	TCP	10247	Any
-Secure Socket Tunneling Protocol (SSTP-In)	Inbound	Allow	False	TCP	443	Any
-Core Networking Diagnostics - ICMP Echo Request (ICMPv4-In)	Inbound	Allow	False	ICMPv4	RPC	Any
-Core Networking - Multicast Listener Report (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC	Any
-Windows Device Management Sync Client (TCP out)	Outbound	Allow	True	TCP	49152-65535	Any
-Windows Peer to Peer Collaboration Foundation (SSDP-In)	Inbound	Allow	False	UDP	1900	Any
-Core Networking - Multicast Listener Query (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC	Any
-Remote Event Log Management (RPC)	Inbound	Allow	False	TCP	RPC	Any
-Network Discovery (WSD-In)	Inbound	Allow	False	UDP	3702	Any
-Network Discovery (WSD-Out)	Outbound	Allow	True	UDP	Any	3702
-Remote Volume Management - Virtual Disk Service Loader (RPC)	Inbound	Allow	False	TCP	RPC	Any
-Core Networking - Multicast Listener Report v2 (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC	Any
-Windows Management Instrumentation (WMI-In)	Inbound	Allow	False	TCP	Any	Any
-Core Networking - Group Policy (NP-Out)	Outbound	Allow	True	TCP	Any	445
-Core Networking - Internet Group Management Protocol (IGMP-In)	Inbound	Allow	True	2	Any	Any
-Network Discovery (Pub-WSD-In)	Inbound	Allow	False	UDP	3702	Any
-iSCSI Service (TCP-Out)	Outbound	Allow	False	TCP	Any	Any
-Proximity sharing over TCP (TCP sharing-In)	Inbound	Allow	True	TCP	Any	Any
-Distributed Transaction Coordinator (RPC)	Inbound	Allow	False	TCP	RPC	Any
-Remote Assistance (SSDP TCP-In)	Inbound	Allow	True	TCP	2869	Any
-Windows Management Instrumentation (DCOM-In)	Inbound	Allow	False	TCP	135	Any
-Core Networking Diagnostics - ICMP Echo Request (ICMPv6-Out)	Outbound	Allow	False	ICMPv6	RPC	Any
-Remote Event Log Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any
-Network Discovery (WSD EventsSecure-Out)	Outbound	Allow	True	TCP	Any	5358
-Core Networking - IPv6 (IPv6-Out)	Outbound	Allow	True	41	Any	Any
-Performance Logs and Alerts (DCOM-In)	Inbound	Allow	False	TCP	135	Any
-Network Discovery (UPnP-In)	Inbound	Allow	False	TCP	2869	Any
-Windows Collaboration Computer Name Registration Service (SSDP-In)	Inbound	Allow	False	UDP	1900	Any
-Wireless Display (TCP-In)	Inbound	Allow	True	TCP	Any	Any
-Windows Peer to Peer Collaboration Foundation (PNRP-Out)	Outbound	Allow	False	UDP	Any	3540
-Wi-Fi Direct Network Discovery (In)	Inbound	Allow	True	Any	Any	Any
-Core Networking - Neighbor Discovery Solicitation (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC	Any
-Network Discovery (WSD Events-In)	Inbound	Allow	False	TCP	5357	Any
-Network Discovery (WSD-Out)	Outbound	Allow	False	UDP	Any	3702
-Windows Remote Management (HTTP-In)	Inbound	Allow	False	TCP	5985	Any
-Performance Logs and Alerts (TCP-In)	Inbound	Allow	False	TCP	Any	Any
-Routing and Remote Access (PPTP-Out)	Outbound	Allow	False	TCP	Any	1723
-Performance Logs and Alerts (DCOM-In)	Inbound	Allow	False	TCP	135	Any
-Network Discovery (NB-Datagram-Out)	Outbound	Allow	False	UDP	Any	138
-mDNS (UDP-Out)	Outbound	Allow	True	UDP	Any	5353
-Core Networking Diagnostics - ICMP Echo Request (ICMPv4-Out)	Outbound	Allow	False	ICMPv4	RPC	Any
-Network Discovery (SSDP-Out)	Outbound	Allow	False	UDP	Any	1900
-Remote Scheduled Tasks Management (RPC)	Inbound	Allow	False	TCP	RPC	Any
-Connected Devices Platform - Wi-Fi Direct Transport (TCP-In)	Inbound	Allow	True	TCP	Any	Any
-Network Discovery (NB-Datagram-In)	Inbound	Allow	True	UDP	138	Any
-Wi-Fi Direct Scan Service Use (Out)	Outbound	Allow	True	Any	Any	Any
-Core Networking - Destination Unreachable (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC	Any
-Network Discovery (WSD EventsSecure-In)	Inbound	Allow	False	TCP	5358	Any
-Connected User Experiences and Telemetry	Outbound	Allow	True	TCP	Any	443
-Core Networking - Multicast Listener Done (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC	Any
-Remote Assistance (PNRP-Out)	Outbound	Allow	True	UDP	Any	Any
-AllJoyn Router (UDP-In)	Inbound	Allow	True	UDP	Any	Any
-AllJoyn Router (TCP-In)	Inbound	Allow	True	TCP	9955	Any
-Windows Defender Firewall Remote Management (RPC)	Inbound	Allow	False	TCP	RPC	Any
-Network Discovery (WSD Events-Out)	Outbound	Allow	False	TCP	Any	5357
-Core Networking - IPHTTPS (TCP-In)	Inbound	Allow	True	TCP	IPHTTPSIn	Any
-Core Networking - Dynamic Host Configuration Protocol (DHCP-Out)	Outbound	Allow	True	UDP	68	67
-Core Networking - Packet Too Big (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC	Any
-Routing and Remote Access (L2TP-In)	Inbound	Allow	False	UDP	1701	Any
-Wi-Fi Direct Network Discovery (Out)	Outbound	Allow	True	Any	Any	Any
-TPM Virtual Smart Card Management (TCP-Out)	Outbound	Allow	False	TCP	Any	Any
-Core Networking - Multicast Listener Report (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC	Any
-Virtual Machine Monitoring (Echo Request - ICMPv6-In)	Inbound	Allow	False	ICMPv6	Any	Any
-Network Discovery (LLMNR-UDP-In)	Inbound	Allow	True	UDP	5355	Any
-Proximity sharing over TCP (TCP sharing-Out)	Outbound	Allow	True	TCP	Any	Any
-Remote Assistance (TCP-In)	Inbound	Allow	False	TCP	Any	Any
-AllJoyn Router (TCP-Out)	Outbound	Allow	True	TCP	Any	Any
-mDNS (UDP-In)	Inbound	Allow	True	UDP	5353	Any
-Remote Scheduled Tasks Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any
-Connected Devices Platform (TCP-In)	Inbound	Allow	True	TCP	Any	Any
-Connected Devices Platform (UDP-In)	Inbound	Allow	True	UDP	Any	Any
-Virtual Machine Monitoring (Echo Request - ICMPv4-In)	Inbound	Allow	False	ICMPv4	Any	Any
-Network Discovery (SSDP-In)	Inbound	Allow	True	UDP	1900	Any
-Netlogon Service (NP-In)	Inbound	Allow	False	TCP	445	Any
-Core Networking - Time Exceeded (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC	Any
-Network Discovery (Pub WSD-Out)	Outbound	Allow	False	UDP	Any	3702
-Network Discovery for Teredo (UPnP-In)	Inbound	Allow	True	TCP	Any	Any
-Network Discovery (LLMNR-UDP-Out)	Outbound	Allow	True	UDP	Any	5355
-Network Discovery (WSD EventsSecure-Out)	Outbound	Allow	False	TCP	Any	5358
-Remote Assistance (SSDP UDP-In)	Inbound	Allow	True	UDP	1900	Any
-TPM Virtual Smart Card Management (TCP-Out)	Outbound	Allow	False	TCP	Any	Any
-TPM Virtual Smart Card Management (TCP-In)	Inbound	Allow	False	TCP	Any	Any
-TPM Virtual Smart Card Management (DCOM-In)	Inbound	Allow	False	TCP	135	Any
-Remote Volume Management - Virtual Disk Service Loader (RPC)	Inbound	Allow	False	TCP	RPC	Any
-Remote Volume Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any
-Core Networking Diagnostics - ICMP Echo Request (ICMPv6-In)	Inbound	Allow	False	ICMPv6	RPC	Any
-Network Discovery (NB-Name-In)	Inbound	Allow	False	UDP	137	Any
-Windows Peer to Peer Collaboration Foundation (SSDP-Out)	Outbound	Allow	False	UDP	Any	1900
-Core Networking - Multicast Listener Query (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC	Any
-Windows Device Management Device Enroller (TCP out)	Outbound	Allow	True	TCP	49152-65535	80,443
-Remote Service Management (NP-In)	Inbound	Allow	False	TCP	445	Any
-Windows Defender Firewall Remote Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any
-AllJoyn Router (UDP-Out)	Outbound	Allow	True	UDP	Any	Any
-Core Networking - Neighbor Discovery Advertisement (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC	Any
-Network Discovery (UPnP-In)	Inbound	Allow	False	TCP	2869	Any
-Distributed Transaction Coordinator (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any
-Windows Collaboration Computer Name Registration Service (PNRP-Out)	Outbound	Allow	False	UDP	Any	3540
-Microsoft Media Foundation Network Source OUT [TCP ALL]	Outbound	Allow	True	TCP	Any	554,8554-8558
-Remote Service Management (RPC)	Inbound	Allow	False	TCP	RPC	Any
-Core Networking - Teredo (UDP-In)	Inbound	Allow	True	UDP	Teredo	Any
-Remote Service Management (NP-In)	Inbound	Allow	False	TCP	445	Any
-Network Discovery (NB-Datagram-In)	Inbound	Allow	False	UDP	138	Any
-Network Discovery (NB-Datagram-Out)	Outbound	Allow	True	UDP	Any	138
-Core Networking - DNS (UDP-Out)	Outbound	Allow	True	UDP	Any	53
-Core Networking - Parameter Problem (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC	Any
-Network Discovery (NB-Name-In)	Inbound	Allow	True	UDP	137	Any
-iSCSI Service (TCP-In)	Inbound	Allow	False	TCP	Any	Any
-Windows Peer to Peer Collaboration Foundation (WSD-Out)	Outbound	Allow	False	UDP	Any	3702
-Network Discovery (WSD-In)	Inbound	Allow	False	UDP	3702	Any
-Windows Remote Management - Compatibility Mode (HTTP-In)	Inbound	Allow	False	TCP	80	Any
-Core Networking - Internet Group Management Protocol (IGMP-Out)	Outbound	Allow	True	2	Any	Any
-Remote Service Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any
-Remote Service Management (RPC)	Inbound	Allow	False	TCP	RPC	Any
-Network Discovery (SSDP-In)	Inbound	Allow	False	UDP	1900	Any
-Microsoft Media Foundation Network Source IN [TCP 554]	Inbound	Allow	True	TCP	554,8554-8558	Any
-Core Networking - IPHTTPS (TCP-Out)	Outbound	Allow	True	TCP	Any	IPHTTPSOut
-Core Networking - Neighbor Discovery Advertisement (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC	Any
-Network Discovery (WSD EventsSecure-In)	Inbound	Allow	False	TCP	5358	Any
-Windows Peer to Peer Collaboration Foundation (TCP-Out)	Outbound	Allow	False	TCP	Any	Any
-Core Networking - Router Advertisement (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC	Any
-Remote Assistance (RA Server TCP-Out)	Outbound	Allow	True	TCP	Any	Any
-Wireless Display (UDP-Out)	Outbound	Allow	True	UDP	Any	Any
-Wireless Display (TCP-Out)	Outbound	Allow	True	TCP	Any	Any
-Windows Defender Firewall Remote Management (RPC)	Inbound	Allow	False	TCP	RPC	Any
-Virtual Machine Monitoring (NB-Session-In)	Inbound	Allow	False	TCP	139	Any
-Network Discovery (LLMNR-UDP-Out)	Outbound	Allow	False	UDP	Any	5355
-Network Discovery (Pub WSD-Out)	Outbound	Allow	True	UDP	Any	3702
-Network Discovery (WSD Events-Out)	Outbound	Allow	False	TCP	Any	5357
-Windows Management Instrumentation (ASync-In)	Inbound	Allow	False	TCP	Any	Any
-Remote Service Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any
-Network Discovery (WSD Events-In)	Inbound	Allow	False	TCP	5357	Any
-DIAL protocol server (HTTP-In)	Inbound	Allow	True	TCP	10247	Any
-Windows Peer to Peer Collaboration Foundation (PNRP-In)	Inbound	Allow	False	UDP	3540	Any
-Network Discovery (UPnP-Out)	Outbound	Allow	False	TCP	Any	2869
-Remote Assistance (PNRP-In)	Inbound	Allow	True	UDP	3540	Any
-Remote Scheduled Tasks Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any
-Recommended Troubleshooting Client (HTTP/HTTPS Out)	Outbound	Allow	True	TCP	Any	80,443
-Core Networking - Group Policy (LSASS-Out)	Outbound	Allow	True	TCP	Any	Any
-Network Discovery (WSD EventsSecure-Out)	Outbound	Allow	False	TCP	Any	5358
-Network Discovery (Pub-WSD-In)	Inbound	Allow	True	UDP	3702	Any
-Windows Collaboration Computer Name Registration Service (SSDP-Out)	Outbound	Allow	False	UDP	Any	1900
-Wireless Display Infrastructure Back Channel (TCP-In)	Inbound	Allow	True	TCP	7250	Any
-Windows Management Instrumentation (DCOM-In)	Inbound	Allow	False	TCP	135	Any
-Core Networking - Router Solicitation (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC	Any
-Virtual Machine Monitoring (DCOM-In)	Inbound	Allow	False	TCP	135	Any
-Network Discovery (NB-Datagram-In)	Inbound	Allow	False	UDP	138	Any
-Windows Management Instrumentation (WMI-Out)	Outbound	Allow	False	TCP	Any	Any
-TPM Virtual Smart Card Management (TCP-In)	Inbound	Allow	False	TCP	Any	Any
-Remote Volume Management - Virtual Disk Service (RPC)	Inbound	Allow	False	TCP	RPC	Any
-Core Networking - Teredo (UDP-Out)	Outbound	Allow	True	UDP	Any	Any
-Routing and Remote Access (PPTP-In)	Inbound	Allow	False	TCP	1723	Any
-Remote Assistance (PNRP-In)	Inbound	Allow	False	UDP	3540	Any
-iSCSI Service (TCP-In)	Inbound	Allow	False	TCP	Any	Any
-Windows Device Management Certificate Installer (TCP out)	Outbound	Allow	True	TCP	49152-65535	Any
-Core Networking - Multicast Listener Done (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC	Any
-Virtual Machine Monitoring (RPC)	Inbound	Allow	False	TCP	RPC	Any
-Network Discovery (NB-Name-In)	Inbound	Allow	False	UDP	137	Any
-Distributed Transaction Coordinator (TCP-Out)	Outbound	Allow	False	TCP	Any	Any
-Delivery Optimization (TCP-In)	Inbound	Allow	True	TCP	7680	Any
-Windows Remote Management (HTTP-In)	Inbound	Allow	False	TCP	5985	Any
-Performance Logs and Alerts (TCP-In)	Inbound	Allow	False	TCP	Any	Any
-Windows Defender Firewall Remote Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any
-Windows Management Instrumentation (WMI-In)	Inbound	Allow	False	TCP	Any	Any
-mDNS (UDP-Out)	Outbound	Allow	True	UDP	Any	5353
-Core Networking Diagnostics - ICMP Echo Request (ICMPv4-Out)	Outbound	Allow	False	ICMPv4	RPC	Any
-Windows Management Instrumentation (ASync-In)	Inbound	Allow	False	TCP	Any	Any
-SNMP Trap Service (UDP In)	Inbound	Allow	False	UDP	162	Any
-Windows Device Management Enrollment Service (TCP out)	Outbound	Allow	True	TCP	49152-65535	Any
-Microsoft Media Foundation Network Source IN [UDP 5004-5009]	Inbound	Allow	True	UDP	5000-5020	Any
-Remote Event Monitor (RPC)	Inbound	Allow	False	TCP	RPC	Any
-Core Networking Diagnostics - ICMP Echo Request (ICMPv6-Out)	Outbound	Allow	False	ICMPv6	RPC	Any
-Core Networking - Multicast Listener Report v2 (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC	Any
-Remote Event Log Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any
-Network Discovery (UPnP-In)	Inbound	Allow	True	TCP	2869	Any
-Remote Assistance (RA Server TCP-In)	Inbound	Allow	True	TCP	Any	Any
-Remote Volume Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any
-Network Discovery (WSD EventsSecure-In)	Inbound	Allow	True	TCP	5358	Any
-Network Discovery (UPnP-Out)	Outbound	Allow	True	TCP	Any	2869
-Remote Assistance (DCOM-In)	Inbound	Allow	True	TCP	135	Any
-Remote Event Monitor (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any
-Core Networking - Neighbor Discovery Solicitation (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC	Any
-Network Discovery (WSD Events-In)	Inbound	Allow	True	TCP	5357	Any
-Remote Assistance (SSDP TCP-Out)	Outbound	Allow	True	TCP	Any	Any
-Remote Assistance (SSDP UDP-Out)	Outbound	Allow	True	UDP	Any	1900
-Core Networking - Router Solicitation (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC	Any
-Network Discovery (WSD-In)	Inbound	Allow	True	UDP	3702	Any
-Remote Assistance (PNRP-Out)	Outbound	Allow	False	UDP	Any	Any
-Wi-Fi Direct Scan Service Use (In)	Inbound	Allow	True	Any	Any	Any
-Distributed Transaction Coordinator (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any
-Connected Devices Platform (TCP-Out)	Outbound	Allow	True	TCP	Any	Any
-Network Discovery (UPnPHost-Out)	Outbound	Allow	False	TCP	Any	2869
-iSCSI Service (TCP-Out)	Outbound	Allow	False	TCP	Any	Any
-Network Discovery for Teredo (SSDP-In)	Inbound	Allow	True	UDP	Any	Any
-Distributed Transaction Coordinator (RPC)	Inbound	Allow	False	TCP	RPC	Any
-Core Networking - Dynamic Host Configuration Protocol for IPv6(DHCPV6-In)	Inbound	Allow	True	UDP	546	547
-TPM Virtual Smart Card Management (DCOM-In)	Inbound	Allow	False	TCP	135	Any
-Routing and Remote Access (GRE-In)	Inbound	Allow	False	47	Any	Any
-Network Discovery (WSD-In)	Inbound	Allow	True	UDP	3702	Any
-Core Networking - Dynamic Host Configuration Protocol (DHCP-In)	Inbound	Allow	True	UDP	68	67
-Core Networking - Destination Unreachable Fragmentation Needed (ICMPv4-In)	Inbound	Allow	True	ICMPv4	RPC	Any
-Core Networking - Router Advertisement (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC	Any
-Core Networking - Parameter Problem (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC	Any
-Delivery Optimization (UDP-In)	Inbound	Allow	True	UDP	7680	Any
-mDNS (UDP-Out)	Outbound	Allow	True	UDP	Any	5353
-SNMP Trap Service (UDP In)	Inbound	Allow	False	UDP	162	Any
-Remote Event Log Management (NP-In)	Inbound	Allow	False	TCP	445	Any
-Network Discovery (LLMNR-UDP-In)	Inbound	Allow	False	UDP	5355	Any
-Connected Devices Platform - Wi-Fi Direct Transport (TCP-Out)	Outbound	Allow	True	TCP	Any	Any
-Core Networking - IPv6 (IPv6-In)	Inbound	Allow	True	41	Any	Any
-Remote Event Log Management (RPC)	Inbound	Allow	False	TCP	RPC	Any
-Windows Peer to Peer Collaboration Foundation (WSD-In)	Inbound	Allow	False	UDP	3702	Any
-Network Discovery (NB-Datagram-Out)	Outbound	Allow	False	UDP	Any	138
-Network Discovery (NB-Name-Out)	Outbound	Allow	False	UDP	Any	137
-Windows Collaboration Computer Name Registration Service (PNRP-In)	Inbound	Allow	False	UDP	3540	Any
-Connected Devices Platform (UDP-Out)	Outbound	Allow	True	UDP	Any	Any
-Core Networking - Packet Too Big (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC	Any
-Routing and Remote Access (L2TP-Out)	Outbound	Allow	False	UDP	Any	1701
-Distributed Transaction Coordinator (TCP-Out)	Outbound	Allow	False	TCP	Any	Any
-Remote Assistance (TCP-Out)	Outbound	Allow	True	TCP	Any	Any
-Wi-Fi Direct Spooler Use (In)	Inbound	Allow	True	Any	Any	Any
-Remote Scheduled Tasks Management (RPC)	Inbound	Allow	False	TCP	RPC	Any
-Remote Event Log Management (NP-In)	Inbound	Allow	False	TCP	445	Any
-Network Discovery (WSD Events-Out)	Outbound	Allow	True	TCP	Any	5357
-Network Discovery (SSDP-Out)	Outbound	Allow	True	UDP	Any	1900
-Remote Assistance (TCP-Out)	Outbound	Allow	False	TCP	Any	Any
-Wi-Fi Direct Spooler Use (Out)	Outbound	Allow	True	Any	Any	Any
-Network Discovery (UPnP-Out)	Outbound	Allow	False	TCP	Any	2869
-Allow 192.168.171.x Inbound	Inbound	Allow	True	Any	Any	Any
-Allow 192.168.171.x Outbound	Outbound	Allow	True	Any	Any	Any
-Quick Share	Inbound	Allow	True	TCP	Any	Any
-Quick Share	Inbound	Allow	True	UDP	Any	Any
+Microsoft Edge WebView2 mDNS [UDP]	Inbound	Allow	True	UDP	5353	Any	%SystemRoot%\system32\Microsoft-Edge-WebView\msedgewebview2.exe	
+Remote Desktop - (TCP-WSS-In)	Inbound	Allow	False	TCP	3392	Any	System	
+Remote Desktop - Shadow (TCP-In)	Inbound	Allow	False	TCP	Any	Any	%SystemRoot%\system32\RdpSa.exe	
+Remote Desktop - User Mode (UDP-In)	Inbound	Allow	False	UDP	3389	Any	%SystemRoot%\system32\svchost.exe	termservice
+Remote Desktop - User Mode (TCP-In)	Inbound	Allow	False	TCP	3389	Any	%SystemRoot%\system32\svchost.exe	termservice
+Hyper-V Replica HTTP Listener (TCP-In)	Inbound	Allow	False	TCP	80	Any	System	
+Hyper-V (RPC)	Inbound	Allow	True	TCP	RPC	Any	System	
+Hyper-V (RPC-EPMAP)	Inbound	Allow	True	TCP	RPCEPMap	Any	System	
+Hyper-V - WMI (DCOM-In)	Inbound	Allow	True	TCP	135	Any	%SystemRoot%\system32\svchost.exe	rpcss
+Hyper-V Management Clients - WMI (TCP-Out)	Outbound	Allow	True	TCP	Any	Any	%SystemRoot%\system32\svchost.exe	winmgmt
+Hyper-V (MIG-TCP-In)	Inbound	Allow	True	TCP	6600	Any	%systemroot%\system32\vmms.exe	vmms
+Hyper-V - WMI (TCP-Out)	Outbound	Allow	True	TCP	Any	Any	%SystemRoot%\system32\svchost.exe	winmgmt
+Hyper-V Management Clients - WMI (Async-In)	Inbound	Allow	True	TCP	Any	Any	%SystemRoot%\system32\wbem\unsecapp.exe	
+Hyper-V Management Clients - WMI (TCP-In)	Inbound	Allow	True	TCP	Any	Any	%SystemRoot%\system32\svchost.exe	winmgmt
+Hyper-V Management Clients - WMI (DCOM-In)	Inbound	Allow	True	TCP	135	Any	%SystemRoot%\system32\svchost.exe	rpcss
+Hyper-V (REMOTE_DESKTOP_TCP_IN)	Inbound	Allow	True	TCP	2179	Any	%systemroot%\system32\vmms.exe	vmms
+Hyper-V - WMI (Async-In)	Inbound	Allow	True	TCP	Any	Any	%systemroot%\system32\wbem\unsecapp.exe	
+Hyper-V - WMI (TCP-In)	Inbound	Allow	True	TCP	Any	Any	%SystemRoot%\system32\svchost.exe	winmgmt
+Hyper-V Replica HTTPS Listener (TCP-In)	Inbound	Allow	False	TCP	443	Any	System	
+File and Printer Sharing (Restrictive) (Echo Request - ICMPv6-In)	Inbound	Allow	False	ICMPv6	RPC	Any	System	
+File and Printer Sharing (LLMNR-UDP-Out)	Outbound	Allow	False	UDP	Any	5355	%SystemRoot%\system32\svchost.exe	dnscache
+File and Printer Sharing (LLMNR-UDP-In)	Inbound	Allow	False	UDP	5355	Any	%SystemRoot%\system32\svchost.exe	dnscache
+File and Printer Sharing (Echo Request - ICMPv4-In)	Inbound	Allow	False	ICMPv4	RPC	Any	System	
+File and Printer Sharing (NB-Datagram-In)	Inbound	Allow	False	UDP	138	Any	System	
+File and Printer Sharing (NB-Name-Out)	Outbound	Allow	False	UDP	Any	137	System	
+WFD ASP Coordination Protocol (UDP-In)	Inbound	Allow	True	UDP	7235	7235	%systemroot%\system32\svchost.exe	WlanSvc
+WFD Driver-only (UDP-Out)	Outbound	Allow	True	UDP	Any	Any	System	
+File and Printer Sharing (Echo Request - ICMPv6-In)	Inbound	Allow	False	ICMPv6	RPC	Any	System	
+Inbound Rule for Remote Shutdown (RPC-EP-In)	Inbound	Allow	False	TCP	RPCEPMap	Any	%systemroot%\system32\wininit.exe	
+File and Printer Sharing (Restrictive) (Echo Request - ICMPv4-Out)	Outbound	Allow	False	ICMPv4	RPC	Any	System	
+File and Printer Sharing (Restrictive) (Spooler Service - RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any	%SystemRoot%\system32\svchost.exe	Rpcss
+File and Printer Sharing (Echo Request - ICMPv6-In)	Inbound	Allow	False	ICMPv6	RPC	Any	System	
+File and Printer Sharing (NB-Session-Out)	Outbound	Allow	False	TCP	Any	139	System	
+WFD Driver-only (TCP-Out)	Outbound	Allow	True	TCP	Any	Any	System	
+File and Printer Sharing (NB-Datagram-Out)	Outbound	Allow	False	UDP	Any	138	System	
+File and Printer Sharing (Restrictive) (Echo Request - ICMPv4-In)	Inbound	Allow	False	ICMPv4	RPC	Any	System	
+File and Printer Sharing (Spooler Service Worker - RPC)	Inbound	Allow	False	TCP	RPC	Any	%SystemRoot%\system32\spoolsvworker.exe	
+File and Printer Sharing (Echo Request - ICMPv6-Out)	Outbound	Allow	False	ICMPv6	RPC	Any	System	
+File and Printer Sharing (SMB-In)	Inbound	Allow	False	TCP	445	Any	System	
+WFD Driver-only (UDP-In)	Inbound	Allow	True	UDP	Any	Any	System	
+WFD Driver-only (TCP-In)	Inbound	Allow	True	TCP	Any	Any	System	
+File and Printer Sharing (Restrictive) (SMB-Out)	Outbound	Allow	False	TCP	Any	445	System	
+File and Printer Sharing (SMB-In)	Inbound	Allow	False	TCP	445	Any	System	
+File and Printer Sharing (Restrictive) (Spooler Service Worker - RPC)	Inbound	Allow	False	TCP	RPC	Any	%SystemRoot%\system32\spoolsvworker.exe	
+File and Printer Sharing (Echo Request - ICMPv4-In)	Inbound	Allow	False	ICMPv4	RPC	Any	System	
+File and Printer Sharing (NB-Session-In)	Inbound	Allow	False	TCP	139	Any	System	
+File and Printer Sharing (Restrictive) (Spooler Service - RPC)	Inbound	Allow	False	TCP	RPC	Any	%SystemRoot%\system32\spoolsv.exe	Spooler
+File and Printer Sharing (NB-Name-In)	Inbound	Allow	False	UDP	137	Any	System	
+File and Printer Sharing (Echo Request - ICMPv6-Out)	Outbound	Allow	False	ICMPv6	RPC	Any	System	
+File and Printer Sharing (Spooler Service - RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any	%SystemRoot%\system32\svchost.exe	Rpcss
+File and Printer Sharing (Restrictive) (LLMNR-UDP-Out)	Outbound	Allow	False	UDP	Any	5355	%SystemRoot%\system32\svchost.exe	dnscache
+File and Printer Sharing (Restrictive) (LLMNR-UDP-In)	Inbound	Allow	False	UDP	5355	Any	%SystemRoot%\system32\svchost.exe	dnscache
+File and Printer Sharing (NB-Session-Out)	Outbound	Allow	False	TCP	Any	139	System	
+WFD ASP Coordination Protocol (UDP-Out)	Outbound	Allow	True	UDP	7235	7235	%systemroot%\system32\svchost.exe	WlanSvc
+File and Printer Sharing (NB-Name-In)	Inbound	Allow	False	UDP	137	Any	System	
+File and Printer Sharing (NB-Datagram-In)	Inbound	Allow	False	UDP	138	Any	System	
+File and Printer Sharing (Spooler Service Worker - RPC)	Inbound	Allow	False	TCP	RPC	Any	%SystemRoot%\system32\spoolsvworker.exe	
+File and Printer Sharing (Restrictive) (SMB-In)	Inbound	Allow	False	TCP	445	Any	System	
+File and Printer Sharing (SMB-Out)	Outbound	Allow	False	TCP	Any	445	System	
+File and Printer Sharing (Echo Request - ICMPv4-Out)	Outbound	Allow	False	ICMPv4	RPC	Any	System	
+File and Printer Sharing (SMB-Out)	Outbound	Allow	False	TCP	Any	445	System	
+File and Printer Sharing (NB-Name-Out)	Outbound	Allow	False	UDP	Any	137	System	
+Inbound Rule for Remote Shutdown (TCP-In)	Inbound	Allow	False	TCP	RPC	Any	%systemroot%\system32\wininit.exe	
+File and Printer Sharing (Echo Request - ICMPv4-Out)	Outbound	Allow	False	ICMPv4	RPC	Any	System	
+File and Printer Sharing (Spooler Service - RPC)	Inbound	Allow	False	TCP	RPC	Any	%SystemRoot%\system32\spoolsv.exe	Spooler
+File and Printer Sharing (NB-Datagram-Out)	Outbound	Allow	False	UDP	Any	138	System	
+File and Printer Sharing (NB-Session-In)	Inbound	Allow	False	TCP	139	Any	System	
+File and Printer Sharing (Restrictive) (Echo Request - ICMPv6-Out)	Outbound	Allow	False	ICMPv6	RPC	Any	System	
+File and Printer Sharing (Spooler Service - RPC)	Inbound	Allow	False	TCP	RPC	Any	%SystemRoot%\system32\spoolsv.exe	Spooler
+File and Printer Sharing (Spooler Service - RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any	%SystemRoot%\system32\svchost.exe	Rpcss
+Media Center Extenders - qWave (TCP-In)	Inbound	Allow	False	TCP	2177	Any	%SystemRoot%\system32\svchost.exe	Qwave
+Windows Media Player Network Sharing Service (TCP-Out)	Outbound	Allow	False	TCP	Any	Any	%PROGRAMFILES%\Windows Media Player\wmpnetwk.exe	
+Windows Media Player Network Sharing Service (qWave-UDP-In)	Inbound	Allow	False	UDP	2177	Any	%SystemRoot%\system32\svchost.exe	Qwave
+BranchCache Peer Discovery (WSD-Out)	Outbound	Allow	False	UDP	Any	3702	%systemroot%\system32\svchost.exe	PeerDistSvc
+Windows Media Player (TCP-Out)	Outbound	Allow	False	TCP	Any	Any	%ProgramFiles%\Windows Media Player\wmplayer.exe	
+Windows Media Player (UDP-Out)	Outbound	Allow	False	UDP	Any	Any	%ProgramFiles%\Windows Media Player\wmplayer.exe	
+BranchCache Content Retrieval (HTTP-In)	Inbound	Allow	False	TCP	80	Any	SYSTEM	
+Windows Media Player Network Sharing Service (HTTP-Streaming-In)	Inbound	Allow	False	TCP	10243	Any	System	
+Windows Media Player Network Sharing Service (Streaming-UDP-Out)	Outbound	Allow	False	UDP	Any	Any	%PROGRAMFILES%\Windows Media Player\wmplayer.exe	
+Cast to Device streaming server (RTSP-Streaming-In)	Inbound	Allow	True	TCP	23554,23555,23556	Any	%SystemRoot%\system32\mdeserver.exe	
+Cast to Device streaming server (HTTP-Streaming-In)	Inbound	Allow	True	TCP	10246	Any	System	
+Cast to Device streaming server (HTTP-Streaming-In)	Inbound	Allow	True	TCP	10246	Any	System	
+Windows Media Player x86 (TCP-Out)	Outbound	Allow	False	TCP	Any	Any	%ProgramFiles(x86)%\Windows Media Player\wmplayer.exe	
+Windows Media Player x86 (UDP-Out)	Outbound	Allow	False	UDP	Any	Any	%ProgramFiles(x86)%\Windows Media Player\wmplayer.exe	
+Media Center Extenders - Media Streaming (TCP-Out)	Outbound	Allow	False	TCP	Any	Any	%SystemRoot%\system32\svchost.exe	upnphost
+Media Center Extenders - SSDP (UDP-Out)	Outbound	Allow	False	UDP	Any	1900	%SystemRoot%\system32\svchost.exe	Ssdpsrv
+BranchCache Content Retrieval (HTTP-Out)	Outbound	Allow	False	TCP	Any	80	SYSTEM	
+Media Center Extenders - Media Streaming (TCP-In)	Inbound	Allow	False	TCP	2869	Any	System	
+Key Management Service (TCP-In)	Inbound	Allow	False	TCP	1688	Any	%SystemRoot%\system32\sppextcomobj.exe	sppsvc
+Cast to Device streaming server (RTCP-Streaming-In)	Inbound	Allow	True	UDP	Any	Any	%SystemRoot%\system32\mdeserver.exe	
+Windows Media Player Network Sharing Service (UDP-Out)	Outbound	Allow	False	UDP	Any	Any	%PROGRAMFILES%\Windows Media Player\wmpnetwk.exe	
+Cast to Device streaming server (RTSP-Streaming-In)	Inbound	Allow	True	TCP	23554,23555,23556	Any	%SystemRoot%\system32\mdeserver.exe	
+Media Center Extenders - Media Streaming (UDP-Out)	Outbound	Allow	False	UDP	1900	Any	%SystemRoot%\system32\svchost.exe	Ssdpsrv
+Media Center Extenders - WMDRM-ND/RTP/RTCP (UDP-Out)	Outbound	Allow	False	UDP	Any	Any	%SystemRoot%\ehome\ehshell.exe	
+Media Center Extenders - RTSP (TCP-Out)	Outbound	Allow	False	TCP	Any	Any	%SystemRoot%\ehome\ehshell.exe	
+Cast to Device UPnP Events (TCP-In)	Inbound	Allow	True	TCP	2869	Any	System	
+Wireless Portable Devices (UPnPHost-Out)	Outbound	Allow	False	TCP	Any	2869	%SystemRoot%\system32\svchost.exe	upnphost
+Wireless Portable Devices (SSDP-Out)	Outbound	Allow	False	UDP	Any	1900	%SystemRoot%\system32\svchost.exe	Ssdpsrv
+Cast to Device streaming server (RTP-Streaming-Out)	Outbound	Allow	True	UDP	Any	Any	%SystemRoot%\system32\mdeserver.exe	
+Wireless Portable Devices (SSDP-In)	Inbound	Allow	False	UDP	1900	Any	%SystemRoot%\system32\svchost.exe	Ssdpsrv
+Media Center Extenders - Device Validation (TCP-Out)	Outbound	Allow	False	TCP	Any	Any	%SystemRoot%\ehome\mcrmgr.exe	
+Cast to Device SSDP Discovery (UDP-In)	Inbound	Allow	True	UDP	PlayToDiscovery	Any	%SystemRoot%\system32\svchost.exe	ssdpsrv
+BranchCache Hosted Cache Client (HTTP-Out)	Outbound	Allow	False	TCP	Any	80,443	SYSTEM	
+Windows Media Player Network Sharing Service (TCP-Out)	Outbound	Allow	False	TCP	Any	Any	%PROGRAMFILES%\Windows Media Player\wmpnetwk.exe	
+Media Center Extenders - Service (TCP-Out)	Outbound	Allow	False	TCP	Any	Any	%SystemRoot%\system32\svchost.exe	mcx2svc
+Media Center Extenders - UPnP (TCP-Out)	Outbound	Allow	False	TCP	Any	Any	%SystemRoot%\system32\svchost.exe	fdphost
+Windows Media Player Network Sharing Service (qWave-TCP-Out)	Outbound	Allow	False	TCP	Any	2177	%SystemRoot%\system32\svchost.exe	Qwave
+Windows Media Player Network Sharing Service (qWave-UDP-Out)	Outbound	Allow	False	UDP	Any	2177	%SystemRoot%\system32\svchost.exe	Qwave
+Media Center Extenders - SSDP (UDP-In)	Inbound	Allow	False	UDP	1900	Any	%SystemRoot%\system32\svchost.exe	Ssdpsrv
+Cast to Device functionality (qWave-TCP-In)	Inbound	Allow	True	TCP	2177	Any	%SystemRoot%\system32\svchost.exe	Qwave
+Cast to Device streaming server (HTTP-Streaming-In)	Inbound	Allow	True	TCP	10246	Any	System	
+Windows Media Player Network Sharing Service (qWave-UDP-Out)	Outbound	Allow	False	UDP	Any	2177	%SystemRoot%\system32\svchost.exe	Qwave
+Windows Media Player Network Sharing Service (HTTP-Streaming-In)	Inbound	Allow	False	TCP	10243	Any	System	
+Windows Media Player Network Sharing Service (UDP-Out)	Outbound	Allow	False	UDP	Any	Any	%PROGRAMFILES%\Windows Media Player\wmpnetwk.exe	
+Wireless Portable Devices (UPnP-Out)	Outbound	Allow	False	TCP	Any	2869	%SystemRoot%\system32\svchost.exe	fdphost
+Windows Media Player Network Sharing Service (HTTP-Streaming-Out)	Outbound	Allow	False	TCP	Any	10243	System	
+Wireless Portable Devices (UPnP-In)	Inbound	Allow	False	TCP	2869	Any	System	
+Windows Media Player Network Sharing Service (SSDP-In)	Inbound	Allow	False	UDP	1900	Any	%SystemRoot%\system32\svchost.exe	ssdpsrv
+File and Printer Sharing over SMBDirect (iWARP-In)	Inbound	Allow	False	TCP	5445	Any	System	
+Windows Media Player Network Sharing Service (UPnP-Out)	Outbound	Allow	False	TCP	Any	Any	System	
+Windows Media Player Network Sharing Service (Streaming-TCP-Out)	Outbound	Allow	False	TCP	Any	Any	%PROGRAMFILES%\Windows Media Player\wmplayer.exe	
+Windows Media Player Network Sharing Service (qWave-TCP-Out)	Outbound	Allow	False	TCP	Any	2177	%SystemRoot%\system32\svchost.exe	Qwave
+Key Management Service (TCP-In)	Inbound	Allow	False	TCP	1688	Any	%SystemRoot%\system32\sppextcomobj.exe	sppsvc
+Windows Media Player Network Sharing Service (SSDP-Out)	Outbound	Allow	False	UDP	Any	1900	%SystemRoot%\system32\svchost.exe	ssdpsrv
+Media Center Extenders - XSP (TCP-In)	Inbound	Allow	False	TCP	3390	Any	%SystemRoot%\system32\svchost.exe	termservice
+Cast to Device functionality (qWave-UDP-Out)	Outbound	Allow	True	UDP	Any	2177	%SystemRoot%\system32\svchost.exe	Qwave
+Media Center Extenders - qWave (TCP-Out)	Outbound	Allow	False	TCP	Any	2177	%SystemRoot%\system32\svchost.exe	Qwave
+Media Center Extenders - qWave (UDP-Out)	Outbound	Allow	False	UDP	Any	2177	%SystemRoot%\system32\svchost.exe	Qwave
+Media Center Extenders - RTSP (TCP-In)	Inbound	Allow	False	TCP	554,8554,8555,8556,8557,8558	Any	%SystemRoot%\ehome\ehshell.exe	
+Windows Media Player Network Sharing Service (Streaming-UDP-In)	Inbound	Allow	False	UDP	Any	Any	%PROGRAMFILES%\Windows Media Player\wmplayer.exe	
+Cloud Identity (TCP-Out)	Outbound	Allow	True	TCP	Any	443	%SystemRoot%\system32\svchost.exe	cloudidsvc
+Windows Media Player Network Sharing Service (HTTP-Streaming-Out)	Outbound	Allow	False	TCP	Any	10243	System	
+Cast to Device functionality (qWave-UDP-In)	Inbound	Allow	True	UDP	2177	Any	%SystemRoot%\system32\svchost.exe	Qwave
+Windows Media Player Network Sharing Service (Streaming-UDP-In)	Inbound	Allow	False	UDP	Any	Any	%PROGRAMFILES%\Windows Media Player\wmplayer.exe	
+Wireless Portable Devices (TCP-Out)	Outbound	Allow	False	TCP	Any	15740	%SystemRoot%\system32\wudfhost.exe	
+Windows Media Player Network Sharing Service (TCP-In)	Inbound	Allow	False	TCP	Any	Any	%PROGRAMFILES%\Windows Media Player\wmpnetwk.exe	
+Windows Media Player Network Sharing Service (UDP-In)	Inbound	Allow	False	UDP	Any	Any	%PROGRAMFILES%\Windows Media Player\wmpnetwk.exe	
+Windows Media Player x86 (UDP-In)	Inbound	Allow	False	UDP	Any	Any	%ProgramFiles(x86)%\Windows Media Player\wmplayer.exe	
+Media Center Extenders - WMDRM-ND/RTP/RTCP (UDP-In)	Inbound	Allow	False	UDP	7777,7778,7779,7780,7781,5004,5005,50004,50005,50006,50007,50008,50009,50010,50011,50012,50013	Any	%SystemRoot%\ehome\ehshell.exe	
+Cast to Device streaming server (RTSP-Streaming-In)	Inbound	Allow	True	TCP	23554,23555,23556	Any	%SystemRoot%\system32\mdeserver.exe	
+Windows Media Player Network Sharing Service (qWave-TCP-In)	Inbound	Allow	False	TCP	2177	Any	%SystemRoot%\system32\svchost.exe	Qwave
+Windows Media Player Network Sharing Service (TCP-In)	Inbound	Allow	False	TCP	Any	Any	%PROGRAMFILES%\Windows Media Player\wmpnetwk.exe	
+Windows Media Player Network Sharing Service (UDP-In)	Inbound	Allow	False	UDP	Any	Any	%PROGRAMFILES%\Windows Media Player\wmpnetwk.exe	
+Windows Media Player Network Sharing Service (UPnPHost-Out)	Outbound	Allow	False	TCP	Any	Any	%SystemRoot%\system32\svchost.exe	upnphost
+BranchCache Hosted Cache Server (HTTP-In)	Inbound	Allow	False	TCP	80,443	Any	SYSTEM	
+Windows Media Player Network Sharing Service (Streaming-UDP-Out)	Outbound	Allow	False	UDP	Any	Any	%PROGRAMFILES%\Windows Media Player\wmplayer.exe	
+Windows Media Player Network Sharing Service (UPnP-In)	Inbound	Allow	False	TCP	2869	Any	System	
+Cast to Device streaming server (RTCP-Streaming-In)	Inbound	Allow	True	UDP	Any	Any	%SystemRoot%\system32\mdeserver.exe	
+Windows Media Player Network Sharing Service (qWave-UDP-In)	Inbound	Allow	False	UDP	2177	Any	%SystemRoot%\system32\svchost.exe	Qwave
+Windows Media Player Network Sharing Service (qWave-TCP-In)	Inbound	Allow	False	TCP	2177	Any	%SystemRoot%\system32\svchost.exe	Qwave
+Media Center Extenders - Device Provisioning (TCP-Out)	Outbound	Allow	False	TCP	Any	Any	%SystemRoot%\ehome\mcx2prov.exe	
+Cast to Device streaming server (RTP-Streaming-Out)	Outbound	Allow	True	UDP	Any	Any	%SystemRoot%\system32\mdeserver.exe	
+Cast to Device streaming server (RTP-Streaming-Out)	Outbound	Allow	True	UDP	Any	Any	%SystemRoot%\system32\mdeserver.exe	
+Media Center Extenders - qWave (UDP-In)	Inbound	Allow	False	UDP	2177	Any	%SystemRoot%\system32\svchost.exe	Qwave
+Wireless Portable Devices (TCP-Out)	Outbound	Allow	False	TCP	Any	15740	%SystemRoot%\system32\wudfhost.exe	
+Media Center Extenders - HTTP Streaming (TCP-In)	Inbound	Allow	False	TCP	10244	Any	System	
+Cast to Device streaming server (RTCP-Streaming-In)	Inbound	Allow	True	UDP	Any	Any	%SystemRoot%\system32\mdeserver.exe	
+BranchCache Peer Discovery (WSD-In)	Inbound	Allow	False	UDP	3702	Any	%systemroot%\system32\svchost.exe	PeerDistSvc
+Cast to Device functionality (qWave-TCP-Out)	Outbound	Allow	True	TCP	Any	2177	%SystemRoot%\system32\svchost.exe	Qwave
+BranchCache Hosted Cache Server(HTTP-Out)	Outbound	Allow	False	TCP	80,443	Any	SYSTEM	
+Windows Media Player (UDP-In)	Inbound	Allow	False	UDP	Any	Any	%ProgramFiles%\Windows Media Player\wmplayer.exe	
+Windows Media Player Network Sharing Service (Streaming-TCP-Out)	Outbound	Allow	False	TCP	Any	Any	%PROGRAMFILES%\Windows Media Player\wmplayer.exe	
+mDNS (UDP-In)	Inbound	Allow	True	UDP	5353	Any	%SystemRoot%\system32\svchost.exe	dnscache
+Core Networking Diagnostics - ICMP Echo Request (ICMPv6-In)	Inbound	Allow	False	ICMPv6	RPC	Any	System	
+Core Networking - Group Policy (TCP-Out)	Outbound	Allow	True	TCP	Any	Any	%SystemRoot%\system32\svchost.exe	gpsvc
+Network Discovery (NB-Name-Out)	Outbound	Allow	False	UDP	Any	137	System	
+Distributed Transaction Coordinator (TCP-In)	Inbound	Allow	False	TCP	Any	Any	%SystemRoot%\system32\msdtc.exe	
+Routing and Remote Access (GRE-Out)	Outbound	Allow	False	47	Any	Any	System	
+Network Discovery (NB-Name-Out)	Outbound	Allow	True	UDP	Any	137	System	
+Windows Remote Management - Compatibility Mode (HTTP-In)	Inbound	Allow	False	TCP	80	Any	System	
+Core Networking Diagnostics - ICMP Echo Request (ICMPv4-In)	Inbound	Allow	False	ICMPv4	RPC	Any	System	
+Network Discovery (UPnPHost-Out)	Outbound	Allow	True	TCP	Any	2869	%SystemRoot%\system32\svchost.exe	upnphost
+Remote Assistance (TCP-In)	Inbound	Allow	True	TCP	Any	Any	%SystemRoot%\system32\msra.exe	
+Windows Peer to Peer Collaboration Foundation (TCP-In)	Inbound	Allow	False	TCP	Any	Any	%SystemRoot%\system32\p2phost.exe	
+mDNS (UDP-In)	Inbound	Allow	True	UDP	5353	Any	%SystemRoot%\system32\svchost.exe	dnscache
+Core Networking - Time Exceeded (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC	Any	System	
+Netlogon Service Authz (RPC)	Inbound	Allow	False	TCP	RPC	Any	%SystemRoot%\System32\lsass.exe	
+Windows Management Instrumentation (WMI-Out)	Outbound	Allow	False	TCP	Any	Any	%SystemRoot%\system32\svchost.exe	winmgmt
+Remote Volume Management - Virtual Disk Service (RPC)	Inbound	Allow	False	TCP	RPC	Any	%SystemRoot%\system32\vds.exe	vds
+Core Networking - Dynamic Host Configuration Protocol for IPv6(DHCPV6-Out)	Outbound	Allow	True	UDP	546	547	%SystemRoot%\system32\svchost.exe	dhcp
+Distributed Transaction Coordinator (TCP-In)	Inbound	Allow	False	TCP	Any	Any	%SystemRoot%\system32\msdtc.exe	
+DIAL protocol server (HTTP-In)	Inbound	Allow	True	TCP	10247	Any	System	
+Secure Socket Tunneling Protocol (SSTP-In)	Inbound	Allow	False	TCP	443	Any	System	
+Core Networking Diagnostics - ICMP Echo Request (ICMPv4-In)	Inbound	Allow	False	ICMPv4	RPC	Any	System	
+Core Networking - Multicast Listener Report (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC	Any	System	
+Windows Device Management Sync Client (TCP out)	Outbound	Allow	True	TCP	49152-65535	Any	%SystemRoot%\system32\omadmclient.exe	
+Windows Peer to Peer Collaboration Foundation (SSDP-In)	Inbound	Allow	False	UDP	1900	Any	%SystemRoot%\system32\svchost.exe	Ssdpsrv
+Core Networking - Multicast Listener Query (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC	Any	System	
+Remote Event Log Management (RPC)	Inbound	Allow	False	TCP	RPC	Any	%SystemRoot%\system32\svchost.exe	Eventlog
+Network Discovery (WSD-In)	Inbound	Allow	False	UDP	3702	Any	%SystemRoot%\system32\svchost.exe	fdphost
+Network Discovery (WSD-Out)	Outbound	Allow	True	UDP	Any	3702	%SystemRoot%\system32\svchost.exe	fdphost
+Remote Volume Management - Virtual Disk Service Loader (RPC)	Inbound	Allow	False	TCP	RPC	Any	%SystemRoot%\system32\vdsldr.exe	
+Core Networking - Multicast Listener Report v2 (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC	Any	System	
+Windows Management Instrumentation (WMI-In)	Inbound	Allow	False	TCP	Any	Any	%SystemRoot%\system32\svchost.exe	winmgmt
+Core Networking - Group Policy (NP-Out)	Outbound	Allow	True	TCP	Any	445	System	
+Core Networking - Internet Group Management Protocol (IGMP-In)	Inbound	Allow	True	2	Any	Any	System	
+Network Discovery (Pub-WSD-In)	Inbound	Allow	False	UDP	3702	Any	%SystemRoot%\system32\svchost.exe	fdrespub
+iSCSI Service (TCP-Out)	Outbound	Allow	False	TCP	Any	Any	%SystemRoot%\system32\svchost.exe	Msiscsi
+Proximity sharing over TCP (TCP sharing-In)	Inbound	Allow	True	TCP	Any	Any	%SystemRoot%\system32\proximityuxhost.exe	
+Distributed Transaction Coordinator (RPC)	Inbound	Allow	False	TCP	RPC	Any	%SystemRoot%\system32\svchost.exe	ktmrm
+Remote Assistance (SSDP TCP-In)	Inbound	Allow	True	TCP	2869	Any	System	
+Windows Management Instrumentation (DCOM-In)	Inbound	Allow	False	TCP	135	Any	%SystemRoot%\system32\svchost.exe	rpcss
+Core Networking Diagnostics - ICMP Echo Request (ICMPv6-Out)	Outbound	Allow	False	ICMPv6	RPC	Any	System	
+Remote Event Log Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any	%SystemRoot%\system32\svchost.exe	RPCSS
+Network Discovery (WSD EventsSecure-Out)	Outbound	Allow	True	TCP	Any	5358	%SystemRoot%\system32\svchost.exe	fdphost
+Core Networking - IPv6 (IPv6-Out)	Outbound	Allow	True	41	Any	Any	System	
+Performance Logs and Alerts (DCOM-In)	Inbound	Allow	False	TCP	135	Any	%systemroot%\system32\svchost.exe	rpcss
+Network Discovery (UPnP-In)	Inbound	Allow	False	TCP	2869	Any	System	
+Windows Collaboration Computer Name Registration Service (SSDP-In)	Inbound	Allow	False	UDP	1900	Any	%SystemRoot%\system32\svchost.exe	Ssdpsrv
+Wireless Display (TCP-In)	Inbound	Allow	True	TCP	Any	Any	%systemroot%\system32\WUDFHost.exe	
+Windows Peer to Peer Collaboration Foundation (PNRP-Out)	Outbound	Allow	False	UDP	Any	3540	%SystemRoot%\system32\svchost.exe	PNRPSvc
+Wi-Fi Direct Network Discovery (In)	Inbound	Allow	True	Any	Any	Any	%SystemRoot%\system32\dashost.exe	
+Core Networking - Neighbor Discovery Solicitation (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC	Any	System	
+Network Discovery (WSD Events-In)	Inbound	Allow	False	TCP	5357	Any	System	
+Network Discovery (WSD-Out)	Outbound	Allow	False	UDP	Any	3702	%SystemRoot%\system32\svchost.exe	fdphost
+Windows Remote Management (HTTP-In)	Inbound	Allow	False	TCP	5985	Any	System	
+Performance Logs and Alerts (TCP-In)	Inbound	Allow	False	TCP	Any	Any	%systemroot%\system32\plasrv.exe	
+Routing and Remote Access (PPTP-Out)	Outbound	Allow	False	TCP	Any	1723	System	
+Performance Logs and Alerts (DCOM-In)	Inbound	Allow	False	TCP	135	Any	%systemroot%\system32\svchost.exe	rpcss
+Network Discovery (NB-Datagram-Out)	Outbound	Allow	False	UDP	Any	138	System	
+mDNS (UDP-Out)	Outbound	Allow	True	UDP	Any	5353	%SystemRoot%\system32\svchost.exe	dnscache
+Core Networking Diagnostics - ICMP Echo Request (ICMPv4-Out)	Outbound	Allow	False	ICMPv4	RPC	Any	System	
+Network Discovery (SSDP-Out)	Outbound	Allow	False	UDP	Any	1900	%SystemRoot%\system32\svchost.exe	Ssdpsrv
+Remote Scheduled Tasks Management (RPC)	Inbound	Allow	False	TCP	RPC	Any	%SystemRoot%\system32\svchost.exe	schedule
+Connected Devices Platform - Wi-Fi Direct Transport (TCP-In)	Inbound	Allow	True	TCP	Any	Any	%SystemRoot%\system32\svchost.exe	CDPSvc
+Network Discovery (NB-Datagram-In)	Inbound	Allow	True	UDP	138	Any	System	
+Wi-Fi Direct Scan Service Use (Out)	Outbound	Allow	True	Any	Any	Any	%SystemRoot%\system32\svchost.exe	stisvc
+Core Networking - Destination Unreachable (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC	Any	System	
+Network Discovery (WSD EventsSecure-In)	Inbound	Allow	False	TCP	5358	Any	System	
+Connected User Experiences and Telemetry	Outbound	Allow	True	TCP	Any	443	%SystemRoot%\system32\svchost.exe	DiagTrack
+Core Networking - Multicast Listener Done (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC	Any	System	
+Remote Assistance (PNRP-Out)	Outbound	Allow	True	UDP	Any	Any	%systemroot%\system32\svchost.exe	pnrpsvc
+AllJoyn Router (UDP-In)	Inbound	Allow	True	UDP	Any	Any	%SystemRoot%\system32\svchost.exe	AJRouter
+AllJoyn Router (TCP-In)	Inbound	Allow	True	TCP	9955	Any	%SystemRoot%\system32\svchost.exe	AJRouter
+Windows Defender Firewall Remote Management (RPC)	Inbound	Allow	False	TCP	RPC	Any	%SystemRoot%\system32\svchost.exe	policyagent
+Network Discovery (WSD Events-Out)	Outbound	Allow	False	TCP	Any	5357	%SystemRoot%\system32\svchost.exe	fdphost
+Core Networking - IPHTTPS (TCP-In)	Inbound	Allow	True	TCP	IPHTTPSIn	Any	System	
+Core Networking - Dynamic Host Configuration Protocol (DHCP-Out)	Outbound	Allow	True	UDP	68	67	%SystemRoot%\system32\svchost.exe	dhcp
+Core Networking - Packet Too Big (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC	Any	System	
+Routing and Remote Access (L2TP-In)	Inbound	Allow	False	UDP	1701	Any	System	
+Wi-Fi Direct Network Discovery (Out)	Outbound	Allow	True	Any	Any	Any	%SystemRoot%\system32\dashost.exe	
+TPM Virtual Smart Card Management (TCP-Out)	Outbound	Allow	False	TCP	Any	Any	%SystemRoot%\system32\RmtTpmVscMgrSvr.exe	
+Core Networking - Multicast Listener Report (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC	Any	System	
+Virtual Machine Monitoring (Echo Request - ICMPv6-In)	Inbound	Allow	False	ICMPv6	Any	Any	System	
+Network Discovery (LLMNR-UDP-In)	Inbound	Allow	True	UDP	5355	Any	%SystemRoot%\system32\svchost.exe	dnscache
+Proximity sharing over TCP (TCP sharing-Out)	Outbound	Allow	True	TCP	Any	Any	%SystemRoot%\system32\proximityuxhost.exe	
+Remote Assistance (TCP-In)	Inbound	Allow	False	TCP	Any	Any	%SystemRoot%\system32\msra.exe	
+AllJoyn Router (TCP-Out)	Outbound	Allow	True	TCP	Any	Any	%SystemRoot%\system32\svchost.exe	AJRouter
+mDNS (UDP-In)	Inbound	Allow	True	UDP	5353	Any	%SystemRoot%\system32\svchost.exe	dnscache
+Remote Scheduled Tasks Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any	%SystemRoot%\system32\svchost.exe	RPCSS
+Connected Devices Platform (TCP-In)	Inbound	Allow	True	TCP	Any	Any	%SystemRoot%\system32\svchost.exe	CDPSvc
+Connected Devices Platform (UDP-In)	Inbound	Allow	True	UDP	Any	Any	%SystemRoot%\system32\svchost.exe	CDPSvc
+Virtual Machine Monitoring (Echo Request - ICMPv4-In)	Inbound	Allow	False	ICMPv4	Any	Any	System	
+Network Discovery (SSDP-In)	Inbound	Allow	True	UDP	1900	Any	%SystemRoot%\system32\svchost.exe	Ssdpsrv
+Netlogon Service (NP-In)	Inbound	Allow	False	TCP	445	Any	System	
+Core Networking - Time Exceeded (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC	Any	System	
+Network Discovery (Pub WSD-Out)	Outbound	Allow	False	UDP	Any	3702	%SystemRoot%\system32\svchost.exe	fdrespub
+Network Discovery for Teredo (UPnP-In)	Inbound	Allow	True	TCP	Any	Any	System	
+Network Discovery (LLMNR-UDP-Out)	Outbound	Allow	True	UDP	Any	5355	%SystemRoot%\system32\svchost.exe	dnscache
+Network Discovery (WSD EventsSecure-Out)	Outbound	Allow	False	TCP	Any	5358	%SystemRoot%\system32\svchost.exe	fdphost
+Remote Assistance (SSDP UDP-In)	Inbound	Allow	True	UDP	1900	Any	%SystemRoot%\system32\svchost.exe	Ssdpsrv
+TPM Virtual Smart Card Management (TCP-Out)	Outbound	Allow	False	TCP	Any	Any	%SystemRoot%\system32\RmtTpmVscMgrSvr.exe	
+TPM Virtual Smart Card Management (TCP-In)	Inbound	Allow	False	TCP	Any	Any	%SystemRoot%\system32\RmtTpmVscMgrSvr.exe	
+TPM Virtual Smart Card Management (DCOM-In)	Inbound	Allow	False	TCP	135	Any	%SystemRoot%\system32\svchost.exe	rpcss
+Remote Volume Management - Virtual Disk Service Loader (RPC)	Inbound	Allow	False	TCP	RPC	Any	%SystemRoot%\system32\vdsldr.exe	
+Remote Volume Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any	%SystemRoot%\system32\svchost.exe	RPCSS
+Core Networking Diagnostics - ICMP Echo Request (ICMPv6-In)	Inbound	Allow	False	ICMPv6	RPC	Any	System	
+Network Discovery (NB-Name-In)	Inbound	Allow	False	UDP	137	Any	System	
+Windows Peer to Peer Collaboration Foundation (SSDP-Out)	Outbound	Allow	False	UDP	Any	1900	%SystemRoot%\system32\svchost.exe	Ssdpsrv
+Core Networking - Multicast Listener Query (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC	Any	System	
+Windows Device Management Device Enroller (TCP out)	Outbound	Allow	True	TCP	49152-65535	80,443	%SystemRoot%\system32\deviceenroller.exe	
+Remote Service Management (NP-In)	Inbound	Allow	False	TCP	445	Any	System	
+Windows Defender Firewall Remote Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any	%SystemRoot%\system32\svchost.exe	RPCSS
+AllJoyn Router (UDP-Out)	Outbound	Allow	True	UDP	Any	Any	%SystemRoot%\system32\svchost.exe	AJRouter
+Core Networking - Neighbor Discovery Advertisement (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC	Any	System	
+Network Discovery (UPnP-In)	Inbound	Allow	False	TCP	2869	Any	System	
+Distributed Transaction Coordinator (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any	%SystemRoot%\system32\svchost.exe	RPCSS
+Windows Collaboration Computer Name Registration Service (PNRP-Out)	Outbound	Allow	False	UDP	Any	3540	%SystemRoot%\system32\svchost.exe	PNRPSvc
+Microsoft Media Foundation Network Source OUT [TCP ALL]	Outbound	Allow	True	TCP	Any	554,8554-8558	%SystemRoot%\system32\svchost.exe	FrameServer
+Remote Service Management (RPC)	Inbound	Allow	False	TCP	RPC	Any	%SystemRoot%\system32\services.exe	
+Core Networking - Teredo (UDP-In)	Inbound	Allow	True	UDP	Teredo	Any	%SystemRoot%\system32\svchost.exe	iphlpsvc
+Remote Service Management (NP-In)	Inbound	Allow	False	TCP	445	Any	System	
+Network Discovery (NB-Datagram-In)	Inbound	Allow	False	UDP	138	Any	System	
+Network Discovery (NB-Datagram-Out)	Outbound	Allow	True	UDP	Any	138	System	
+Core Networking - DNS (UDP-Out)	Outbound	Allow	True	UDP	Any	53	%SystemRoot%\system32\svchost.exe	dnscache
+Core Networking - Parameter Problem (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC	Any	System	
+Network Discovery (NB-Name-In)	Inbound	Allow	True	UDP	137	Any	System	
+iSCSI Service (TCP-In)	Inbound	Allow	False	TCP	Any	Any	%SystemRoot%\system32\svchost.exe	Msiscsi
+Windows Peer to Peer Collaboration Foundation (WSD-Out)	Outbound	Allow	False	UDP	Any	3702	%SystemRoot%\system32\p2phost.exe	
+Network Discovery (WSD-In)	Inbound	Allow	False	UDP	3702	Any	%SystemRoot%\system32\dashost.exe	
+Windows Remote Management - Compatibility Mode (HTTP-In)	Inbound	Allow	False	TCP	80	Any	System	
+Core Networking - Internet Group Management Protocol (IGMP-Out)	Outbound	Allow	True	2	Any	Any	System	
+Remote Service Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any	%SystemRoot%\system32\svchost.exe	RPCSS
+Remote Service Management (RPC)	Inbound	Allow	False	TCP	RPC	Any	%SystemRoot%\system32\services.exe	
+Network Discovery (SSDP-In)	Inbound	Allow	False	UDP	1900	Any	%SystemRoot%\system32\svchost.exe	Ssdpsrv
+Microsoft Media Foundation Network Source IN [TCP 554]	Inbound	Allow	True	TCP	554,8554-8558	Any	%SystemRoot%\system32\svchost.exe	FrameServer
+Core Networking - IPHTTPS (TCP-Out)	Outbound	Allow	True	TCP	Any	IPHTTPSOut	%SystemRoot%\system32\svchost.exe	iphlpsvc
+Core Networking - Neighbor Discovery Advertisement (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC	Any	System	
+Network Discovery (WSD EventsSecure-In)	Inbound	Allow	False	TCP	5358	Any	System	
+Windows Peer to Peer Collaboration Foundation (TCP-Out)	Outbound	Allow	False	TCP	Any	Any	%SystemRoot%\system32\p2phost.exe	
+Core Networking - Router Advertisement (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC	Any	System	
+Remote Assistance (RA Server TCP-Out)	Outbound	Allow	True	TCP	Any	Any	%SystemRoot%\system32\raserver.exe	
+Wireless Display (UDP-Out)	Outbound	Allow	True	UDP	Any	Any	%systemroot%\system32\WUDFHost.exe	
+Wireless Display (TCP-Out)	Outbound	Allow	True	TCP	Any	Any	%systemroot%\system32\WUDFHost.exe	
+Windows Defender Firewall Remote Management (RPC)	Inbound	Allow	False	TCP	RPC	Any	%SystemRoot%\system32\svchost.exe	policyagent
+Virtual Machine Monitoring (NB-Session-In)	Inbound	Allow	False	TCP	139	Any	System	
+Network Discovery (LLMNR-UDP-Out)	Outbound	Allow	False	UDP	Any	5355	%SystemRoot%\system32\svchost.exe	dnscache
+Network Discovery (Pub WSD-Out)	Outbound	Allow	True	UDP	Any	3702	%SystemRoot%\system32\svchost.exe	fdrespub
+Network Discovery (WSD Events-Out)	Outbound	Allow	False	TCP	Any	5357	%SystemRoot%\system32\svchost.exe	fdphost
+Windows Management Instrumentation (ASync-In)	Inbound	Allow	False	TCP	Any	Any	%systemroot%\system32\wbem\unsecapp.exe	
+Remote Service Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any	%SystemRoot%\system32\svchost.exe	RPCSS
+Network Discovery (WSD Events-In)	Inbound	Allow	False	TCP	5357	Any	System	
+DIAL protocol server (HTTP-In)	Inbound	Allow	True	TCP	10247	Any	System	
+Windows Peer to Peer Collaboration Foundation (PNRP-In)	Inbound	Allow	False	UDP	3540	Any	%SystemRoot%\system32\svchost.exe	PNRPSvc
+Network Discovery (UPnP-Out)	Outbound	Allow	False	TCP	Any	2869	%SystemRoot%\system32\svchost.exe	fdphost
+Remote Assistance (PNRP-In)	Inbound	Allow	True	UDP	3540	Any	%systemroot%\system32\svchost.exe	pnrpsvc
+Remote Scheduled Tasks Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any	%SystemRoot%\system32\svchost.exe	RPCSS
+Recommended Troubleshooting Client (HTTP/HTTPS Out)	Outbound	Allow	True	TCP	Any	80,443	%SystemRoot%\system32\svchost.exe	TroubleshootingSvc
+Core Networking - Group Policy (LSASS-Out)	Outbound	Allow	True	TCP	Any	Any	%SystemRoot%\system32\lsass.exe	
+Network Discovery (WSD EventsSecure-Out)	Outbound	Allow	False	TCP	Any	5358	%SystemRoot%\system32\svchost.exe	fdphost
+Network Discovery (Pub-WSD-In)	Inbound	Allow	True	UDP	3702	Any	%SystemRoot%\system32\svchost.exe	fdrespub
+Windows Collaboration Computer Name Registration Service (SSDP-Out)	Outbound	Allow	False	UDP	Any	1900	%SystemRoot%\system32\svchost.exe	Ssdpsrv
+Wireless Display Infrastructure Back Channel (TCP-In)	Inbound	Allow	True	TCP	7250	Any	%systemroot%\system32\CastSrv.exe	
+Windows Management Instrumentation (DCOM-In)	Inbound	Allow	False	TCP	135	Any	%SystemRoot%\system32\svchost.exe	rpcss
+Core Networking - Router Solicitation (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC	Any	System	
+Virtual Machine Monitoring (DCOM-In)	Inbound	Allow	False	TCP	135	Any	%SystemRoot%\system32\svchost.exe	RpcSs
+Network Discovery (NB-Datagram-In)	Inbound	Allow	False	UDP	138	Any	System	
+Windows Management Instrumentation (WMI-Out)	Outbound	Allow	False	TCP	Any	Any	%SystemRoot%\system32\svchost.exe	winmgmt
+TPM Virtual Smart Card Management (TCP-In)	Inbound	Allow	False	TCP	Any	Any	%SystemRoot%\system32\RmtTpmVscMgrSvr.exe	
+Remote Volume Management - Virtual Disk Service (RPC)	Inbound	Allow	False	TCP	RPC	Any	%SystemRoot%\system32\vds.exe	vds
+Core Networking - Teredo (UDP-Out)	Outbound	Allow	True	UDP	Any	Any	%SystemRoot%\system32\svchost.exe	iphlpsvc
+Routing and Remote Access (PPTP-In)	Inbound	Allow	False	TCP	1723	Any	System	
+Remote Assistance (PNRP-In)	Inbound	Allow	False	UDP	3540	Any	%systemroot%\system32\svchost.exe	pnrpsvc
+iSCSI Service (TCP-In)	Inbound	Allow	False	TCP	Any	Any	%SystemRoot%\system32\svchost.exe	Msiscsi
+Windows Device Management Certificate Installer (TCP out)	Outbound	Allow	True	TCP	49152-65535	Any	%SystemRoot%\system32\dmcertinst.exe	
+Core Networking - Multicast Listener Done (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC	Any	System	
+Virtual Machine Monitoring (RPC)	Inbound	Allow	False	TCP	RPC	Any	%SystemRoot%\system32\svchost.exe	Schedule
+Network Discovery (NB-Name-In)	Inbound	Allow	False	UDP	137	Any	System	
+Distributed Transaction Coordinator (TCP-Out)	Outbound	Allow	False	TCP	Any	Any	%SystemRoot%\system32\msdtc.exe	
+Delivery Optimization (TCP-In)	Inbound	Allow	True	TCP	7680	Any	%SystemRoot%\system32\svchost.exe	dosvc
+Windows Remote Management (HTTP-In)	Inbound	Allow	False	TCP	5985	Any	System	
+Performance Logs and Alerts (TCP-In)	Inbound	Allow	False	TCP	Any	Any	%systemroot%\system32\plasrv.exe	
+Windows Defender Firewall Remote Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any	%SystemRoot%\system32\svchost.exe	RPCSS
+Windows Management Instrumentation (WMI-In)	Inbound	Allow	False	TCP	Any	Any	%SystemRoot%\system32\svchost.exe	winmgmt
+mDNS (UDP-Out)	Outbound	Allow	True	UDP	Any	5353	%SystemRoot%\system32\svchost.exe	dnscache
+Core Networking Diagnostics - ICMP Echo Request (ICMPv4-Out)	Outbound	Allow	False	ICMPv4	RPC	Any	System	
+Windows Management Instrumentation (ASync-In)	Inbound	Allow	False	TCP	Any	Any	%systemroot%\system32\wbem\unsecapp.exe	
+SNMP Trap Service (UDP In)	Inbound	Allow	False	UDP	162	Any	%SystemRoot%\system32\snmptrap.exe	SNMPTRAP
+Windows Device Management Enrollment Service (TCP out)	Outbound	Allow	True	TCP	49152-65535	Any	%SystemRoot%\system32\svchost.exe	DmEnrollmentSvc
+Microsoft Media Foundation Network Source IN [UDP 5004-5009]	Inbound	Allow	True	UDP	5000-5020	Any	%SystemRoot%\system32\svchost.exe	FrameServer
+Remote Event Monitor (RPC)	Inbound	Allow	False	TCP	RPC	Any	%SystemRoot%\system32\NetEvtFwdr.exe	
+Core Networking Diagnostics - ICMP Echo Request (ICMPv6-Out)	Outbound	Allow	False	ICMPv6	RPC	Any	System	
+Core Networking - Multicast Listener Report v2 (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC	Any	System	
+Remote Event Log Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any	%SystemRoot%\system32\svchost.exe	RPCSS
+Network Discovery (UPnP-In)	Inbound	Allow	True	TCP	2869	Any	System	
+Remote Assistance (RA Server TCP-In)	Inbound	Allow	True	TCP	Any	Any	%SystemRoot%\system32\raserver.exe	
+Remote Volume Management (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any	%SystemRoot%\system32\svchost.exe	RPCSS
+Network Discovery (WSD EventsSecure-In)	Inbound	Allow	True	TCP	5358	Any	System	
+Network Discovery (UPnP-Out)	Outbound	Allow	True	TCP	Any	2869	%SystemRoot%\system32\svchost.exe	fdphost
+Remote Assistance (DCOM-In)	Inbound	Allow	True	TCP	135	Any	%SystemRoot%\system32\svchost.exe	rpcss
+Remote Event Monitor (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any	%SystemRoot%\system32\svchost.exe	RPCSS
+Core Networking - Neighbor Discovery Solicitation (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC	Any	System	
+Network Discovery (WSD Events-In)	Inbound	Allow	True	TCP	5357	Any	System	
+Remote Assistance (SSDP TCP-Out)	Outbound	Allow	True	TCP	Any	Any	System	
+Remote Assistance (SSDP UDP-Out)	Outbound	Allow	True	UDP	Any	1900	%SystemRoot%\system32\svchost.exe	Ssdpsrv
+Core Networking - Router Solicitation (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC	Any	System	
+Network Discovery (WSD-In)	Inbound	Allow	True	UDP	3702	Any	%SystemRoot%\system32\svchost.exe	fdphost
+Remote Assistance (PNRP-Out)	Outbound	Allow	False	UDP	Any	Any	%systemroot%\system32\svchost.exe	pnrpsvc
+Wi-Fi Direct Scan Service Use (In)	Inbound	Allow	True	Any	Any	Any	%SystemRoot%\system32\svchost.exe	stisvc
+Distributed Transaction Coordinator (RPC-EPMAP)	Inbound	Allow	False	TCP	RPCEPMap	Any	%SystemRoot%\system32\svchost.exe	RPCSS
+Connected Devices Platform (TCP-Out)	Outbound	Allow	True	TCP	Any	Any	%SystemRoot%\system32\svchost.exe	CDPSvc
+Network Discovery (UPnPHost-Out)	Outbound	Allow	False	TCP	Any	2869	%SystemRoot%\system32\svchost.exe	upnphost
+iSCSI Service (TCP-Out)	Outbound	Allow	False	TCP	Any	Any	%SystemRoot%\system32\svchost.exe	Msiscsi
+Network Discovery for Teredo (SSDP-In)	Inbound	Allow	True	UDP	Any	Any	%SystemRoot%\system32\svchost.exe	Ssdpsrv
+Distributed Transaction Coordinator (RPC)	Inbound	Allow	False	TCP	RPC	Any	%SystemRoot%\system32\svchost.exe	ktmrm
+Core Networking - Dynamic Host Configuration Protocol for IPv6(DHCPV6-In)	Inbound	Allow	True	UDP	546	547	%SystemRoot%\system32\svchost.exe	dhcp
+TPM Virtual Smart Card Management (DCOM-In)	Inbound	Allow	False	TCP	135	Any	%SystemRoot%\system32\svchost.exe	rpcss
+Routing and Remote Access (GRE-In)	Inbound	Allow	False	47	Any	Any	System	
+Network Discovery (WSD-In)	Inbound	Allow	True	UDP	3702	Any	%SystemRoot%\system32\dashost.exe	
+Core Networking - Dynamic Host Configuration Protocol (DHCP-In)	Inbound	Allow	True	UDP	68	67	%SystemRoot%\system32\svchost.exe	dhcp
+Core Networking - Destination Unreachable Fragmentation Needed (ICMPv4-In)	Inbound	Allow	True	ICMPv4	RPC	Any	System	
+Core Networking - Router Advertisement (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC	Any	System	
+Core Networking - Parameter Problem (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC	Any	System	
+Delivery Optimization (UDP-In)	Inbound	Allow	True	UDP	7680	Any	%SystemRoot%\system32\svchost.exe	dosvc
+mDNS (UDP-Out)	Outbound	Allow	True	UDP	Any	5353	%SystemRoot%\system32\svchost.exe	dnscache
+SNMP Trap Service (UDP In)	Inbound	Allow	False	UDP	162	Any	%SystemRoot%\system32\snmptrap.exe	SNMPTRAP
+Remote Event Log Management (NP-In)	Inbound	Allow	False	TCP	445	Any	System	
+Network Discovery (LLMNR-UDP-In)	Inbound	Allow	False	UDP	5355	Any	%SystemRoot%\system32\svchost.exe	dnscache
+Connected Devices Platform - Wi-Fi Direct Transport (TCP-Out)	Outbound	Allow	True	TCP	Any	Any	%SystemRoot%\system32\svchost.exe	CDPSvc
+Core Networking - IPv6 (IPv6-In)	Inbound	Allow	True	41	Any	Any	System	
+Remote Event Log Management (RPC)	Inbound	Allow	False	TCP	RPC	Any	%SystemRoot%\system32\svchost.exe	Eventlog
+Windows Peer to Peer Collaboration Foundation (WSD-In)	Inbound	Allow	False	UDP	3702	Any	%SystemRoot%\system32\p2phost.exe	
+Network Discovery (NB-Datagram-Out)	Outbound	Allow	False	UDP	Any	138	System	
+Network Discovery (NB-Name-Out)	Outbound	Allow	False	UDP	Any	137	System	
+Windows Collaboration Computer Name Registration Service (PNRP-In)	Inbound	Allow	False	UDP	3540	Any	%SystemRoot%\system32\svchost.exe	PNRPSvc
+Connected Devices Platform (UDP-Out)	Outbound	Allow	True	UDP	Any	Any	%SystemRoot%\system32\svchost.exe	CDPSvc
+Core Networking - Packet Too Big (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC	Any	System	
+Routing and Remote Access (L2TP-Out)	Outbound	Allow	False	UDP	Any	1701	System	
+Distributed Transaction Coordinator (TCP-Out)	Outbound	Allow	False	TCP	Any	Any	%SystemRoot%\system32\msdtc.exe	
+Remote Assistance (TCP-Out)	Outbound	Allow	True	TCP	Any	Any	%SystemRoot%\system32\msra.exe	
+Wi-Fi Direct Spooler Use (In)	Inbound	Allow	True	Any	Any	Any	%SystemRoot%\system32\spoolsv.exe	Spooler
+Remote Scheduled Tasks Management (RPC)	Inbound	Allow	False	TCP	RPC	Any	%SystemRoot%\system32\svchost.exe	schedule
+Remote Event Log Management (NP-In)	Inbound	Allow	False	TCP	445	Any	System	
+Network Discovery (WSD Events-Out)	Outbound	Allow	True	TCP	Any	5357	%SystemRoot%\system32\svchost.exe	fdphost
+Network Discovery (SSDP-Out)	Outbound	Allow	True	UDP	Any	1900	%SystemRoot%\system32\svchost.exe	Ssdpsrv
+Remote Assistance (TCP-Out)	Outbound	Allow	False	TCP	Any	Any	%SystemRoot%\system32\msra.exe	
+Wi-Fi Direct Spooler Use (Out)	Outbound	Allow	True	Any	Any	Any	%SystemRoot%\system32\spoolsv.exe	Spooler
+Network Discovery (UPnP-Out)	Outbound	Allow	False	TCP	Any	2869	%SystemRoot%\system32\svchost.exe	fdphost
+Allow 192.168.171.x Inbound	Inbound	Allow	True	Any	Any	Any		
+Allow 192.168.171.x Outbound	Outbound	Allow	True	Any	Any	Any		
+Quick Share	Inbound	Allow	True	TCP	Any	Any	C:\program files\google\nearbyshare\nearby_share.exe	
+Quick Share	Inbound	Allow	True	UDP	Any	Any	C:\program files\google\nearbyshare\nearby_share.exe	
 __FW_EOF__
 )"
 
@@ -2624,18 +2649,107 @@ EOF
 # Windows -> Linux firewall mapping helpers.
 #
 # Windows exports each rule as:  name | direction | action | enabled | protocol |
-# localPort | remotePort.  A few Windows port fields are service *keywords* rather than
-# numbers; translate the common, well-known ones here -- this is the SINGLE place to add
-# more.  Anything still non-numeric afterwards is reported as un-migratable on screen.
+# localPort | remotePort | program | service.  A few Windows port fields are service
+# *keywords* rather than numbers; translate the well-known ones here -- this is the SINGLE
+# place to add more.  Windows sometimes tags a keyword with a direction suffix (e.g.
+# "IPHTTPSOut", "IPTLSIn"); the variants are listed explicitly so they resolve too.
+# Anything still non-numeric afterwards is reported as un-migratable on screen.
 fw_port_alias() {  # fw_port_alias VALUE -> numeric port/range, or VALUE unchanged
   case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
-    rpcepmap)  printf '135' ;;          # RPC Endpoint Mapper
-    rpc)       printf '49152-65535' ;;  # dynamic RPC range (Windows ephemeral range)
-    iphttps)   printf '443' ;;          # IP-HTTPS tunnelling
-    teredo)    printf '3544' ;;         # Teredo IPv6 tunnelling
-    mdns)      printf '5353' ;;         # multicast DNS
-    *)         printf '%s' "$1" ;;
+    rpcepmap|rpc-epmap)                                  printf '135' ;;          # RPC Endpoint Mapper
+    rpc)                                                 printf '49152-65535' ;;  # dynamic RPC range (Windows ephemeral range)
+    iphttps|iphttpsin|iphttpsout|iptls|iptlsin|iptlsout) printf '443' ;;          # IP-HTTPS / IP-over-TLS tunnelling
+    teredo|teredoin|teredoout)                           printf '3544' ;;         # Teredo IPv6 tunnelling
+    mdns|mdnsin|mdnsout)                                 printf '5353' ;;         # multicast DNS
+    ply2disc)                                            printf '3702' ;;         # Play-To device discovery (WS-Discovery)
+    ssdp|ssdpin|ssdpout)                                 printf '1900' ;;         # SSDP / UPnP discovery
+    dhcp)                                                printf '68' ;;           # DHCP client
+    dns)                                                 printf '53' ;;           # DNS
+    llmnr)                                               printf '5355' ;;         # Link-Local Multicast Name Resolution
+    *)                                                   printf '%s' "$1" ;;
   esac
+}
+
+# --------------------------------------------------------------------------------------
+# OpenSnitch (program-scoped firewalling) helpers.
+#
+# Windows firewall rules can be scoped to a specific program (.exe), which ufw/firewalld
+# cannot express -- they only know ports/IPs. OpenSnitch is the Linux equivalent: it keys
+# rules on the originating binary. When a migrated rule is program-scoped (typically the
+# "any port" rules that are too broad to recreate as a port rule), we install OpenSnitch
+# on first encounter and write an equivalent process-path rule instead of giving up.
+
+# Return the bare exe name for a REAL application program path, or empty for "no program"
+# and for Windows system pseudo-programs that have no Linux counterpart (svchost, System,
+# core service hosts). Empty -> caller falls back to the manual-review message.
+fw_program_exe() {  # fw_program_exe WINDOWS_PROGRAM_PATH -> exe basename or empty
+  local p="$1" base
+  case "$p" in ""|[Aa]ny|[Ss]ystem) return 0 ;; esac
+  base="${p##*\\}"; base="${base##*/}"          # strip Windows (or Unix) directory
+  case "$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')" in
+    ""|svchost.exe|services.exe|lsass.exe|system|spoolsv.exe|taskhostw.exe) return 0 ;;
+  esac
+  printf '%s' "$base"
+}
+
+# Lazily install + enable OpenSnitch the first time a program-scoped rule needs it.
+# Memoised in OPENSNITCH_READY: 1=ready, 2=unavailable (do not retry per rule).
+OPENSNITCH_READY=0
+ensure_opensnitch() {
+  case "$OPENSNITCH_READY" in 1) return 0 ;; 2) return 1 ;; esac
+  if have_cmd opensnitchd; then OPENSNITCH_READY=1; return 0; fi
+  if is_dry_run; then info "[dry-run] would install OpenSnitch for program-scoped firewall rules"; OPENSNITCH_READY=2; return 1; fi
+  local pkgs
+  case "$FAMILY" in
+    debian) pkgs="opensnitch python3-opensnitch-ui" ;;
+    *)      pkgs="opensnitch opensnitch-ui" ;;
+  esac
+  info "Installing OpenSnitch to migrate program-scoped firewall rule(s): $pkgs"
+  pm_refresh
+  # shellcheck disable=SC2086
+  if capture pm_install $pkgs && have_cmd opensnitchd; then
+    capture systemctl enable --now opensnitchd >/dev/null 2>&1 || true
+    OPENSNITCH_READY=1; return 0
+  fi
+  OPENSNITCH_READY=2; return 1
+}
+
+# Write one OpenSnitch rule that allows/blocks a program by its exe name, regardless of
+# which Wine prefix / install path it ends up in (matched as a path regexp on the
+# basename). Returns 1 if the rule file could not be written.
+opensnitch_add_rule() {  # opensnitch_add_rule EXE ACTION RULE_NAME
+  local exe="$1" act="$2" rname="$3" dir="/etc/opensnitchd/rules" slug osact re_exe re_json now
+  is_dry_run && return 0
+  mkdir -p "$dir" 2>/dev/null || return 1
+  osact="allow"; [ "$act" = "Block" ] && osact="deny"
+  slug="$(printf '%s' "$rname" | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9-' | cut -c1-60)"
+  [ -n "$slug" ] || slug="rule"
+  # Make the exe name a literal RE2 match by wrapping every character in its own class
+  # ([a] matches "a"); this neutralises all regex metacharacters portably (no need to
+  # enumerate them). Then JSON-escape backslashes. On Linux the process path always uses
+  # '/', so we only anchor on the basename.
+  re_exe="$(printf '%s' "$exe" | sed 's/[^^]/[&]/g; s/\^/\\^/g')"
+  re_json="$(printf '%s' "$re_exe" | sed 's/\\/\\\\/g')"
+  now="$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date '+%Y-%m-%dT%H:%M:%S')"
+  cat > "$dir/migrated-$slug.json" <<JSON || return 1
+{
+  "created": "$now",
+  "updated": "$now",
+  "name": "migrated-$slug",
+  "enabled": true,
+  "precedence": false,
+  "nolog": false,
+  "action": "$osact",
+  "duration": "always",
+  "operator": {
+    "type": "regexp",
+    "operand": "process.path",
+    "sensitive": false,
+    "data": "(?i).*/${re_json}\$",
+    "list": []
+  }
+}
+JSON
 }
 
 # Apply ONE concrete (port-or-range, transport) rule on the active backend ($backend).
@@ -2682,8 +2796,8 @@ apply_firewall() {
     [ -z "$backend" ] && { mark_manual "firewall rules" "no ufw/firewalld available"; return 0; }
   fi
 
-  local name dir action enabled proto lport rport dirl port plow protos applied problem p e pp oldifs
-  while IFS="$(printf '\t')" read -r name dir action enabled proto lport rport; do
+  local name dir action enabled proto lport rport program service dirl port plow protos applied problem p e pp oldifs exe
+  while IFS="$(printf '\t')" read -r name dir action enabled proto lport rport program service; do
     [ -z "$name" ] && continue
     proto="$(printf '%s' "$proto" | tr '[:upper:]' '[:lower:]')"
     dirl="$(printf '%s' "$dir" | tr '[:upper:]' '[:lower:]')"
@@ -2701,11 +2815,24 @@ apply_firewall() {
     port="$(fw_port_alias "$port")"
     plow="$(printf '%s' "$port" | tr '[:upper:]' '[:lower:]')"
 
-    # No concrete port -> a whole-protocol allow. Too broad to recreate safely (these are
-    # usually Windows program-scoped / discovery rules Linux does not need). Say why, skip.
+    # No concrete port -> a whole-protocol allow, too broad to recreate as a ufw/firewalld
+    # port rule. If the Windows rule was scoped to a real program, recreate that scope with
+    # OpenSnitch (installed on first use) instead of giving up. Otherwise (no program, or a
+    # Windows system pseudo-program with no Linux counterpart) report it for manual review.
     case "$plow" in
       ""|any|"*")
-        mark_manual "fw: $name" "Windows rule opens ANY port (proto='${proto:-Any}', dir='${dir}'); a blanket allow is too broad to apply automatically - review manually"
+        exe="$(fw_program_exe "$program")"
+        if [ -n "$exe" ] && ensure_opensnitch; then
+          if opensnitch_add_rule "$exe" "$action" "$name"; then
+            mark_set "Windows program-scoped rule: Applied through OpenSnitch. $name (${action} ${dirl}, program '${exe}')"
+          else
+            mark_manual "fw: $name" "program-scoped ('${exe}'); could not write the OpenSnitch rule - add it manually in the OpenSnitch UI"
+          fi
+        elif [ -n "$exe" ]; then
+          mark_manual "fw: $name" "program-scoped ('${exe}') but OpenSnitch is unavailable on this distro; install OpenSnitch and add the rule manually"
+        else
+          mark_manual "fw: $name" "Windows rule opens ANY port (proto='${proto:-Any}', dir='${dir}') with no specific program; a blanket allow is too broad to apply automatically - review manually"
+        fi
         continue ;;
     esac
 

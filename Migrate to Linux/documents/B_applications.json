@@ -195,7 +195,14 @@
                                                       "notes":  "System snapshot/restore (like Windows System Restore). Btrfs snapshots (instant) or rsync. Scheduled. Bootable restore from live USB.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://github.com/linuxmint/timeshift"
+                                                      "downloadUrl":  "https://github.com/linuxmint/timeshift",
+                                                      "install":  {
+                                                                      "method":  "native",
+                                                                      "native":  {
+                                                                                     "apt":  "timeshift",
+                                                                                     "dnf":  "timeshift"
+                                                                                 }
+                                                                  }
                                                   }
                                               ]
                          },
@@ -235,7 +242,15 @@
                                                       "notes":  "Desktop PDF page organizer. Drag-and-drop reorder/rotate/delete pages, merge/split PDFs, crop pages. Simple and fast. Pairs with Stirling PDF for comprehensive toolkit.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://github.com/pdfarranger/pdfarranger"
+                                                      "downloadUrl":  "https://github.com/pdfarranger/pdfarranger",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "com.github.jeromerobert.pdfarranger",
+                                                                      "native":  {
+                                                                                     "apt":  "pdfarranger",
+                                                                                     "dnf":  "pdfarranger"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "LibreOffice Draw",
@@ -257,7 +272,17 @@
                                                       "notes":  "KDE document viewer. PDF reading, annotations (highlight, note, freehand), form filling, digital signatures. Viewer first, light annotation only.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://okular.kde.org/"
+                                                      "downloadUrl":  "https://okular.kde.org/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.kde.okular",
+                                                                      "native":  {
+                                                                                     "apt":  "okular",
+                                                                                     "dnf":  "okular",
+                                                                                     "zypper":  "okular",
+                                                                                     "pacman":  "okular"
+                                                                                 }
+                                                                  }
                                                   }
                                               ]
                          },
@@ -318,7 +343,16 @@
                                                       "notes":  "Professional DAW. Multi-track recording, non-destructive editing, mixing, mastering, plugin support (LV2/VST3/LADSPA). Closer to Audition\u0027s multi-track workflow. Pay-what-you-want for Linux binaries.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://ardour.org/download"
+                                                      "downloadUrl":  "https://ardour.org/download",
+                                                      "install":  {
+                                                                      "method":  "native",
+                                                                      "native":  {
+                                                                                     "apt":  "ardour",
+                                                                                     "dnf":  "ardour",
+                                                                                     "zypper":  "ardour",
+                                                                                     "pacman":  "ardour"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Tenacity",
@@ -329,7 +363,11 @@
                                                       "notes":  "Audacity fork (after telemetry controversy). Same feature set without the tracking concerns. Forward-ported improvements from upstream.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://tenacityaudio.org/"
+                                                      "downloadUrl":  "https://tenacityaudio.org/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.tenacityaudio.Tenacity"
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Ocenaudio",
@@ -392,9 +430,13 @@
                                                       "mustInclude":  "no",
                                                       "canSync":  "Yes",
                                                       "notes":  "Native Linux client available. Industry standard for video conferencing with large meeting support.",
-                                                      "installMethod":  "apt",
-                                                      "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "apt install zoom-workplace"
+                                                      "installMethod":  "flatpak",
+                                                      "appType":  "Native (Flatpak)",
+                                                      "downloadUrl":  "https://zoom.us/download?os=linux",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "us.zoom.Zoom"
+                                                                  }
                                                   }
                                               ],
                              "installedVersion":  "2025.5.5.64",
@@ -449,7 +491,11 @@
                                                       "notes":  "Modern GTK EPUB reader. Beautiful rendering, annotations, text-to-speech, Wikipedia lookup. DRM-free only.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://johnfactotum.github.io/foliate/"
+                                                      "downloadUrl":  "https://johnfactotum.github.io/foliate/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "com.github.johnfactotum.Foliate"
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Koodo Reader",
@@ -531,7 +577,17 @@
                                                       "notes":  "Professional vector graphics editor. SVG native, Bezier curves, path operations, text on path, clones, filters, extensions. Open/save AI (Illustrator) files with some limitations.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://inkscape.org/release/"
+                                                      "downloadUrl":  "https://inkscape.org/release/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.inkscape.Inkscape",
+                                                                      "native":  {
+                                                                                     "apt":  "inkscape",
+                                                                                     "dnf":  "inkscape",
+                                                                                     "zypper":  "inkscape",
+                                                                                     "pacman":  "inkscape"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Gravit Designer",
@@ -626,7 +682,17 @@
                                                       "notes":  "Advanced RAW processor. Superior demosaicing algorithms, floating-point processing, wavelet tools, film simulations. Slightly steeper learning curve than darktable but excellent quality.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://www.rawtherapee.com/downloads/"
+                                                      "downloadUrl":  "https://www.rawtherapee.com/downloads/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "com.rawtherapee.RawTherapee",
+                                                                      "native":  {
+                                                                                     "apt":  "rawtherapee",
+                                                                                     "dnf":  "rawtherapee",
+                                                                                     "zypper":  "rawtherapee",
+                                                                                     "pacman":  "rawtherapee"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "digiKam",
@@ -637,7 +703,17 @@
                                                       "notes":  "Professional photo management (more focused on DAM — Digital Asset Management). Face detection, geotagging, tagging, rating, searching. Pairs with darktable/RawTherapee for a complete Lightroom workflow.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://www.digikam.org/download/"
+                                                      "downloadUrl":  "https://www.digikam.org/download/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.kde.digikam",
+                                                                      "native":  {
+                                                                                     "apt":  "digikam",
+                                                                                     "dnf":  "digikam",
+                                                                                     "zypper":  "digikam",
+                                                                                     "pacman":  "digikam"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "ART (Another RawTherapee)",
@@ -669,7 +745,17 @@
                                                       "notes":  "Full-featured image editor. Layers, masks, filters, color management, plugin system (G\u0027MIC, Resynthesizer). PhotoGIMP plugin makes it look/behave like Photoshop.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://www.gimp.org/downloads/"
+                                                      "downloadUrl":  "https://www.gimp.org/downloads/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.gimp.GIMP",
+                                                                      "native":  {
+                                                                                     "apt":  "gimp",
+                                                                                     "dnf":  "gimp",
+                                                                                     "zypper":  "gimp",
+                                                                                     "pacman":  "gimp"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Krita",
@@ -680,7 +766,17 @@
                                                       "notes":  "Professional painting tool (more artist-focused than photo manipulation). Excellent brush engines, HDR painting, wrap-around mode. Strong in digital painting, less in photo editing.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://krita.org/en/download/"
+                                                      "downloadUrl":  "https://krita.org/en/download/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.kde.krita",
+                                                                      "native":  {
+                                                                                     "apt":  "krita",
+                                                                                     "dnf":  "krita",
+                                                                                     "zypper":  "krita",
+                                                                                     "pacman":  "krita"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Photopea",
@@ -734,7 +830,17 @@
                                                       "notes":  "Multi-track video editor. Proxy editing, keyframable effects, titler, audio mixer, color scopes, project bin. MLT framework — Kdenlive is the best FOSS NLE.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://kdenlive.org/download/"
+                                                      "downloadUrl":  "https://kdenlive.org/download/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.kde.kdenlive",
+                                                                      "native":  {
+                                                                                     "apt":  "kdenlive",
+                                                                                     "dnf":  "kdenlive",
+                                                                                     "zypper":  "kdenlive",
+                                                                                     "pacman":  "kdenlive"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Shotcut",
@@ -745,7 +851,14 @@
                                                       "notes":  "Cross-platform video editor. Wide format support via FFmpeg, timeline editing, filters (GPU accelerated), 4K support. Simpler than Kdenlive, faster to learn.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://shotcut.org/download/"
+                                                      "downloadUrl":  "https://shotcut.org/download/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.shotcut.Shotcut",
+                                                                      "native":  {
+                                                                                     "dnf":  "shotcut"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Olive",
@@ -1296,7 +1409,11 @@
                                                       "notes":  "Open-source remote desktop. Self-hostable server, no relay dependencies. Very similar UX to AnyDesk/TeamViewer.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://rustdesk.com/"
+                                                      "downloadUrl":  "https://rustdesk.com/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "com.rustdesk.RustDesk"
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Remmina",
@@ -1307,7 +1424,15 @@
                                                       "notes":  "Multi-protocol remote desktop client (RDP, VNC, SSH, SPICE, NX). Swiss Army knife for remote connections.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://remmina.org/"
+                                                      "downloadUrl":  "https://remmina.org/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.remmina.Remmina",
+                                                                      "native":  {
+                                                                                     "apt":  "remmina",
+                                                                                     "dnf":  "remmina"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "NoMachine",
@@ -1360,7 +1485,15 @@
                                                       "notes":  "Parametric 3D CAD modeler. BIM (architecture), FEM (mechanical), CAM (CNC machining). DWG/DXF import/export, STEP, IGES, IFC. CAD-focused, strong for mechanical+architectural.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://www.freecad.org/downloads.php"
+                                                      "downloadUrl":  "https://www.freecad.org/downloads.php",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.freecad.FreeCAD",
+                                                                      "native":  {
+                                                                                     "apt":  "freecad",
+                                                                                     "dnf":  "freecad"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "LibreCAD",
@@ -1371,7 +1504,15 @@
                                                       "notes":  "2D CAD only. DXF read/write, layers, snaps, dimensioning, measuring. Good for simple 2D drafting but no 3D, no parametric. Lighter than FreeCAD.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://librecad.org/"
+                                                      "downloadUrl":  "https://librecad.org/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.librecad.librecad",
+                                                                      "native":  {
+                                                                                     "apt":  "librecad",
+                                                                                     "dnf":  "librecad"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "QCAD",
@@ -1520,7 +1661,15 @@
                                                       "notes":  "Parametric solid modeling with assembly, sheet metal, FEM, CAM. Growing fast but still far from Inventor\u0027s maturity for large assemblies and complex simulations.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://www.freecad.org/downloads.php"
+                                                      "downloadUrl":  "https://www.freecad.org/downloads.php",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.freecad.FreeCAD",
+                                                                      "native":  {
+                                                                                     "apt":  "freecad",
+                                                                                     "dnf":  "freecad"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "BricsCAD Mechanical",
@@ -1563,7 +1712,17 @@
                                                       "notes":  "Covers most of Maya\u0027s capabilities (modeling, rigging, animation, rendering). Different workflow (hotkeys/philosophy) but equally capable in skilled hands. Completely free.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://www.blender.org/download/"
+                                                      "downloadUrl":  "https://www.blender.org/download/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.blender.Blender",
+                                                                      "native":  {
+                                                                                     "apt":  "blender",
+                                                                                     "dnf":  "blender",
+                                                                                     "zypper":  "blender",
+                                                                                     "pacman":  "blender"
+                                                                                 }
+                                                                  }
                                                   }
                                               ]
                          },
@@ -2054,7 +2213,11 @@
                                                       "notes":  "Open-source SIP-compatible communicator. P2P architecture, no central server. Can connect to SIP PBXs.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://jami.net/download-jami-linux/"
+                                                      "downloadUrl":  "https://jami.net/download-jami-linux/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "net.jami.Jami"
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Linphone",
@@ -2329,7 +2492,11 @@
                                                       "notes":  "Community Edition with fewer DB drivers (no NoSQL, no cloud warehouses). Sufficient for relational DB work.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://dbeaver.io/download/"
+                                                      "downloadUrl":  "https://dbeaver.io/download/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "io.dbeaver.DBeaverCommunity"
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Beekeeper Studio",
@@ -2675,7 +2842,15 @@
                                                       "notes":  "KDE equivalent of GParted. Same features, Qt-based. Integrates with KDE system settings. Supports LUKS encryption, LVM.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://apps.kde.org/partitionmanager/"
+                                                      "downloadUrl":  "https://apps.kde.org/partitionmanager/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.kde.partitionmanager",
+                                                                      "native":  {
+                                                                                     "apt":  "partitionmanager",
+                                                                                     "dnf":  "kde-partitionmanager"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "GNOME Disks",
@@ -2782,7 +2957,11 @@
                                                       "notes":  "Modern GTK4 backup app using BorgBackend underneath. Clean UI, scheduled backups, remote backup support. Best GUI backup experience on GNOME.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://apps.gnome.org/PikaBackup/"
+                                                      "downloadUrl":  "https://apps.gnome.org/PikaBackup/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.gnome.World.PikaBackup"
+                                                                  }
                                                   }
                                               ]
                          },
@@ -2893,7 +3072,11 @@
                                                       "notes":  "BibTeX-native reference manager. Excellent for LaTeX users. PubMed/arXiv/DOI auto-fetch, duplicate detection, groups, customisable exports. Java-based.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://www.jabref.org/"
+                                                      "downloadUrl":  "https://www.jabref.org/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.jabref.jabref"
+                                                                  }
                                                   }
                                               ]
                          },
@@ -3035,7 +3218,17 @@
                                                       "notes":  "KDE universal document viewer. PDF, EPUB, CBR/CBZ, Markdown, DjVu, PS, CHM. Annotations (highlight, note, freehand, stamp), form filling, text selection. Pre-installed on KDE.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://okular.kde.org/"
+                                                      "downloadUrl":  "https://okular.kde.org/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.kde.okular",
+                                                                      "native":  {
+                                                                                     "apt":  "okular",
+                                                                                     "dnf":  "okular",
+                                                                                     "zypper":  "okular",
+                                                                                     "pacman":  "okular"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Evince (GNOME Document Viewer)",
@@ -3046,7 +3239,15 @@
                                                       "notes":  "GNOME PDF viewer. Clean UI, fast rendering, annotation support (highlight, note), form filling, digital signatures. Simpler than Okular/Foxit but solid for reading.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://wiki.gnome.org/Apps/Evince"
+                                                      "downloadUrl":  "https://wiki.gnome.org/Apps/Evince",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.gnome.Evince",
+                                                                      "native":  {
+                                                                                     "apt":  "evince",
+                                                                                     "dnf":  "evince"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "PDF Studio Viewer / PDF Studio Pro",
@@ -3316,7 +3517,11 @@
                                                       "notes":  "Open-source base of Chrome. No proprietary codecs (H.264/AAC may need extra setup). No built-in Flash/DRM (Widevine can be added).",
                                                       "installMethod":  "snap",
                                                       "appType":  "Native (Snap)",
-                                                      "downloadUrl":  "https://www.chromium.org/getting-involved/download-chromium/"
+                                                      "downloadUrl":  "https://www.chromium.org/getting-involved/download-chromium/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.chromium.Chromium"
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Brave",
@@ -3327,7 +3532,11 @@
                                                       "notes":  "Chromium-based with built-in ad/tracker blocking, Tor private tabs, IPFS integration. Chrome extension compatible.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://brave.com/linux/"
+                                                      "downloadUrl":  "https://brave.com/linux/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "com.brave.Browser"
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Vivaldi",
@@ -3338,7 +3547,11 @@
                                                       "notes":  "Chromium-based power-user browser. Tab stacking, built-in mail/calendar/notes, mouse gestures, extensive customization.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://vivaldi.com/download/"
+                                                      "downloadUrl":  "https://vivaldi.com/download/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "com.vivaldi.Vivaldi"
+                                                                  }
                                                   }
                                               ],
                              "installedVersion":  "149.0.7827.197",
@@ -3672,7 +3885,14 @@
                                                       "notes":  "Anonymity network via onion routing. Not a VPN but provides similar IP-hiding. Much slower, not suitable for streaming. Highest privacy for browsing.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://www.torproject.org/download/"
+                                                      "downloadUrl":  "https://www.torproject.org/download/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.torproject.torbrowser-launcher",
+                                                                      "native":  {
+                                                                                     "apt":  "torbrowser-launcher"
+                                                                                 }
+                                                                  }
                                                   }
                                               ],
                              "installedVersion":  "12.16.0.12317",
@@ -4060,7 +4280,15 @@
                                                       "notes":  "GNOME image viewer/browser/organizer. Batch operations (resize, rename, convert), lossless JPEG transforms, comments, web album export. More organizing, less viewing than IrfanView.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://wiki.gnome.org/Apps/Gthumb"
+                                                      "downloadUrl":  "https://wiki.gnome.org/Apps/Gthumb",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.gnome.gThumb",
+                                                                      "native":  {
+                                                                                     "apt":  "gthumb",
+                                                                                     "dnf":  "gthumb"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "nomacs",
@@ -4071,7 +4299,17 @@
                                                       "notes":  "Fast image viewer with semi-transparent widgets. RAW support (via libraw), batch processing, thumbnail preview, LAN synchronization (view same image on two computers).",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://nomacs.org/"
+                                                      "downloadUrl":  "https://nomacs.org/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.nomacs.ImageLounge",
+                                                                      "native":  {
+                                                                                     "apt":  "nomacs",
+                                                                                     "dnf":  "nomacs",
+                                                                                     "zypper":  "nomacs",
+                                                                                     "pacman":  "nomacs"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "qView",
@@ -4082,7 +4320,14 @@
                                                       "notes":  "Minimalist image viewer. Just view images — no editing, no browser, no batch. Clean design, good keyboard shortcuts. The simplest image viewer.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://interversehq.com/qview/"
+                                                      "downloadUrl":  "https://interversehq.com/qview/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "com.interversehq.qView",
+                                                                      "native":  {
+                                                                                     "dnf":  "qview"
+                                                                                 }
+                                                                  }
                                                   }
                                               ]
                          },
@@ -4276,7 +4521,17 @@
                                                       "notes":  "Minimalist, GPU-accelerated video player based on ffmpeg. Scriptable (Lua/JavaScript), excellent upscaling (anime4k, FSRCNNX shaders), youtube-dl integration.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://mpv.io/installation/"
+                                                      "downloadUrl":  "https://mpv.io/installation/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "io.mpv.Mpv",
+                                                                      "native":  {
+                                                                                     "apt":  "mpv",
+                                                                                     "dnf":  "mpv",
+                                                                                     "zypper":  "mpv",
+                                                                                     "pacman":  "mpv"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "SMPlayer",
@@ -4287,7 +4542,16 @@
                                                       "notes":  "GUI frontend for mpv/mplayer. Remembers playback position, subtitle search, equalizer, YouTube browser, Chromecast support.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://www.smplayer.info/"
+                                                      "downloadUrl":  "https://www.smplayer.info/",
+                                                      "install":  {
+                                                                      "method":  "native",
+                                                                      "native":  {
+                                                                                     "apt":  "smplayer",
+                                                                                     "dnf":  "smplayer",
+                                                                                     "zypper":  "smplayer",
+                                                                                     "pacman":  "smplayer"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Haruna Video Player",
@@ -4298,7 +4562,11 @@
                                                       "notes":  "Qt-based mpv frontend with modern UI. Playlist manager, YouTube support, customizable shortcuts, subtitle management.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://haruna.kde.org/"
+                                                      "downloadUrl":  "https://haruna.kde.org/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.kde.haruna"
+                                                                  }
                                                   }
                                               ],
                              "installedVersion":  "4.2.3.35",
@@ -4344,7 +4612,15 @@
                                                       "notes":  "Native Linux Steam client with Proton (Valve\u0027s Wine fork). Thousands of Windows games run via Proton. Steam Deck compatibility ratings help identify working titles.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "apt install steam"
+                                                      "downloadUrl":  "apt install steam",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "com.valvesoftware.Steam",
+                                                                      "native":  {
+                                                                                     "apt":  "steam-installer",
+                                                                                     "dnf":  "steam"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Lutris",
@@ -4355,7 +4631,15 @@
                                                       "notes":  "Open gaming platform: manage Steam/GOG/Epic/Origin games + emulators + Windows games via Wine. Community install scripts for complex setups.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://lutris.net/downloads"
+                                                      "downloadUrl":  "https://lutris.net/downloads",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "net.lutris.Lutris",
+                                                                      "native":  {
+                                                                                     "apt":  "lutris",
+                                                                                     "dnf":  "lutris"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Heroic Games Launcher",
@@ -4366,7 +4650,11 @@
                                                       "notes":  "Open-source Epic Games and GOG launcher. Manage, download, and play games from both stores with Wine/Proton support.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://heroicgameslauncher.com/downloads"
+                                                      "downloadUrl":  "https://heroicgameslauncher.com/downloads",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "com.heroicgameslauncher.hgl"
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "LenovoLegionLinux",
@@ -4520,7 +4808,14 @@
                                                       "notes":  "KDE screenshot tool. Rectangular/fullscreen/active window/delay capture. Annotation tools, export, copy to clipboard. Integrates with KDE sharing plugins.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://apps.kde.org/spectacle/"
+                                                      "downloadUrl":  "https://apps.kde.org/spectacle/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.kde.spectacle",
+                                                                      "native":  {
+                                                                                     "dnf":  "spectacle"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Ksnip",
@@ -4531,7 +4826,11 @@
                                                       "notes":  "Qt-based screenshot + annotation tool. Very similar to Lightshot with numbered steps, blur, arrows, watermark. Can upload to Imgur/imgbb via plugin.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://github.com/ksnip/ksnip"
+                                                      "downloadUrl":  "https://github.com/ksnip/ksnip",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.ksnip.ksnip"
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "GNOME Screenshot",
@@ -4553,7 +4852,14 @@
                                                       "notes":  "Classic Linux screenshot tool. Selection/window/fullscreen/tooltip capture, built-in editor, plugins for upload to 20+ services (Imgur, Dropbox, etc.).",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://shutter-project.org/"
+                                                      "downloadUrl":  "https://shutter-project.org/",
+                                                      "install":  {
+                                                                      "method":  "native",
+                                                                      "native":  {
+                                                                                     "apt":  "shutter",
+                                                                                     "dnf":  "shutter"
+                                                                                 }
+                                                                  }
                                                   }
                                               ],
                              "installedVersion":  "5.5.0.7",
@@ -4780,7 +5086,17 @@
                                                       "notes":  "Blender is the strongest FOSS alternative for motion graphics/VFX. Geometry Nodes (procedural), animation tools, simulation (fluid/cloth/particles), rendering. Cinema 4D\u0027s UI is more intuitive but Blender is free and very capable.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://www.blender.org/download/"
+                                                      "downloadUrl":  "https://www.blender.org/download/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.blender.Blender",
+                                                                      "native":  {
+                                                                                     "apt":  "blender",
+                                                                                     "dnf":  "blender",
+                                                                                     "zypper":  "blender",
+                                                                                     "pacman":  "blender"
+                                                                                 }
+                                                                  }
                                                   }
                                               ]
                          },
@@ -4861,7 +5177,11 @@
                                                       "notes":  "Best DOCX/XLSX/PPTX compatibility of any FOSS suite. Native Microsoft format handling. Collaborative editing via cloud. Available as Flatpak/desktop.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://www.onlyoffice.com/download-desktop.aspx"
+                                                      "downloadUrl":  "https://www.onlyoffice.com/download-desktop.aspx",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.onlyoffice.desktopeditors"
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "WPS Office",
@@ -4872,7 +5192,11 @@
                                                       "notes":  "Chinese-developed office suite with excellent MS Office compatibility. Ribbon UI similar to Office. Freemium — some features (PDF to Word, etc.) require paid.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://www.wps.com/download/"
+                                                      "downloadUrl":  "https://www.wps.com/download/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "com.wps.Office"
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Microsoft 365 (Wine)",
@@ -5089,7 +5413,11 @@
                                                       "notes":  "Knowledge base on local Markdown files (git/Nextcloud-syncable). Graph view, backlinks, canvas (visual note board), plugins + community themes. Very different paradigm from OneNote but much more powerful for linked thinking.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://obsidian.md/download"
+                                                      "downloadUrl":  "https://obsidian.md/download",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "md.obsidian.Obsidian"
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Joplin",
@@ -5100,7 +5428,11 @@
                                                       "notes":  "Markdown note-taking with cloud sync (OneDrive/Nextcloud/WebDAV/etc.). Notebook/tag hierarchy, to-dos, web clipper extension, E2E encryption. Closest to OneNote for structured note-taking.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://joplinapp.org/download/"
+                                                      "downloadUrl":  "https://joplinapp.org/download/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "net.cozic.joplin_desktop"
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Xournal++",
@@ -5111,7 +5443,15 @@
                                                       "notes":  "Handwriting/PDF annotation tool. Pen/stylus input, drawing tools, PDF annotation (highlight, comment, draw), shape recognition, layers. Covers OneNote\u0027s ink/drawing capabilities.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "apt install xournal++"
+                                                      "downloadUrl":  "apt install xournal++",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "com.github.xournalpp.xournalpp",
+                                                                      "native":  {
+                                                                                     "apt":  "xournalpp",
+                                                                                     "dnf":  "xournalpp"
+                                                                                 }
+                                                                  }
                                                   }
                                               ]
                          },
@@ -5485,7 +5825,15 @@
                                                       "notes":  "Multi-protocol remote desktop client: RDP, VNC, SSH, SPICE, NX, XDMCP, SFTP. Saved connections with profiles, tabbed interface. Pre-installed on Ubuntu.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://remmina.org/"
+                                                      "downloadUrl":  "https://remmina.org/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.remmina.Remmina",
+                                                                      "native":  {
+                                                                                     "apt":  "remmina",
+                                                                                     "dnf":  "remmina"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Tabby",
@@ -5692,7 +6040,14 @@
                                                       "notes":  "Cross-platform video editor with wide format support via FFmpeg. Simpler UI than Kdenlive, faster learning curve. Good for quick edits.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://shotcut.org/download/"
+                                                      "downloadUrl":  "https://shotcut.org/download/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.shotcut.Shotcut",
+                                                                      "native":  {
+                                                                                     "dnf":  "shotcut"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "OpenShot",
@@ -5703,7 +6058,15 @@
                                                       "notes":  "Beginner-friendly video editor. Drag-and-drop timeline, titles, transitions, effects. Simplest FOSS video editor — closest to Movavi\u0027s ease-of-use.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://www.openshot.org/download/"
+                                                      "downloadUrl":  "https://www.openshot.org/download/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.openshot.OpenShot",
+                                                                      "native":  {
+                                                                                     "apt":  "openshot-qt",
+                                                                                     "dnf":  "openshot"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Flowblade",
@@ -5714,7 +6077,15 @@
                                                       "notes":  "Film-style video editor with insert/overwrite editing model. Faster workflow for assembly editing. Less well-known but very capable.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://jliljebl.github.io/flowblade/"
+                                                      "downloadUrl":  "https://jliljebl.github.io/flowblade/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "io.github.jliljebl.Flowblade",
+                                                                      "native":  {
+                                                                                     "apt":  "flowblade",
+                                                                                     "dnf":  "flowblade"
+                                                                                 }
+                                                                  }
                                                   }
                                               ]
                          },
@@ -5768,7 +6139,11 @@
                                                       "notes":  "Privacy-hardened Firefox fork. Telemetry disabled, uBlock Origin pre-installed, privacy-focused defaults. Still supports Firefox Sync.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://librewolf.net/installation/"
+                                                      "downloadUrl":  "https://librewolf.net/installation/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "io.gitlab.librewolf-community"
+                                                                  }
                                                   }
                                               ],
                              "installedVersion":  "152.0.3",
@@ -5806,7 +6181,11 @@
                                                       "notes":  "Community Electron wrapper for Teams. Desktop notifications, system tray, auto-start. Unofficial but widely used.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://github.com/IsmaelMartinez/teams-for-linux"
+                                                      "downloadUrl":  "https://github.com/IsmaelMartinez/teams-for-linux",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "com.github.IsmaelMartinez.teams_for_linux"
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Teams (Web)",
@@ -6095,7 +6474,15 @@
                                                       "notes":  "Desktop PDF page organizer. Reorder/rotate/delete pages, merge/split PDFs. Fast and simple — pairs well with Stirling PDF for comprehensive toolkit.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://github.com/pdfarranger/pdfarranger"
+                                                      "downloadUrl":  "https://github.com/pdfarranger/pdfarranger",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "com.github.jeromerobert.pdfarranger",
+                                                                      "native":  {
+                                                                                     "apt":  "pdfarranger",
+                                                                                     "dnf":  "pdfarranger"
+                                                                                 }
+                                                                  }
                                                   }
                                               ]
                          },
@@ -6217,7 +6604,17 @@
                                                       "notes":  "Lightweight IDE/text editor. Syntax highlighting, code folding, symbol browser, build system integration. GTK-based, very fast.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://www.geany.org/download/releases/"
+                                                      "downloadUrl":  "https://www.geany.org/download/releases/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.geany.Geany",
+                                                                      "native":  {
+                                                                                     "apt":  "geany",
+                                                                                     "dnf":  "geany",
+                                                                                     "zypper":  "geany",
+                                                                                     "pacman":  "geany"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Kate",
@@ -6228,7 +6625,17 @@
                                                       "notes":  "KDE Advanced Text Editor. Multi-document, split views, LSP client (code completion), terminal panel, sessions. Very capable editor.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://kate-editor.org/get-it/"
+                                                      "downloadUrl":  "https://kate-editor.org/get-it/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.kde.kate",
+                                                                      "native":  {
+                                                                                     "apt":  "kate",
+                                                                                     "dnf":  "kate",
+                                                                                     "zypper":  "kate",
+                                                                                     "pacman":  "kate"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Notepad++ (Wine)",
@@ -6581,7 +6988,15 @@
                                                       "notes":  "GNOME groupware client. Native Exchange support (EWS), Microsoft 365 OAuth, CalDAV/CardDAV. Mail, calendar, contacts, tasks, memos. Enterprise-ready.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://wiki.gnome.org/Apps/Evolution"
+                                                      "downloadUrl":  "https://wiki.gnome.org/Apps/Evolution",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.gnome.Evolution",
+                                                                      "native":  {
+                                                                                     "apt":  "evolution",
+                                                                                     "dnf":  "evolution"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Outlook (Web)",
@@ -6603,7 +7018,15 @@
                                                       "notes":  "GNOME email client. Modern conversation view, rich text compose. IMAP/SMTP only (no Exchange). Simpler, beautiful, less features.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://flathub.org/apps/search?q=geary"
+                                                      "downloadUrl":  "https://flathub.org/apps/search?q=geary",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.gnome.Geary",
+                                                                      "native":  {
+                                                                                     "apt":  "geary",
+                                                                                     "dnf":  "geary"
+                                                                                 }
+                                                                  }
                                                   }
                                               ],
                              "installedVersion":  "1.2026.609.400",
@@ -6667,7 +7090,17 @@
                                                       "notes":  "Full Photoshop-level image editor. Much more powerful than Paint, steeper learning curve. Layers, filters, color management, plugin system. Overkill for simple edits.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://www.gimp.org/downloads/"
+                                                      "downloadUrl":  "https://www.gimp.org/downloads/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.gimp.GIMP",
+                                                                      "native":  {
+                                                                                     "apt":  "gimp",
+                                                                                     "dnf":  "gimp",
+                                                                                     "zypper":  "gimp",
+                                                                                     "pacman":  "gimp"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Krita",
@@ -6678,7 +7111,17 @@
                                                       "notes":  "Professional painting/digital art tool. Excellent brush engine, layer management, HDR painting. More artist-focused than general image editor.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://krita.org/en/download/"
+                                                      "downloadUrl":  "https://krita.org/en/download/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.kde.krita",
+                                                                      "native":  {
+                                                                                     "apt":  "krita",
+                                                                                     "dnf":  "krita",
+                                                                                     "zypper":  "krita",
+                                                                                     "pacman":  "krita"
+                                                                                 }
+                                                                  }
                                                   }
                                               ],
                              "installedVersion":  "11.2603.251.0",
@@ -6855,7 +7298,11 @@
                                                       "notes":  "Universal DB client with excellent PostgreSQL support. ER diagrams, schema compare, data export/import, spatial data viewer. More polished UI than pgAdmin.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://flathub.org/apps/search?q=dbeaver"
+                                                      "downloadUrl":  "https://flathub.org/apps/search?q=dbeaver",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "io.dbeaver.DBeaverCommunity"
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "psql (CLI)",
@@ -6907,7 +7354,15 @@
                                                       "notes":  "Image viewer and organizer. Batch rename/resize/convert, lossless JPEG transforms, comments/tags, print layouts, Web album export. More features than Shotwell.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://wiki.gnome.org/Apps/Gthumb"
+                                                      "downloadUrl":  "https://wiki.gnome.org/Apps/Gthumb",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.gnome.gThumb",
+                                                                      "native":  {
+                                                                                     "apt":  "gthumb",
+                                                                                     "dnf":  "gthumb"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "digiKam",
@@ -6918,7 +7373,17 @@
                                                       "notes":  "Professional photo management. RAW processing, face detection/recognition, geotagging, advanced search, Lightroom-like workflow. KDE-based but runs everywhere.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://www.digikam.org/download/"
+                                                      "downloadUrl":  "https://www.digikam.org/download/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.kde.digikam",
+                                                                      "native":  {
+                                                                                     "apt":  "digikam",
+                                                                                     "dnf":  "digikam",
+                                                                                     "zypper":  "digikam",
+                                                                                     "pacman":  "digikam"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "GNOME Loupe",
@@ -7371,7 +7836,14 @@
                                                       "notes":  "Anonymous browsing via Tor network with obfs4 bridges. Built-in censorship circumvention (meek, snowflake, obfs4 transports). Best for anti-censorship browsing.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://www.torproject.org/download/"
+                                                      "downloadUrl":  "https://www.torproject.org/download/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.torproject.torbrowser-launcher",
+                                                                      "native":  {
+                                                                                     "apt":  "torbrowser-launcher"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Psiphon (Linux CLI)",
@@ -7613,7 +8085,15 @@
                                                       "notes":  "Multi-protocol remote desktop client. VNC plugin with SSH tunneling, different encodings, scaling. Works with any VNC server including RealVNC.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://remmina.org/"
+                                                      "downloadUrl":  "https://remmina.org/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.remmina.Remmina",
+                                                                      "native":  {
+                                                                                     "apt":  "remmina",
+                                                                                     "dnf":  "remmina"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "TigerVNC Viewer",
@@ -7845,7 +8325,11 @@
                                                       "notes":  "Fedora\u0027s official USB creator. Downloads ISOs automatically, verifies checksum, writes to USB. Cross-platform (Linux, Windows, macOS).",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://flathub.org/apps/org.fedoraproject.MediaWriter"
+                                                      "downloadUrl":  "https://flathub.org/apps/org.fedoraproject.MediaWriter",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.fedoraproject.MediaWriter"
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "dd (CLI)",
@@ -8001,7 +8485,17 @@
                                                       "notes":  "Full 3D creation suite. Much more powerful than SketchUp but steeper learning curve. Mesh modeling, architectural visualization (Archipack add-on), rendering (Cycles/Eevee). Overkill for simple modeling. FreeCAD is closer for architectural workflow.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://www.blender.org/download/"
+                                                      "downloadUrl":  "https://www.blender.org/download/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.blender.Blender",
+                                                                      "native":  {
+                                                                                     "apt":  "blender",
+                                                                                     "dnf":  "blender",
+                                                                                     "zypper":  "blender",
+                                                                                     "pacman":  "blender"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "FreeCAD (Arch/BIM workbench)",
@@ -8095,7 +8589,17 @@
                                                       "notes":  "Select area → annotate with arrows/text/boxes/blur/pin → copy/save/upload to Imgur. Configurable shortcut (PrtScrn). Best snipping tool on any platform.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://flameshot.org/"
+                                                      "downloadUrl":  "https://flameshot.org/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.flameshot.Flameshot",
+                                                                      "native":  {
+                                                                                     "apt":  "flameshot",
+                                                                                     "dnf":  "flameshot",
+                                                                                     "zypper":  "flameshot",
+                                                                                     "pacman":  "flameshot"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Spectacle",
@@ -8106,7 +8610,14 @@
                                                       "notes":  "KDE screenshot tool with annotation support. Rectangular/fullscreen/active window/delay capture. Export, copy to clipboard, annotations.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://apps.kde.org/spectacle/"
+                                                      "downloadUrl":  "https://apps.kde.org/spectacle/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.kde.spectacle",
+                                                                      "native":  {
+                                                                                     "dnf":  "spectacle"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "GNOME Screenshot (built-in)",
@@ -8193,7 +8704,15 @@
                                                       "notes":  "Parametric 3D modeler. Part Design, Sketcher, Assembly (A3/A4 workbenches), FEM, CAM. FOSS alternative but much less polished than SolidWorks.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://www.freecad.org/downloads.php"
+                                                      "downloadUrl":  "https://www.freecad.org/downloads.php",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.freecad.FreeCAD",
+                                                                      "native":  {
+                                                                                     "apt":  "freecad",
+                                                                                     "dnf":  "freecad"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Solvespace",
@@ -8265,7 +8784,17 @@
                                                       "notes":  "Full-featured audio editor. Multi-track recording, effects (noise reduction, EQ, compression), spectrogram view, plugin support (VST/LADSPA/Nyquist). Overkill for simple recording.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://www.audacityteam.org/download/linux/"
+                                                      "downloadUrl":  "https://www.audacityteam.org/download/linux/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.audacityteam.Audacity",
+                                                                      "native":  {
+                                                                                     "apt":  "audacity",
+                                                                                     "dnf":  "audacity",
+                                                                                     "zypper":  "audacity",
+                                                                                     "pacman":  "audacity"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "RecApp",
@@ -8348,7 +8877,11 @@
                                                   "notes":  "Official Spotify for Linux (Snap/Flatpak/APT). Identical experience — library, playlists, podcasts, Connect (cast to devices). Cloud-synced.",
                                                   "installMethod":  "snap",
                                                   "appType":  "Native (Snap)",
-                                                  "downloadUrl":  "https://www.spotify.com/download/linux/"
+                                                  "downloadUrl":  "https://www.spotify.com/download/linux/",
+                                                  "install":  {
+                                                                  "method":  "flatpak",
+                                                                  "flatpakId":  "com.spotify.Client"
+                                                              }
                                               }
                          },
                          {
@@ -8563,7 +9096,15 @@
                                                       "notes":  "Official Steam for Linux. Native Linux games + Proton (Valve\u0027s Wine fork) for Windows games. Steam Play, cloud saves, Remote Play, VR (HTC Vive/Valve Index). Thousands of Windows games run via Proton.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://store.steampowered.com/about/"
+                                                      "downloadUrl":  "https://store.steampowered.com/about/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "com.valvesoftware.Steam",
+                                                                      "native":  {
+                                                                                     "apt":  "steam-installer",
+                                                                                     "dnf":  "steam"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Lutris",
@@ -8574,7 +9115,15 @@
                                                       "notes":  "Open gaming platform. Manage Steam/GOG/Epic/Origin/Battle.net games + emulators + Windows games via Wine in one place. Community install scripts automate complex setups.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://lutris.net/downloads"
+                                                      "downloadUrl":  "https://lutris.net/downloads",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "net.lutris.Lutris",
+                                                                      "native":  {
+                                                                                     "apt":  "lutris",
+                                                                                     "dnf":  "lutris"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Heroic Games Launcher",
@@ -8585,7 +9134,11 @@
                                                       "notes":  "Open-source Epic Games + GOG launcher. Browse library, download/install/launch games with Wine/Proton. Clean modern UI.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://heroicgameslauncher.com/downloads"
+                                                      "downloadUrl":  "https://heroicgameslauncher.com/downloads",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "com.heroicgameslauncher.hgl"
+                                                                  }
                                                   }
                                               ]
                          },
@@ -8625,7 +9178,11 @@
                                                       "notes":  "Note-taking app with cloud sync (OneDrive/Nextcloud/Dropbox/WebDAV/Joplin Cloud). Markdown notes, to-dos, tags, notebooks, web clipper, E2E encryption. Much more powerful than Sticky Notes.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://joplinapp.org/download/"
+                                                      "downloadUrl":  "https://joplinapp.org/download/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "net.cozic.joplin_desktop"
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Xpad",
@@ -8647,7 +9204,11 @@
                                                       "notes":  "Knowledge base on local Markdown files. Graph view, backlinks, plugins, themes. Sync via Obsidian Sync ($) or any file sync (Nextcloud/Git). Very powerful but different paradigm from sticky notes.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://obsidian.md/download"
+                                                      "downloadUrl":  "https://obsidian.md/download",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "md.obsidian.Obsidian"
+                                                                  }
                                                   }
                                               ],
                              "installedVersion":  "6.1.4.0",
@@ -8712,7 +9273,11 @@
                                                       "notes":  "Open-source remote desktop (TeamViewer/AnyDesk alternative). Self-hostable server, no relay dependencies. Almost identical UX.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://rustdesk.com/"
+                                                      "downloadUrl":  "https://rustdesk.com/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "com.rustdesk.RustDesk"
+                                                                  }
                                                   }
                                               ]
                          },
@@ -8871,7 +9436,11 @@
                                                       "notes":  "Markdown editor for academic writing. Zettelkasten, citations (Zotero/JabRef), LaTeX math, presentations. More features than Typora but different focus (academic/technical writing).",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://www.zettlr.com/download"
+                                                      "downloadUrl":  "https://www.zettlr.com/download",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "com.zettlr.Zettlr"
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Ghostwriter",
@@ -8882,7 +9451,11 @@
                                                       "notes":  "Distraction-free Markdown editor (KDE). Live preview, focus mode, themes, Hemingway mode (disable backspace), export to many formats. Native KDE app — very fast.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://ghostwriter.kde.org/download/"
+                                                      "downloadUrl":  "https://ghostwriter.kde.org/download/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.kde.ghostwriter"
+                                                                  }
                                                   }
                                               ]
                          },
@@ -9101,7 +9674,11 @@
                                                       "notes":  "Community build of VS Code without Microsoft telemetry/branding. Uses open-vsx extension marketplace. Fully compatible with VS Code settings.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://vscodium.com/"
+                                                      "downloadUrl":  "https://vscodium.com/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "com.vscodium.codium"
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "VS Code Insiders",
@@ -9280,7 +9857,11 @@
                                                       "notes":  "Native Linux WhatsApp client (Flatpak). Web wrapper with native desktop features: system tray, spell check, notifications, custom themes. More integrated than PWA.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://flathub.org/apps/com.rtosta.zapzap"
+                                                      "downloadUrl":  "https://flathub.org/apps/com.rtosta.zapzap",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "com.rtosta.zapzap"
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Whatsie",
@@ -9345,7 +9926,17 @@
                                                       "notes":  "KDE disk usage analyzer. Radial sunburst chart (interactive — click segments to drill down). Fast, beautiful. Integrates with Dolphin file manager.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://apps.kde.org/filelight/"
+                                                      "downloadUrl":  "https://apps.kde.org/filelight/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.kde.filelight",
+                                                                      "native":  {
+                                                                                     "apt":  "filelight",
+                                                                                     "dnf":  "filelight",
+                                                                                     "zypper":  "filelight",
+                                                                                     "pacman":  "filelight"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "ncdu",
@@ -9397,7 +9988,17 @@
                                                       "notes":  "KDE calculator. Scientific, statistics, numeral system, trigonometry. Customizable precision, constants, memory functions. Pre-installed on KDE.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://apps.kde.org/kcalc/"
+                                                      "downloadUrl":  "https://apps.kde.org/kcalc/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.kde.kcalc",
+                                                                      "native":  {
+                                                                                     "apt":  "kcalc",
+                                                                                     "dnf":  "kcalc",
+                                                                                     "zypper":  "kcalc",
+                                                                                     "pacman":  "kcalc"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Qalculate! (GTK/Qt)",
@@ -9419,7 +10020,15 @@
                                                       "notes":  "Keyboard-driven scientific calculator. History, syntax highlighting, auto-completion, 50-digit precision, constants library, user functions. Very fast input-focused workflow.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://heldercorreia.bitbucket.io/speedcrunch/"
+                                                      "downloadUrl":  "https://heldercorreia.bitbucket.io/speedcrunch/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.speedcrunch.SpeedCrunch",
+                                                                      "native":  {
+                                                                                     "apt":  "speedcrunch",
+                                                                                     "dnf":  "speedcrunch"
+                                                                                 }
+                                                                  }
                                                   }
                                               ],
                              "installedVersion":  "11.2508.4.0",
@@ -9590,7 +10199,17 @@
                                                       "notes":  "GNOME video editor. Clean timeline, good for simple edits (trim, arrange, transitions). GStreamer-based — very reliable playback. Simpler than OpenShot.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://www.pitivi.org/"
+                                                      "downloadUrl":  "https://www.pitivi.org/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.pitivi.Pitivi",
+                                                                      "native":  {
+                                                                                     "apt":  "pitivi",
+                                                                                     "dnf":  "pitivi",
+                                                                                     "zypper":  "pitivi",
+                                                                                     "pacman":  "pitivi"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Kdenlive",
@@ -9601,7 +10220,17 @@
                                                       "notes":  "More powerful than Movie Maker but still approachable. Multi-track, proxy editing, keyframes, effects. Good upgrade path as you grow beyond Movie Maker\u0027s capabilities.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://kdenlive.org/download/"
+                                                      "downloadUrl":  "https://kdenlive.org/download/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.kde.kdenlive",
+                                                                      "native":  {
+                                                                                     "apt":  "kdenlive",
+                                                                                     "dnf":  "kdenlive",
+                                                                                     "zypper":  "kdenlive",
+                                                                                     "pacman":  "kdenlive"
+                                                                                 }
+                                                                  }
                                                   }
                                               ]
                          },
@@ -9641,7 +10270,17 @@
                                                       "notes":  "KDE advanced text editor. LSP client (code completion), multi-cursor, vi input mode, terminal panel, sessions, projects. More like a lightweight IDE.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://kate-editor.org/get-it/"
+                                                      "downloadUrl":  "https://kate-editor.org/get-it/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.kde.kate",
+                                                                      "native":  {
+                                                                                     "apt":  "kate",
+                                                                                     "dnf":  "kate",
+                                                                                     "zypper":  "kate",
+                                                                                     "pacman":  "kate"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Leafpad / Mousepad",
@@ -9663,7 +10302,15 @@
                                                       "notes":  "Terminal-based editor with common shortcuts (Ctrl+S save, Ctrl+Q quit, Ctrl+Z undo). Syntax highlighting, mouse support, split panes. Good for terminal-only workflows.",
                                                       "installMethod":  "snap",
                                                       "appType":  "Native (Snap)",
-                                                      "downloadUrl":  "https://snapcraft.io/search?q=micro"
+                                                      "downloadUrl":  "https://snapcraft.io/search?q=micro",
+                                                      "install":  {
+                                                                      "method":  "native",
+                                                                      "native":  {
+                                                                                     "apt":  "micro",
+                                                                                     "dnf":  "micro",
+                                                                                     "pacman":  "micro"
+                                                                                 }
+                                                                  }
                                                   }
                                               ],
                              "installedVersion":  "11.2604.5.0",
@@ -9805,7 +10452,17 @@
                                                       "notes":  "KDE terminal. Split view, profiles, SSH manager, notifications on activity/silence, bookmarks, built-in color schemes. The most feature-rich native Linux terminal.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://konsole.kde.org/"
+                                                      "downloadUrl":  "https://konsole.kde.org/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.kde.konsole",
+                                                                      "native":  {
+                                                                                     "apt":  "konsole",
+                                                                                     "dnf":  "konsole",
+                                                                                     "zypper":  "konsole",
+                                                                                     "pacman":  "konsole"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Tabby",
@@ -10181,7 +10838,11 @@
                                                       "notes":  "Modern GNOME music player. Album art-based browsing, party mode, lyrics, artist bio, Last.fm/TuneIn integration, MTP sync. Beautiful Material Design-inspired UI.",
                                                       "installMethod":  "flatpak",
                                                       "appType":  "Native (Flatpak)",
-                                                      "downloadUrl":  "https://wiki.gnome.org/Apps/Lollypop"
+                                                      "downloadUrl":  "https://wiki.gnome.org/Apps/Lollypop",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.gnome.Lollypop"
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Elisa",
@@ -10192,7 +10853,15 @@
                                                       "notes":  "KDE music player. Clean UI, indexed music library, playlist management, radio. Integrates with Plasma desktop (media controls, notifications).",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://apps.kde.org/elisa/"
+                                                      "downloadUrl":  "https://apps.kde.org/elisa/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.kde.elisa",
+                                                                      "native":  {
+                                                                                     "apt":  "elisa",
+                                                                                     "dnf":  "elisa"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "VLC Media Player",
@@ -10203,7 +10872,17 @@
                                                       "notes":  "Universal media player also works as music player. Playlist manager, equalizer, internet radio/podcast, DLNA streaming. Plays every audio format.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://www.videolan.org/vlc/"
+                                                      "downloadUrl":  "https://www.videolan.org/vlc/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.videolan.VLC",
+                                                                      "native":  {
+                                                                                     "apt":  "vlc",
+                                                                                     "dnf":  "vlc",
+                                                                                     "zypper":  "vlc",
+                                                                                     "pacman":  "vlc"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Audacious",
@@ -10214,7 +10893,17 @@
                                                       "notes":  "Winamp-like music player. Classic Winamp skin support, equalizer with presets, visualization plugins, gapless playback. Lightweight, focused on music playback.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://audacious-media-player.org/"
+                                                      "downloadUrl":  "https://audacious-media-player.org/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.atheme.audacious",
+                                                                      "native":  {
+                                                                                     "apt":  "audacious",
+                                                                                     "dnf":  "audacious",
+                                                                                     "zypper":  "audacious",
+                                                                                     "pacman":  "audacious"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Strawberry",
@@ -10225,7 +10914,15 @@
                                                       "notes":  "Fork of Clementine/Clementine. Music library, playlists, Last.fm, smart/dynamic playlists, lyrics, artist info, music visualization. Advanced music player for heavy libraries.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://www.strawberrymusicplayer.org/"
+                                                      "downloadUrl":  "https://www.strawberrymusicplayer.org/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.strawberrymusicplayer.strawberry",
+                                                                      "native":  {
+                                                                                     "apt":  "strawberry",
+                                                                                     "dnf":  "strawberry"
+                                                                                 }
+                                                                  }
                                                   }
                                               ],
                              "installedVersion":  "11.2605.14.0",
@@ -10272,7 +10969,15 @@
                                                       "notes":  "Lightweight, minimalist BitTorrent client. Pre-installed on many distros. Excellent web and CLI interfaces for headless servers.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://transmissionbt.com/download/"
+                                                      "downloadUrl":  "https://transmissionbt.com/download/",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "com.transmissionbt.Transmission",
+                                                                      "native":  {
+                                                                                     "apt":  "transmission-gtk",
+                                                                                     "dnf":  "transmission-gtk"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Deluge",
@@ -10283,7 +10988,14 @@
                                                       "notes":  "Plugin-based architecture, client-server model ideal for seedbox setups. Thin client can connect to remote daemon.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "https://dev.deluge-torrent.org/wiki/Download"
+                                                      "downloadUrl":  "https://dev.deluge-torrent.org/wiki/Download",
+                                                      "install":  {
+                                                                      "method":  "native",
+                                                                      "native":  {
+                                                                                     "apt":  "deluge",
+                                                                                     "dnf":  "deluge"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "KTorrent",
@@ -10294,7 +11006,17 @@
                                                       "notes":  "KDE-native BitTorrent client. Feature-rich with bandwidth scheduling, IP filtering, and web interface plugin.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "apt install ktorrent"
+                                                      "downloadUrl":  "apt install ktorrent",
+                                                      "install":  {
+                                                                      "method":  "flatpak",
+                                                                      "flatpakId":  "org.kde.ktorrent",
+                                                                      "native":  {
+                                                                                     "apt":  "ktorrent",
+                                                                                     "dnf":  "ktorrent",
+                                                                                     "zypper":  "ktorrent",
+                                                                                     "pacman":  "ktorrent"
+                                                                                 }
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "aria2",

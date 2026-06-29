@@ -541,6 +541,17 @@ WINE (WINDOWS EMULATOR) - OPTIONAL, FOR NON-CROSS-PLATFORM APPS
         Wine silently (.exe -> /S, .msi -> msiexec /i /qn, .bat -> cmd /c).
       - Otherwise ASK for the installer path ('installer path'/skip/skip all; full path
         or relative to ~/Downloads; any extension .exe/.msi/.bat/...).
+  * NON-BLOCKING INSTALL (wine_run_installer): the installer is run in the BACKGROUND with
+    its output redirected to a LOG FILE -- never through a live "tee" pipe. Many installers
+    auto-launch the app (or leave a tray/updater) the instant they finish; such a process
+    inherits the console pipe and would hold it open and HANG the whole script. The engine
+    waits for the installer to exit on its own (bounded by MIGRATE_WINE_INSTALL_TIMEOUT,
+    default 600s; on timeout it force-stops it), then runs `wineserver -k` to terminate
+    every remaining Windows process in this per-app prefix so wine fully exits and the
+    script continues. A one-time NOTE tells the user to close any "Setup finished / Run now"
+    window that pops up. Because each app has its own prefix and the prefix is killed after
+    each install, wine never hits Windows' "another setup is already running" msiexec-mutex
+    error (that mutex is per-prefix, not host-wide, and is cleared by wineserver -k).
   * Each app gets its OWN isolated Wine prefix (~/.local/share/wineprefixes/<slug>),
     created/owned by $SUDO_USER; apply a winetricks font baseline (corefonts) best-effort.
   * After install, force Wine DPI to 240 (LogPixels = 0xF0, i.e. 2.5x of the 96 default)

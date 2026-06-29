@@ -995,17 +995,39 @@ ensure_winetricks() {
 }
 
 # Run the Windows installer at PATH under wine, best-effort silent for the common
-# installer types, teeing wine's output both to LOG (for failure analysis) and to the
-# console. Returns wine's own exit status. Factored out so the install can be retried
-# after enabling 32-bit (WoW64) wine support.
+# installer types. Output is written to LOG (shown afterwards) -- deliberately NOT through
+# a live "tee" pipe. Many installers AUTO-LAUNCH the application (or leave a tray icon /
+# updater) the moment they finish; a launched process inherits the console pipe and holds
+# it open, which would block the pipeline and HANG the whole script. So we run the
+# installer in the background, wait for it to finish on its own (bounded by
+# MIGRATE_WINE_INSTALL_TIMEOUT, default 600s), then "wineserver -k" to terminate every
+# remaining Windows process in this (isolated, per-app) prefix -- so wine fully exits, the
+# prefix is left idle, and the script continues. Killing the prefix between installs also
+# clears any msiexec mutex, so wine never reports "another setup is already running".
+# Returns wine's own exit status. Factored out so the install can be retried after
+# enabling 32-bit (WoW64) wine support.
 wine_run_installer() {  # wine_run_installer PATH LOG
-  local p="$1" log="$2"
-  case "$p" in
-    *.msi|*.MSI)             run_wine wine msiexec /i "$p" /qn 2>&1 | tee "$log" >&3 ;;
-    *.bat|*.BAT|*.cmd|*.CMD) run_wine wine cmd /c "$p" 2>&1 | tee "$log" >&3 ;;
-    *)                       run_wine wine "$p" /S 2>&1 | tee "$log" >&3 ;;
-  esac
-  return "${PIPESTATUS[0]}"
+  local p="$1" log="$2" rc to="${MIGRATE_WINE_INSTALL_TIMEOUT:-600}" waited=0 wpid
+  (
+    case "$p" in
+      *.msi|*.MSI)             run_wine wine msiexec /i "$p" /qn ;;
+      *.bat|*.BAT|*.cmd|*.CMD) run_wine wine cmd /c "$p" ;;
+      *)                       run_wine wine "$p" /S ;;
+    esac
+  ) > "$log" 2>&1 &
+  wpid=$!
+  # Wait for the installer process to exit on its own, up to the timeout.
+  while kill -0 "$wpid" 2>/dev/null && [ "$waited" -lt "$to" ]; do sleep 2; waited=$((waited+2)); done
+  if kill -0 "$wpid" 2>/dev/null; then
+    warn "the installer is still busy after ${to}s -- terminating wine so the script can continue (the app was most likely installed)."
+    run_wine wineserver -k >/dev/null 2>&1 || true
+  fi
+  wait "$wpid" 2>/dev/null; rc=$?
+  # Terminate anything the installer auto-launched (the app itself, a tray icon, an
+  # updater) so the prefix is idle and wine has fully exited before we move on.
+  run_wine wineserver -k >/dev/null 2>&1 || true
+  cat "$log" >&3 2>/dev/null || true
+  return "$rc"
 }
 
 # After a wine install, scan the per-app prefix for Start Menu .lnk shortcuts and emit
@@ -1270,6 +1292,9 @@ wine_app() {  # wine_app NAME [WINDOWS_INSTALLER_URL] [NOT_RECOMMENDED_REASON] [
   # 3) run the installer under wine (best-effort silent), then scale the font/DPI 2.5x.
   #    Capture wine's full output so a meaningful failure reason can be reported.
   info "installing $name under wine (Windows emulator) ..."
+  info "NOTE: this install runs unattended. If the app or a 'Setup finished / Run now'"
+  info "      window opens, just CLOSE that window so the installer can finish -- otherwise"
+  info "      the script force-closes it automatically after a timeout and then continues."
   local wlog; wlog="$(mktemp 2>/dev/null || echo /tmp/mtl_wine.$$)"
   wine_run_installer "$winpath" "$wlog"; rc=$?
   # Self-heal the classic 32-bit bootstrap failure: if wine could not load kernel32.dll

@@ -520,18 +520,107 @@ EOF
 # Windows -> Linux firewall mapping helpers.
 #
 # Windows exports each rule as:  name | direction | action | enabled | protocol |
-# localPort | remotePort.  A few Windows port fields are service *keywords* rather than
-# numbers; translate the common, well-known ones here -- this is the SINGLE place to add
-# more.  Anything still non-numeric afterwards is reported as un-migratable on screen.
+# localPort | remotePort | program | service.  A few Windows port fields are service
+# *keywords* rather than numbers; translate the well-known ones here -- this is the SINGLE
+# place to add more.  Windows sometimes tags a keyword with a direction suffix (e.g.
+# "IPHTTPSOut", "IPTLSIn"); the variants are listed explicitly so they resolve too.
+# Anything still non-numeric afterwards is reported as un-migratable on screen.
 fw_port_alias() {  # fw_port_alias VALUE -> numeric port/range, or VALUE unchanged
   case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
-    rpcepmap)  printf '135' ;;          # RPC Endpoint Mapper
-    rpc)       printf '49152-65535' ;;  # dynamic RPC range (Windows ephemeral range)
-    iphttps)   printf '443' ;;          # IP-HTTPS tunnelling
-    teredo)    printf '3544' ;;         # Teredo IPv6 tunnelling
-    mdns)      printf '5353' ;;         # multicast DNS
-    *)         printf '%s' "$1" ;;
+    rpcepmap|rpc-epmap)                                  printf '135' ;;          # RPC Endpoint Mapper
+    rpc)                                                 printf '49152-65535' ;;  # dynamic RPC range (Windows ephemeral range)
+    iphttps|iphttpsin|iphttpsout|iptls|iptlsin|iptlsout) printf '443' ;;          # IP-HTTPS / IP-over-TLS tunnelling
+    teredo|teredoin|teredoout)                           printf '3544' ;;         # Teredo IPv6 tunnelling
+    mdns|mdnsin|mdnsout)                                 printf '5353' ;;         # multicast DNS
+    ply2disc)                                            printf '3702' ;;         # Play-To device discovery (WS-Discovery)
+    ssdp|ssdpin|ssdpout)                                 printf '1900' ;;         # SSDP / UPnP discovery
+    dhcp)                                                printf '68' ;;           # DHCP client
+    dns)                                                 printf '53' ;;           # DNS
+    llmnr)                                               printf '5355' ;;         # Link-Local Multicast Name Resolution
+    *)                                                   printf '%s' "$1" ;;
   esac
+}
+
+# --------------------------------------------------------------------------------------
+# OpenSnitch (program-scoped firewalling) helpers.
+#
+# Windows firewall rules can be scoped to a specific program (.exe), which ufw/firewalld
+# cannot express -- they only know ports/IPs. OpenSnitch is the Linux equivalent: it keys
+# rules on the originating binary. When a migrated rule is program-scoped (typically the
+# "any port" rules that are too broad to recreate as a port rule), we install OpenSnitch
+# on first encounter and write an equivalent process-path rule instead of giving up.
+
+# Return the bare exe name for a REAL application program path, or empty for "no program"
+# and for Windows system pseudo-programs that have no Linux counterpart (svchost, System,
+# core service hosts). Empty -> caller falls back to the manual-review message.
+fw_program_exe() {  # fw_program_exe WINDOWS_PROGRAM_PATH -> exe basename or empty
+  local p="$1" base
+  case "$p" in ""|[Aa]ny|[Ss]ystem) return 0 ;; esac
+  base="${p##*\\}"; base="${base##*/}"          # strip Windows (or Unix) directory
+  case "$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')" in
+    ""|svchost.exe|services.exe|lsass.exe|system|spoolsv.exe|taskhostw.exe) return 0 ;;
+  esac
+  printf '%s' "$base"
+}
+
+# Lazily install + enable OpenSnitch the first time a program-scoped rule needs it.
+# Memoised in OPENSNITCH_READY: 1=ready, 2=unavailable (do not retry per rule).
+OPENSNITCH_READY=0
+ensure_opensnitch() {
+  case "$OPENSNITCH_READY" in 1) return 0 ;; 2) return 1 ;; esac
+  if have_cmd opensnitchd; then OPENSNITCH_READY=1; return 0; fi
+  if is_dry_run; then info "[dry-run] would install OpenSnitch for program-scoped firewall rules"; OPENSNITCH_READY=2; return 1; fi
+  local pkgs
+  case "$FAMILY" in
+    debian) pkgs="opensnitch python3-opensnitch-ui" ;;
+    *)      pkgs="opensnitch opensnitch-ui" ;;
+  esac
+  info "Installing OpenSnitch to migrate program-scoped firewall rule(s): $pkgs"
+  pm_refresh
+  # shellcheck disable=SC2086
+  if capture pm_install $pkgs && have_cmd opensnitchd; then
+    capture systemctl enable --now opensnitchd >/dev/null 2>&1 || true
+    OPENSNITCH_READY=1; return 0
+  fi
+  OPENSNITCH_READY=2; return 1
+}
+
+# Write one OpenSnitch rule that allows/blocks a program by its exe name, regardless of
+# which Wine prefix / install path it ends up in (matched as a path regexp on the
+# basename). Returns 1 if the rule file could not be written.
+opensnitch_add_rule() {  # opensnitch_add_rule EXE ACTION RULE_NAME
+  local exe="$1" act="$2" rname="$3" dir="/etc/opensnitchd/rules" slug osact re_exe re_json now
+  is_dry_run && return 0
+  mkdir -p "$dir" 2>/dev/null || return 1
+  osact="allow"; [ "$act" = "Block" ] && osact="deny"
+  slug="$(printf '%s' "$rname" | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9-' | cut -c1-60)"
+  [ -n "$slug" ] || slug="rule"
+  # Make the exe name a literal RE2 match by wrapping every character in its own class
+  # ([a] matches "a"); this neutralises all regex metacharacters portably (no need to
+  # enumerate them). Then JSON-escape backslashes. On Linux the process path always uses
+  # '/', so we only anchor on the basename.
+  re_exe="$(printf '%s' "$exe" | sed 's/[^^]/[&]/g; s/\^/\\^/g')"
+  re_json="$(printf '%s' "$re_exe" | sed 's/\\/\\\\/g')"
+  now="$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date '+%Y-%m-%dT%H:%M:%S')"
+  cat > "$dir/migrated-$slug.json" <<JSON || return 1
+{
+  "created": "$now",
+  "updated": "$now",
+  "name": "migrated-$slug",
+  "enabled": true,
+  "precedence": false,
+  "nolog": false,
+  "action": "$osact",
+  "duration": "always",
+  "operator": {
+    "type": "regexp",
+    "operand": "process.path",
+    "sensitive": false,
+    "data": "(?i).*/${re_json}\$",
+    "list": []
+  }
+}
+JSON
 }
 
 # Apply ONE concrete (port-or-range, transport) rule on the active backend ($backend).
@@ -578,8 +667,8 @@ apply_firewall() {
     [ -z "$backend" ] && { mark_manual "firewall rules" "no ufw/firewalld available"; return 0; }
   fi
 
-  local name dir action enabled proto lport rport dirl port plow protos applied problem p e pp oldifs
-  while IFS="$(printf '\t')" read -r name dir action enabled proto lport rport; do
+  local name dir action enabled proto lport rport program service dirl port plow protos applied problem p e pp oldifs exe
+  while IFS="$(printf '\t')" read -r name dir action enabled proto lport rport program service; do
     [ -z "$name" ] && continue
     proto="$(printf '%s' "$proto" | tr '[:upper:]' '[:lower:]')"
     dirl="$(printf '%s' "$dir" | tr '[:upper:]' '[:lower:]')"
@@ -597,11 +686,24 @@ apply_firewall() {
     port="$(fw_port_alias "$port")"
     plow="$(printf '%s' "$port" | tr '[:upper:]' '[:lower:]')"
 
-    # No concrete port -> a whole-protocol allow. Too broad to recreate safely (these are
-    # usually Windows program-scoped / discovery rules Linux does not need). Say why, skip.
+    # No concrete port -> a whole-protocol allow, too broad to recreate as a ufw/firewalld
+    # port rule. If the Windows rule was scoped to a real program, recreate that scope with
+    # OpenSnitch (installed on first use) instead of giving up. Otherwise (no program, or a
+    # Windows system pseudo-program with no Linux counterpart) report it for manual review.
     case "$plow" in
       ""|any|"*")
-        mark_manual "fw: $name" "Windows rule opens ANY port (proto='${proto:-Any}', dir='${dir}'); a blanket allow is too broad to apply automatically - review manually"
+        exe="$(fw_program_exe "$program")"
+        if [ -n "$exe" ] && ensure_opensnitch; then
+          if opensnitch_add_rule "$exe" "$action" "$name"; then
+            mark_set "Windows program-scoped rule: Applied through OpenSnitch. $name (${action} ${dirl}, program '${exe}')"
+          else
+            mark_manual "fw: $name" "program-scoped ('${exe}'); could not write the OpenSnitch rule - add it manually in the OpenSnitch UI"
+          fi
+        elif [ -n "$exe" ]; then
+          mark_manual "fw: $name" "program-scoped ('${exe}') but OpenSnitch is unavailable on this distro; install OpenSnitch and add the rule manually"
+        else
+          mark_manual "fw: $name" "Windows rule opens ANY port (proto='${proto:-Any}', dir='${dir}') with no specific program; a blanket allow is too broad to apply automatically - review manually"
+        fi
         continue ;;
     esac
 
