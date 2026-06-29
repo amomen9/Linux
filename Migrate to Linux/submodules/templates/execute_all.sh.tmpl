@@ -208,11 +208,8 @@ install_manual_apps() {
       fi
     fi
     [ -n "$note" ] && info "$note"
-    if [ -n "$url" ]; then
-      info "Download page: $url"
-      info "(opening it in your default browser ...)"
-      open_url "$url"
-    fi
+    # Download-page stage: health-check the saved URL and open it, else fall back to a search.
+    open_download_page "${alt:-$name}" "$url"
     info "Download the installer (unzip it first if it is zipped)."
     info "Then type its path in single quotes -- either a full path, or one relative to ${TARGET_HOME}/Downloads."
     info "Any valid installer extension works (.deb/.rpm/.sh/.run/.bin/.bundle/.AppImage/.tar.gz/.zip/...);"

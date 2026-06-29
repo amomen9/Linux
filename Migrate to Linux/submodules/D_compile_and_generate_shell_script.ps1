@@ -91,7 +91,7 @@ function Add-Flag {
 
 # Build one `install_app ...` line from an install descriptor object + name.
 function New-InstallCall {
-    param([string] $Name, [string] $Alt, $Install, [string] $WinVer, [switch] $Paid, [string] $Launch)
+    param([string] $Name, [string] $Alt, $Install, [string] $WinVer, [switch] $Paid, [string] $Launch, [string] $DlPage)
     $parts = New-Object System.Collections.Generic.List[string]
     $parts.Add('install_app')
     Add-Flag $parts '--name' $Name
@@ -127,6 +127,15 @@ function New-InstallCall {
     Add-Flag $parts '--webapp' (Get-Prop $Install 'webappUrl')
     Add-Flag $parts '--docker' (Get-Prop $Install 'dockerImage')
     Add-Flag $parts '--github' (Get-Prop $Install 'githubRepo')
+    # Download page (req): the app's saved vendor download page, opened (after a health
+    # check) when package managers are unavailable/failed. Prefer install.downloadPage,
+    # then the alternative's downloadUrl ($DlPage). Only real http(s) URLs, never pseudo
+    # values like "apt install X".
+    # NB: PowerShell variables are case-insensitive, so this local must NOT be named
+    # $dlpage -- that would alias the $DlPage parameter and clobber it.
+    $page = [string](Get-Prop $Install 'downloadPage')
+    if (-not $page) { $page = $DlPage }
+    if ($page -and ($page -match '^https?://')) { Add-Flag $parts '--dlpage' $page }
     Add-Flag $parts '--note'   (Get-Prop $Install 'note')
 
     # Custom post-install commands (install.postInstall: string or array of shell snippets).
@@ -140,23 +149,37 @@ function New-InstallCall {
     return ($parts -join ' ')
 }
 
-# Map a legacy installMethod to a descriptor when no enriched install{} exists.
+# Guess a Linux package name from an alternative's display name: take the first component
+# before a "/", "+" or "(", lowercase it, hyphenate spaces, drop other punctuation.
+# e.g. "BorgBackup / Vorta" -> "borgbackup", "Ollama + Open WebUI" -> "ollama", "GIMP" -> "gimp".
+function Get-PkgGuess {
+    param([string] $Name)
+    $s = ($Name.ToLowerInvariant() -split '\s*[/+(]\s*')[0].Trim()
+    $s = $s -replace '\s+', '-'
+    $s = $s -replace '[^a-z0-9.+-]', ''
+    return $s
+}
+
+# Descriptor for an alternative with no enriched install{} block. We don't fabricate a
+# specific method; instead we emit the alternative's NAME as a best-effort package name for
+# every native package manager (the running distro tries its own, in the engine's normal
+# order, until one works; otherwise it falls back to the manual download-page flow). Flatpak
+# is intentionally NOT guessed (it needs reverse-DNS app ids, which a plain name never matches).
 function New-FallbackInstall {
     param($Alt)
+    $obj = [ordered]@{ method = 'native' }
     $im = [string](Get-Prop $Alt 'installMethod')
-    $obj = [ordered]@{}
-    switch -Regex ($im) {
-        '^flatpak$' { $obj['method'] = 'flatpak' }
-        '^snap$'    { $obj['method'] = 'snap' }
-        '^web$'     { $obj['method'] = 'webapp'; $obj['webappUrl'] = [string](Get-Prop $Alt 'downloadUrl') }
-        '^docker$'  { $obj['method'] = 'docker' }
-        '^apt$'     { $obj['method'] = 'native' }   # native pkg name unknown until enriched
-        default     { $obj['method'] = 'manual' }
+    if ($im -match '^(?i)web$') {
+        $obj['method'] = 'webapp'; $obj['webappUrl'] = [string](Get-Prop $Alt 'downloadUrl')
+    } else {
+        $guess = Get-PkgGuess ([string](Get-Prop $Alt 'name'))
+        if ($guess) { $obj['native'] = [ordered]@{ apt = $guess; dnf = $guess; zypper = $guess; pacman = $guess } }
+        else        { $obj['method'] = 'manual' }
     }
-    $note = 'needs manifest enrichment'
     $url = [string](Get-Prop $Alt 'downloadUrl')
-    if ($url) { $note = "$note - see $url" }
-    $obj['note'] = $note
+    if ($url -and ($url -match '^https?://')) { $obj['downloadPage'] = $url }
+    $obj['note'] = 'auto-guessed install from the alternative name (unverified)'
+    $obj['review'] = $true
     return [pscustomobject]$obj
 }
 
@@ -354,6 +377,10 @@ if ($unmatchedNames.Count -gt 0) {
     Write-Host "  all detected apps matched a manifest entry" -ForegroundColor Green
 }
 
+# Alternatives weaker than this competency (%) are ignored completely -- never emitted into
+# the installer, so they take no part in ranking, the N count, or the threshold.
+$MinCompetency = 60
+
 $appLines = New-Object System.Collections.Generic.List[string]
 $repoLines = New-Object System.Collections.Generic.List[string]
 $repoSlugs = New-Object System.Collections.Generic.HashSet[string]
@@ -376,13 +403,19 @@ foreach ($app in $apps) {
 # matched to manifest entries above) plus any forceInclude apps. The Additional CSV adds
 # the other union half below.
 foreach ($app in $selectedApps) {
-    # Collect all mustInclude alternatives, ranked best-first by competency.
+    # Rank ALL alternatives best-first by competency (no mustInclude gate). Wine/Proton
+    # alternatives are excluded -- the separate wine prompt handles those. Each entry is
+    # tagged native (appType "Native ...") vs non-native so the runtime can apply the
+    # "N native installs + better-ranked web/docker ride along" deployment rule.
     $mustAlts = @()
     foreach ($alt in (Get-Prop $app 'alternatives')) {
-        if ([string](Get-Prop $alt 'mustInclude') -match '^(?i)yes$') {
-            $c = 0.0; [double]::TryParse(((''+(Get-Prop $alt 'competency')) -replace '[^0-9.]',''), [ref]$c) | Out-Null
-            $mustAlts += [pscustomobject]@{ Alt = $alt; Score = $c }
-        }
+        $at = [string](Get-Prop $alt 'appType')
+        if ($at -match '(?i)wine|proton') { continue }
+        $c = 0.0; [double]::TryParse(((''+(Get-Prop $alt 'competency')) -replace '[^0-9.]',''), [ref]$c) | Out-Null
+        # Ignore weak alternatives entirely (competency below the minimum is never emitted).
+        if ($c -lt $MinCompetency) { continue }
+        $isNat = if ($at -match '^(?i)native') { 1 } else { 0 }
+        $mustAlts += [pscustomobject]@{ Alt = $alt; Score = $c; IsNative = $isNat }
     }
     if ($mustAlts.Count -eq 0) { continue }
     $mustAlts = @($mustAlts | Sort-Object -Property Score -Descending)
@@ -442,10 +475,12 @@ foreach ($app in $selectedApps) {
         }
     }
 
-    # Emit every mustInclude alternative, ranked. The user's answer to
-    # "How many best alternatives..." (MIGRATE_ALT_LIMIT) decides how many of these
-    # best-first entries actually install at runtime, via the app_alt gate.
+    # Emit every ranked alternative as "app_alt RANK TOTAL install_app ...". The user's
+    # answer to "How many best alternatives..." (MIGRATE_ALT_LIMIT) decides how many of
+    # these best-first entries actually install at runtime, via the app_alt gate; TOTAL
+    # lets app_alt detect the last alternative (for the all-paid free-only skip notice).
     $rank = 0
+    $total = $mustAlts.Count
     foreach ($entry in $mustAlts) {
         $rank++
         $alt = $entry.Alt
@@ -455,7 +490,8 @@ foreach ($app in $selectedApps) {
         # Only the rank-1 (best) alt is the "exact equivalent" carrying the Windows version.
         $wv = if ($rank -eq 1) { $winver } else { '' }
         $altPaid = -not ([string](Get-Prop $alt 'pricingModel') -match '(?i)free')
-        $appLines.Add(('  app_alt ' + $rank + ' ' + (New-InstallCall -Name $name -Alt $altName -Install $install -WinVer $wv -Paid:$altPaid -Launch ([string](Get-Prop $alt 'launch')))))
+        $comp = $entry.Score.ToString([System.Globalization.CultureInfo]::InvariantCulture)
+        $appLines.Add(('  app_alt ' + $rank + ' ' + $total + ' ' + $entry.IsNative + ' ' + $comp + ' ' + (New-InstallCall -Name $name -Alt $altName -Install $install -WinVer $wv -Paid:$altPaid -Launch ([string](Get-Prop $alt 'launch')) -DlPage ([string](Get-Prop $alt 'downloadUrl')))))
     }
 
     # Wine (Windows emulator) option: for non-cross-platform Windows desktop apps (a

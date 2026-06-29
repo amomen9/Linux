@@ -215,7 +215,7 @@
                                                       "canSync":  "No, manual transfer",
                                                       "notes":  "Docker-based PDF Swiss Army knife. Merge/split/rotate, OCR, sign, compress, convert (to/from Word, Excel, PPT, images), watermark, page numbers, repair. 50+ PDF operations via web UI.",
                                                       "installMethod":  "deb",
-                                                      "appType":  "Native (Docker container)",
+                                                      "appType":  "Docker container",
                                                       "downloadUrl":  "https://github.com/Stirling-Tools/Stirling-PDF",
                                                       "install":  {
                                                                       "method":  "deb-url",
@@ -486,7 +486,8 @@
                                                       "downloadUrl":  "apt install visual-studio-code",
                                                       "install":  {
                                                                       "method":  "flatpak",
-                                                                      "flatpakId":  "com.visualstudio.code"
+                                                                      "flatpakId":  "com.visualstudio.code",
+                                                                      "downloadPage":  "https://code.visualstudio.com/Download"
                                                                   }
                                                   },
                                                   {
@@ -840,7 +841,7 @@
                                                       "canSync":  "Yes",
                                                       "notes":  "Open-source Figma alternative. SVG-native, CSS-native (flexbox/grid layouts), components, prototyping, team libraries. Self-host via Docker or use penpot.app. First open-source design tool that truly competes.",
                                                       "installMethod":  "docker",
-                                                      "appType":  "Native (Docker container)",
+                                                      "appType":  "Docker container",
                                                       "downloadUrl":  "https://penpot.app/"
                                                   },
                                                   {
@@ -1753,7 +1754,7 @@
                                                       "canSync":  "No, manual transfer",
                                                       "notes":  "Self-hostable metasearch engine aggregating 80+ search engines. No tracking, no profiling.",
                                                       "installMethod":  "docker",
-                                                      "appType":  "Native (Docker container)",
+                                                      "appType":  "Docker container",
                                                       "downloadUrl":  "https://docs.searxng.org/"
                                                   }
                                               ],
@@ -1785,7 +1786,8 @@
                                                                                      "dnf":  "openssh-clients",
                                                                                      "zypper":  "openssh",
                                                                                      "pacman":  "openssh"
-                                                                                 }
+                                                                                 },
+                                                                      "downloadPage":  "https://www.openssh.com/portable.html"
                                                                   }
                                                   },
                                                   {
@@ -4110,7 +4112,8 @@
                                                                                      "zypper":  "java-openjdk",
                                                                                      "pacman":  "jdk-openjdk"
                                                                                  },
-                                                                      "exactEquivalent":  true
+                                                                      "exactEquivalent":  true,
+                                                                      "downloadPage":  "https://adoptium.net/temurin/releases/"
                                                                   }
                                                   },
                                                   {
@@ -4581,7 +4584,8 @@
                                                                                      "dnf":  "goldendict",
                                                                                      "zypper":  "goldendict",
                                                                                      "pacman":  "goldendict"
-                                                                                 }
+                                                                                 },
+                                                                      "downloadPage":  "https://github.com/xiaoyifang/goldendict-ng/releases"
                                                                   }
                                                   },
                                                   {
@@ -4625,7 +4629,8 @@
                                                                                      "pacman":  "clamtk"
                                                                                  },
                                                                       "review":  true,
-                                                                      "security":  true
+                                                                      "security":  true,
+                                                                      "downloadPage":  "https://www.clamav.net/downloads"
                                                                   }
                                                   },
                                                   {
@@ -4919,7 +4924,8 @@
                                                                       "native":  {
                                                                                      "apt":  "libreoffice-base",
                                                                                      "dnf":  "libreoffice-base"
-                                                                                 }
+                                                                                 },
+                                                                      "downloadPage":  "https://www.libreoffice.org/download/download-libreoffice/"
                                                                   }
                                                   },
                                                   {
@@ -4941,7 +4947,7 @@
                                                       "canSync":  "Yes",
                                                       "notes":  "Open-source Airtable alternative. Turns MySQL/PostgreSQL/SQLite into a smart spreadsheet with forms, galleries, kanban. Self-host via Docker. Modern Access alternative.",
                                                       "installMethod":  "docker",
-                                                      "appType":  "Native (Docker container)",
+                                                      "appType":  "Docker container",
                                                       "downloadUrl":  "https://hub.docker.com/search?q=nocodb-(web)"
                                                   },
                                                   {
@@ -4952,7 +4958,7 @@
                                                       "canSync":  "Yes",
                                                       "notes":  "Open-source no-code database. Spreadsheet-like UI, form builder, relation linking, webhook automation. Self-host or cloud. Easier than Access for non-developers.",
                                                       "installMethod":  "docker",
-                                                      "appType":  "Native (Docker container)",
+                                                      "appType":  "Docker container",
                                                       "downloadUrl":  "https://hub.docker.com/search?q=baserow-(web)"
                                                   }
                                               ]
@@ -5156,7 +5162,7 @@
                                                       "canSync":  "Yes",
                                                       "notes":  "Web-based project management. Gantt, agile (Scrum/Kanban), time tracking, cost reporting, team collaboration. Self-host (Docker) or cloud. Free community edition.",
                                                       "installMethod":  "docker",
-                                                      "appType":  "Native (Docker container)",
+                                                      "appType":  "Docker container",
                                                       "downloadUrl":  "https://www.openproject.org/download-and-installation/"
                                                   },
                                                   {
@@ -5432,7 +5438,8 @@
                                                                                      "pacman":  "texlive-core"
                                                                                  },
                                                                       "note":  "install the -full variants for everything",
-                                                                      "review":  true
+                                                                      "review":  true,
+                                                                      "downloadPage":  "https://tug.org/texlive/acquire-netinstall.html"
                                                                   }
                                                   },
                                                   {
@@ -6057,7 +6064,7 @@
                                                       "canSync":  "No, manual transfer",
                                                       "notes":  "50+ PDF tools: merge/split/rotate, OCR, sign, watermark, convert (PDF ↔ Word/Excel/PPT/images), compress, page numbers, repair. Docker-based. Covers most Nitro features.",
                                                       "installMethod":  "deb",
-                                                      "appType":  "Native (Docker container)",
+                                                      "appType":  "Docker container",
                                                       "downloadUrl":  "https://github.com/Stirling-Tools/Stirling-PDF",
                                                       "install":  {
                                                                       "method":  "deb-url",
@@ -6835,7 +6842,8 @@
                                                                       "note":  "pgAdmin 4 from the official apt/dnf repo",
                                                                       "downloadUrl":  {
                                                                                           "x86_64":  "https://www.pgadmin.org/download/"
-                                                                                      }
+                                                                                      },
+                                                                      "downloadPage":  "https://www.pgadmin.org/download/"
                                                                   }
                                                   },
                                                   {
@@ -6988,7 +6996,7 @@
                                                       "canSync":  "No, manual transfer",
                                                       "notes":  "Fair-code workflow automation. 400+ integrations, visual editor, webhooks, cron triggers, error handling. Self-hosted or cloud. Best RPA-alternative on Linux.",
                                                       "installMethod":  "docker",
-                                                      "appType":  "Native (Docker container)",
+                                                      "appType":  "Docker container",
                                                       "downloadUrl":  "https://n8n.io/"
                                                   },
                                                   {
@@ -7021,7 +7029,7 @@
                                                       "canSync":  "No, manual transfer",
                                                       "notes":  "IFTTT-like agent system. Create agents that monitor the web, process data, send notifications. Scrapers, email digesters, webhook receivers. Self-hosted, Ruby-based.",
                                                       "installMethod":  "docker",
-                                                      "appType":  "Native (Docker container)",
+                                                      "appType":  "Docker container",
                                                       "downloadUrl":  "https://github.com/huginn/huginn"
                                                   }
                                               ],
@@ -7472,7 +7480,8 @@
                                                                                      "zypper":  "python3 python3-pip",
                                                                                      "pacman":  "python python-pip"
                                                                                  },
-                                                                      "exactEquivalent":  true
+                                                                      "exactEquivalent":  true,
+                                                                      "downloadPage":  "https://www.python.org/downloads/"
                                                                   }
                                                   },
                                                   {
@@ -7528,7 +7537,7 @@
                                                       "canSync":  "No, manual transfer",
                                                       "notes":  "The QUICKfind server runs as a Java/Tomcat application. If CABI provides a Linux-compatible distribution, it can be containerized with Docker for Linux deployment. Verify licensing with CABI.",
                                                       "installMethod":  "docker",
-                                                      "appType":  "Native (Docker container)",
+                                                      "appType":  "Docker container",
                                                       "downloadUrl":  "https://www.cabi.org/"
                                                   }
                                               ],
@@ -7702,7 +7711,11 @@
                                                       "notes":  "Offline dictionary with multiple formats. Scan popup translation, Wikipedia/Freedict integration. Good for offline use but different from Reverso\u0027s context-rich approach.",
                                                       "installMethod":  "apt",
                                                       "appType":  "Native (APT package)",
-                                                      "downloadUrl":  "apt install goldendict-/-goldendict-ng"
+                                                      "downloadUrl":  "apt install goldendict-/-goldendict-ng",
+                                                      "install":  {
+                                                                      "method":  "native",
+                                                                      "downloadPage":  "https://github.com/xiaoyifang/goldendict-ng/releases"
+                                                                  }
                                                   },
                                                   {
                                                       "name":  "Crow Translate",
@@ -8133,7 +8146,8 @@
                                                                                      "dnf":  "openssh-clients",
                                                                                      "zypper":  "openssh",
                                                                                      "pacman":  "openssh"
-                                                                                 }
+                                                                                 },
+                                                                      "downloadPage":  "https://www.openssh.com/portable.html"
                                                                   }
                                                   },
                                                   {
@@ -9005,7 +9019,8 @@
                                                       "install":  {
                                                                       "method":  "flatpak",
                                                                       "flatpakId":  "com.visualstudio.code",
-                                                                      "note":  "also install the build toolchain (build-essential / @development-tools) and dotnet-sdk"
+                                                                      "note":  "also install the build toolchain (build-essential / @development-tools) and dotnet-sdk",
+                                                                      "downloadPage":  "https://dotnet.microsoft.com/en-us/download"
                                                                   }
                                                   },
                                                   {
@@ -10036,7 +10051,8 @@
                                                                                      "dnf":  "wkhtmltopdf",
                                                                                      "pacman":  "wkhtmltopdf"
                                                                                  },
-                                                                      "review":  true
+                                                                      "review":  true,
+                                                                      "downloadPage":  "https://wkhtmltopdf.org/downloads.html"
                                                                   }
                                                   },
                                                   {
@@ -10932,7 +10948,7 @@
                                                       "canSync":  "No, manual transfer",
                                                       "notes":  "Self-hosted open-source Trello-style kanban board (Docker).",
                                                       "installMethod":  "docker",
-                                                      "appType":  "Native (Docker container)",
+                                                      "appType":  "Docker container",
                                                       "downloadUrl":  "https://planka.app/",
                                                       "install":  {
                                                                       "method":  "manual",
@@ -13188,7 +13204,7 @@
                                                       "canSync":  "No, manual transfer",
                                                       "notes":  "Self-hosted audiobook/podcast server with library management (Docker).",
                                                       "installMethod":  "docker",
-                                                      "appType":  "Native (Docker container)",
+                                                      "appType":  "Docker container",
                                                       "downloadUrl":  "https://www.audiobookshelf.org/",
                                                       "install":  {
                                                                       "method":  "manual",
@@ -24110,7 +24126,7 @@
                                                       "canSync":  "No, manual transfer",
                                                       "notes":  "Self-hosted PDF toolkit (merge/split/convert/OCR/compress) with a web UI. Best PDF24 replacement.",
                                                       "installMethod":  "docker",
-                                                      "appType":  "Native (Docker container)",
+                                                      "appType":  "Docker container",
                                                       "downloadUrl":  "https://www.stirlingpdf.com/",
                                                       "install":  {
                                                                       "method":  "deb-url",

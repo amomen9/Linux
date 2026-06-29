@@ -472,9 +472,9 @@ open_url() {  # open_url URL
   fi
 }
 
-# Build a web-search URL for QUERY (percent-encoded). Used as a fallback "download page"
-# when no explicit download URL is known, so the user is still pointed at the right place
-# to fetch an installer.
+# Build a Google web-search URL for QUERY (percent-encoded). Used as the last-resort
+# "download page" when no saved download URL exists or the saved one is unreachable, so
+# the user is still pointed at the right place to fetch an installer.
 web_search_url() {  # web_search_url QUERY
   local q="$1" out="" c i
   for (( i=0; i<${#q}; i++ )); do
@@ -485,7 +485,48 @@ web_search_url() {  # web_search_url QUERY
       *)               out="$out$(printf '%%%02X' "'$c")" ;;
     esac
   done
-  printf 'https://duckduckgo.com/?q=%s' "$out"
+  printf 'https://www.google.com/search?q=%s' "$out"
+}
+
+# Quick reachability check for a download URL. Returns 0 if the server answers without a
+# conventional "broken link" error, 1 otherwise (HTTP 4xx/5xx such as 404/403/410, or a
+# connection failure / DNS error / timeout -> curl code 000). Tries a HEAD first, then a
+# 1-byte ranged GET for servers that reject HEAD (403/405/501). Short timeouts so a dead
+# host never stalls the install. With no curl/wget available it assumes OK (let the
+# browser try). No AI involved -- pure shell.
+url_health_ok() {  # url_health_ok URL
+  local u="$1" code=""
+  [ -n "$u" ] || return 1
+  case "$u" in http://*|https://*) ;; *) return 1 ;; esac
+  if have_cmd curl; then
+    code="$(curl -sSL -o /dev/null -m 12 -A 'Mozilla/5.0' -w '%{http_code}' -I "$u" 2>/dev/null)"
+    case "$code" in
+      ''|000|403|405|501) code="$(curl -sSL -o /dev/null -m 15 -A 'Mozilla/5.0' -r 0-0 -w '%{http_code}' "$u" 2>/dev/null)" ;;
+    esac
+  elif have_cmd wget; then
+    if wget -q --spider --timeout=12 --tries=1 -U 'Mozilla/5.0' "$u" 2>/dev/null; then code=200; else code=000; fi
+  else
+    return 0
+  fi
+  case "$code" in 2*|3*) return 0 ;; *) return 1 ;; esac
+}
+
+# Open the best download page for an app in the user's browser. If URL is set AND passes
+# the reachability check, open it; otherwise (missing, or a broken-link error like
+# 404/403/connection failure) open a Google search for the app's installer instead. This
+# is the shared "download page stage" used by manual_fallback, wine_app and the manual-
+# download phase. QUERY overrides the search text (default "NAME download").
+open_download_page() {  # open_download_page NAME URL [QUERY]
+  local name="$1" url="$2" query="${3:-$1 download}" target=""
+  if [ -n "$url" ] && url_health_ok "$url"; then
+    target="$url"; info "Download page: $target"
+  else
+    [ -n "$url" ] && warn "saved download page is unreachable ($url) -- searching the web instead."
+    target="$(web_search_url "$query")"
+    info "Opening a web search for $name:"; info "  $target"
+  fi
+  info "(opening it in your default browser ...)"
+  open_url "$target"
 }
 
 # Run a command as the logged-in desktop user with their D-Bus session / runtime dir wired
@@ -595,7 +636,7 @@ install_native_version() {  # install_native_version PKG WINVER
 _install_app_core() {
   local name="" alt="" method="" flatpak="" snap_pkg="" arch_list="" winver="" is_security=0 is_paid=0
   local apt="" dnf="" zypper="" pacman="" launch=""
-  local url_x86="" url_arm="" url_deb="" url_rpm="" webapp_url="" docker_image="" github_repo="" note=""
+  local url_x86="" url_arm="" url_deb="" url_rpm="" webapp_url="" docker_image="" github_repo="" note="" dlpage=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --name)    name="$2"; shift 2 ;;
@@ -617,6 +658,7 @@ _install_app_core() {
       --webapp)  webapp_url="$2"; shift 2 ;;
       --docker)  docker_image="$2"; shift 2 ;;
       --github)  github_repo="$2"; shift 2 ;;
+      --dlpage)  dlpage="$2"; shift 2 ;;
       --note)     note="$2"; shift 2 ;;
       --security) is_security=1; shift ;;
       --paid)     is_paid=1; shift ;;
@@ -691,8 +733,6 @@ _install_app_core() {
   case "$method" in
     webapp)
       webapp_desktop "$name" "$webapp_url" "$alt" "$launch"; return 0 ;;
-    docker)
-      docker_launch_app "$name" "$docker_image" "$note"; return 0 ;;
     wine-bottles)
       if ensure_flatpak && capture install_flatpak com.usebottles.bottles; then
         mark_ok "$name" "via Bottles (flatpak) - configure the Windows app inside Bottles"
@@ -731,13 +771,17 @@ _install_app_core() {
   # ---- multi-backend methods (req: try every available pm until one works) ----
   # The declared method goes first; then EVERY other available backend is tried as a
   # fallback (native / flatpak / snap / direct-download) before the app is failed.
+  # docker is always LAST: a container is only deployed when the alternative has no
+  # package-manager/binary route at all (native install is preferred over docker -- e.g.
+  # Stirling-PDF ships both, so the native package wins and docker is never considered).
   local order
   case "$method" in
-    flatpak)            order="flatpak native snap deburl" ;;
-    native)             order="native flatpak snap deburl" ;;
-    snap)               order="snap flatpak native deburl" ;;
-    deb-url|github-deb) order="deburl native flatpak snap" ;;
-    *)                  order="flatpak native snap deburl" ;;
+    flatpak)            order="flatpak native snap deburl docker" ;;
+    native)             order="native flatpak snap deburl docker" ;;
+    snap)               order="snap flatpak native deburl docker" ;;
+    deb-url|github-deb) order="deburl native flatpak snap docker" ;;
+    docker)             order="native flatpak snap deburl docker" ;;
+    *)                  order="flatpak native snap deburl docker" ;;
   esac
 
   local b url f rfn
@@ -782,18 +826,27 @@ _install_app_core() {
         [ -n "$url" ] || continue
         f="$DOWNLOAD_DIR/${name// /_}.pkg"
         if capture download_file "$url" "$f" && capture install_local_package "$f"; then finish_install "$name" "$alt" file "$f" "downloaded package" "$launch"; return 0; fi ;;
+      docker)
+        [ -n "$docker_image" ] || continue
+        # only when NO package-manager/binary route exists for this alt (native preferred).
+        [ -n "$flatpak$native_pkg$snap_pkg$url_x86$url_arm$url_deb$url_rpm" ] && continue
+        docker_launch_app "$name" "$docker_image" "$note"; return 0 ;;
     esac
   done
 
-  # A real install error -> report failure. But if nothing was even attempted (no
-  # package-manager route on this distro), show that and fall back to the manual
-  # download-by-user scheme (place the file, then done/skip, handled by extension).
+  # Package managers are first priority; the saved download page is the next priority.
+  # So whether a package-manager backend FAILED or nothing was even attempted (no route
+  # on this distro), fall through to the download-page stage: open the saved download URL
+  # (health-checked) -- or a web search if it is missing/broken -- and let the user supply
+  # the installer. The preferred page is the manifest download page (--dlpage); fall back
+  # to any direct/webapp/github URL the app carried.
   if [ -n "$LAST_ERR" ]; then
-    mark_fail "${alt:-$name}" "$LAST_ERR"
+    warn "package-manager install failed: $LAST_ERR"
+    info "falling back to the download page for $name ..."
   else
     err "no available package manager could install it"
-    manual_fallback "$name" "$alt" "$note" "$webapp_url$url_x86$github_repo" "$launch"
   fi
+  manual_fallback "$name" "$alt" "$note" "${dlpage:-$webapp_url$url_x86$github_repo}" "$launch"
 }
 
 # Public entry point. Pulls out any --post 'CMD' flags (custom commands to run right after
@@ -990,12 +1043,8 @@ manual_fallback() {  # manual_fallback NAME [ALT] [NOTE] [URL] [LAUNCH]
   if is_dry_run; then mark_plan "${alt:-$name}" "manual installer (you would provide its path)"; return 0; fi
   local ans f disp="${alt:-$name}"
   [ -n "$mnote" ] && info "$mnote"
-  # Always point the user at a download page and open it in their browser: the provided
-  # URL when present, otherwise a web search for the app so they are still guided to it.
-  local dlurl="$murl"
-  if [ -n "$dlurl" ]; then info "Download page: $dlurl"
-  else dlurl="$(web_search_url "$disp download")"; info "No download URL on file -- opening a web search for $disp:"; info "  $dlurl"; fi
-  info "(opening it in your default browser ...)"; open_url "$dlurl"
+  # Download-page stage: health-check the saved URL and open it, else fall back to a search.
+  open_download_page "$disp" "$murl"
   info "Download the installer yourself (unzip it first if it is zipped)."
   info "Then type its path in single quotes -- either a full path, or one relative to ${TARGET_HOME}/Downloads."
   info "Any valid installer extension works (.deb/.rpm/.sh/.run/.bin/.bundle/.AppImage/.tar.gz/.zip/...); 'skip' to skip this app, or 'skip all' to skip this and every remaining manual app."
@@ -1187,13 +1236,9 @@ wine_app() {  # wine_app NAME [WINDOWS_INSTALLER_URL] [NOT_RECOMMENDED_REASON] [
   # 2) manual fallback: ask for the installer path in single quotes.
   if [ -z "$winpath" ]; then
     if [ ! -r /dev/tty ]; then mark_manual "$name (wine - Windows emulator)" "provide a Windows installer to run under wine"; return 0; fi
-    # Always point the user at a download page and open it in their browser: the
-    # manifest-provided Windows-installer URL when present, otherwise a web search for the
-    # app's official Windows installer so the wine flow guides them just like manual apps.
-    local dlurl="$winurl"
-    if [ -n "$dlurl" ]; then info "Download page: $dlurl"
-    else dlurl="$(web_search_url "$name Windows installer download")"; info "No download URL on file -- opening a web search for the $name Windows installer:"; info "  $dlurl"; fi
-    info "(opening it in your default browser ...)"; open_url "$dlurl"
+    # Download-page stage: health-check the saved Windows-installer URL and open it, else
+    # fall back to a web search for the app's official Windows installer.
+    open_download_page "$name" "$winurl" "$name Windows installer download"
     info "Download the Windows installer for $name (unzip it first if it is zipped)."
     info "Then type its path in single quotes -- either a full path, or one relative to ${TARGET_HOME}/Downloads."
     info "Any valid installer extension works (.exe, .msi, .bat, etc.); 'skip' to skip this app, or 'skip all' to skip every remaining wine (Windows emulator) install."
@@ -1263,14 +1308,81 @@ wine_app() {  # wine_app NAME [WINDOWS_INSTALLER_URL] [NOT_RECOMMENDED_REASON] [
   rm -f "$wlog" 2>/dev/null || true
 }
 
-# Install the Nth-best alternative of an app only if the user asked for at least
-# N alternatives (MIGRATE_ALT_LIMIT, default 1). Usage:  app_alt RANK install_app ...
-app_alt() {
-  local rank="$1"; shift
-  local limit="${MIGRATE_ALT_LIMIT:-1}"
-  case "$limit" in ''|*[!0-9]*) limit=1 ;; esac
-  if [ "$rank" -le "$limit" ]; then "$@"; fi
+# True if FLAG appears as a standalone token in the remaining args.
+_args_have_flag() {  # _args_have_flag FLAG ARGS...
+  local flag="$1"; shift
+  while [ "$#" -gt 0 ]; do [ "$1" = "$flag" ] && return 0; shift; done
+  return 1
+}
+# Echo the value token that follows FLAG in the remaining args (empty if absent).
+_arg_val() {  # _arg_val FLAG ARGS...
+  local flag="$1"; shift
+  while [ "$#" -gt 0 ]; do [ "$1" = "$flag" ] && { printf '%s' "${2:-}"; return 0; }; shift; done
+}
+# Numeric strictly-greater test, tolerant of decimal competency values.
+_comp_gt() { awk -v a="$1" -v b="$2" 'BEGIN{exit !((a+0) > (b+0))}'; }
+# eval-safe quoting of a command + its args (so a buffered install can be replayed later).
+_quote_cmd() { local out=""; while [ "$#" -gt 0 ]; do out="$out $(printf '%q' "$1")"; shift; done; printf '%s' "$out"; }
+
+# -----------------------------------------------------------------------------
+# Alternative deployment for one Windows app.
+#   Usage:  app_alt RANK TOTAL ISNATIVE COMPETENCY install_app ...
+# The user's answer to "How many best alternatives ...?" is MIGRATE_ALT_LIMIT = N, and
+# it counts NATIVE installs only (appType "Native ...").  The model (alternatives arrive
+# in competency-descending order, rank 1 = best):
+#   1. In only-free mode, paid alternatives are dropped from consideration entirely.
+#   2. The top N eligible NATIVE alternatives are installed; the lowest of them sets a
+#      competency THRESHOLD.
+#   3. Every eligible NON-native alternative (WebApp / Docker container) ranked ABOVE that
+#      threshold is ALSO deployed (these ride along for free; they do not consume an N
+#      slot).  If the app has no native alternative at all, every eligible non-native is
+#      deployed (there is no native to anchor a threshold).
+#   N = 0 deploys nothing.  Wine/Proton alternatives are never routed here (the separate
+#   wine prompt handles them), so the generator does not emit app_alt lines for them.
+# Each call buffers its alternative; the LAST one (rank == total) computes the set and
+# runs the chosen installs in rank order.
+app_alt() {  # app_alt RANK TOTAL ISNATIVE COMPETENCY install_app ...
+  local rank="$1" total="$2" isnat="$3" comp="$4"; shift 4
+  if [ "$rank" -eq 1 ]; then
+    _AA_TOTAL="$total"; _AA_NAME="$(_arg_val --name "$@")"
+    _AA_NAT=(); _AA_COMP=(); _AA_PAID=(); _AA_CMD=()
+  fi
+  _AA_NAT[$rank]="$isnat"
+  _AA_COMP[$rank]="$comp"
+  if _args_have_flag --paid "$@"; then _AA_PAID[$rank]=1; else _AA_PAID[$rank]=0; fi
+  _AA_CMD[$rank]="$(_quote_cmd "$@")"
+  [ "$rank" -ge "$total" ] && _aa_flush
   return 0
+}
+
+# Decide and run the deployment set for the app currently buffered in the _AA_* arrays.
+_aa_flush() {
+  local limit="${MIGRATE_ALT_LIMIT:-1}" free="${MIGRATE_FREE_ONLY:-no}"
+  case "$limit" in ''|*[!0-9]*) limit=1 ;; esac
+  local total="${_AA_TOTAL:-0}" r picked=0 threshold="" sawpaid=0 anydep=0
+  local -a chosen=()
+  # pass 1: pick the top `limit` eligible NATIVE alts; the last sets the threshold.
+  for (( r=1; r<=total; r++ )); do
+    if [ "$free" = yes ] && [ "${_AA_PAID[$r]:-0}" = 1 ]; then sawpaid=1; continue; fi
+    if [ "${_AA_NAT[$r]:-0}" = 1 ] && [ "$picked" -lt "$limit" ]; then
+      chosen[$r]=1; picked=$(( picked + 1 )); threshold="${_AA_COMP[$r]}"
+    fi
+  done
+  # pass 2: deploy chosen natives + qualifying non-natives, in rank (competency) order.
+  for (( r=1; r<=total; r++ )); do
+    if [ "$free" = yes ] && [ "${_AA_PAID[$r]:-0}" = 1 ]; then continue; fi
+    local dep=0
+    if [ "${chosen[$r]:-0}" = 1 ]; then
+      dep=1
+    elif [ "${_AA_NAT[$r]:-0}" != 1 ] && [ "$limit" -ge 1 ]; then
+      # non-native: deploy if it outranks the threshold, OR if no native was chosen at all.
+      if [ "$picked" -eq 0 ] || _comp_gt "${_AA_COMP[$r]}" "$threshold"; then dep=1; fi
+    fi
+    if [ "$dep" -eq 1 ]; then eval "${_AA_CMD[$r]}"; anydep=1; fi
+  done
+  if [ "$anydep" -eq 0 ] && [ "$limit" -ge 1 ] && [ "$sawpaid" -eq 1 ]; then
+    mark_skip "$_AA_NAME" "paid - skipped (only-free mode); no free alternative available"
+  fi
 }
 
 # Handle a user-downloaded installer FILE according to its extension. Returns 0 on
@@ -1473,24 +1585,24 @@ CFG_default_browser="edge"
 WIFI_DATA="$(cat <<'__WIFI_EOF__'
 eduroam	wpa		none
 somenet	open		none
-V.momen	wpa	U2FsdGVkX1/C9WQ4d+Dvx6hCTKAZhYgH758CFnhmiPA=	enc
+V.momen	wpa	U2FsdGVkX1+7ykn4RVTqhIxFoxjZ6qfOnvLyQuZEvGo=	enc
 Tbilisi Loves You	open		none
 Tbilisi Airport Free	open		none
 Simorgh-WiFi	open		none
-Shatel	wpa	U2FsdGVkX1+egepRHY+2psFXS7U9Dd31s+OidOUaG4c=	enc
-SHAW-48EE	wpa	U2FsdGVkX1+yqHNMvQBQd9dMTktFqx0KoVDnAJmQmVs=	enc
-Redmi Note 10 Pro Max	wpa	U2FsdGVkX1/2AeRfK5VkSO2Fgy/TTHHl3zZESacbWx8=	enc
-Parsway	wpa	U2FsdGVkX19kyLh6hLNK/ZYVgC+dMjEx1l0dZ3ocx8k=	enc
-NZT9930134C	wpa	U2FsdGVkX1/L7zVwSovYJkmQB8+pr0y55MTf45MaVwo=	enc
+Shatel	wpa	U2FsdGVkX1/P0MLI9KvbOq+KBHEFxW1HhSC/z3QQSy0=	enc
+SHAW-48EE	wpa	U2FsdGVkX19WqYDy8BqCppHRYq6vBFOA9W09uEvhiV8=	enc
+Redmi Note 10 Pro Max	wpa	U2FsdGVkX1/MFBksuymo1xMcsnN78RwnK50VC63fBKI=	enc
+Parsway	wpa	U2FsdGVkX1++O3O8SFVOfiYcAlay411MHBV1nf3E2I8=	enc
+NZT9930134C	wpa	U2FsdGVkX1+7HawcJs5hCX6ZeocYsI63qodEERj/Vd4=	enc
 Mofid-GoHyper!	open		none
-Jobvision-WiFi	wpa	U2FsdGVkX19eSxvoY3Unm8T9EuOv0ZMj4u7sqaQqkXI=	enc
-JobVision_DLink	wpa	U2FsdGVkX18Lqa5kPLgVywguLKJTWKomeeErSbjT8kw=	enc
-JobVision-3rd	wpa	U2FsdGVkX18X6856YZfviiQzHohpZClfYX4O26CLzb8=	enc
-JobVision	wpa	U2FsdGVkX196hsFK77cs6ZXdtVKoM6hG/vTN6CAPLas=	enc
-Galaxy A51	wpa	U2FsdGVkX189DKQLpTGR1ldW9FC2mD/G6TbDA5R28NQ=	enc
-Fatemeh's Galaxy A71	wpa	U2FsdGVkX1/Bh3qXibreoNPYOXfPubOzft8u5G8NvbI=	enc
-AndroidAPA50	wpa	U2FsdGVkX19qGOFnz+qj5Ltu75IATqHv/k1iEkaMxyA=	enc
-DivorceHousing	wpa	U2FsdGVkX19GMZCver4zmttP4NAZ5l6nvyEgXVxGnGNA4v+jTOsN5jAYKwM/9NEx	enc
+Jobvision-WiFi	wpa	U2FsdGVkX18Q1JfDW/+FrHaj16UJ96F5sKQOwIK/MD8=	enc
+JobVision_DLink	wpa	U2FsdGVkX1+/aS5ap3gjPflRy2BGwdL5tDGX4M31BaM=	enc
+JobVision-3rd	wpa	U2FsdGVkX18z+Tj9qrRXT8tV1hZml9TsymHk5fiY7i0=	enc
+JobVision	wpa	U2FsdGVkX19m6kLXER9ECBzGhxOQGG4oU/Uf7JvEreQ=	enc
+Galaxy A51	wpa	U2FsdGVkX19yyTf+XgiovhNeKGYOrM22sZ6ylqyzXjo=	enc
+Fatemeh's Galaxy A71	wpa	U2FsdGVkX1/hLImCmHSPnwCoPw//s6D0FJ4fcYcXPsg=	enc
+AndroidAPA50	wpa	U2FsdGVkX1+91hM569oLuwVThIO+D8IXEah3r4V1THY=	enc
+DivorceHousing	wpa	U2FsdGVkX18+lDaytfYs2PDrQv+wlOdrHg+qUxuMOkFlaGVQRCh5DoF4yiatMuuI	enc
 __WIFI_EOF__
 )"
 
@@ -2027,7 +2139,7 @@ Lenovo Professional Ultraslim Wireless Combo Gen2 OSD task	User	onlogon	Ultrasli
 Firefox Default Browser Agent 308046B0AF4A39CB	User	daily,13,49	default-browser-agent
 Autorun for Ali	User	onlogon	PowerToys
 SoftLandingCreativeManagementTask	User	unsupported	
-SoftLandingDeferralTask-{9c75ee9b-db2a-4e74-a6c5-eef0cbaf7b12}	User	daily,12,32	
+SoftLandingDeferralTask-{911ed058-46a3-4e60-94f7-48f0ef88e5ab}	User	daily,02,47	
 __TK_EOF__
 )"
 
