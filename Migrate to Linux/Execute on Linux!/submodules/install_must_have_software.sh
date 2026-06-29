@@ -79,7 +79,40 @@ ask_xfer_password() {
   XFER_PWD_ASKED=1; export XFER_PWD_ASKED
   [ -r /dev/tty ] || { export MIGRATE_XFER_PWD; return 0; }
 
-  local RED=$'\033[1;31m' RST=$'\033[0m' ans tries=0 max=3
+  local RED=$'\033[1;31m' YEL=$'\033[1;33m' RST=$'\033[0m' ans tries=0 max=3
+  local archive="${MIGRATE_STAGE}.tar.enc"
+
+  # Nothing encrypted to restore -> don't bother asking for a password at all.
+  if [ ! -f "$archive" ]; then
+    warn "Warning! No encrypted sensitive-data archive was found - there is nothing to restore. Continuing ..."
+    export MIGRATE_XFER_PWD=""
+    return 0
+  fi
+
+  # openssl is required to decrypt that archive. If it is missing, offer to install
+  # it now; if the user declines (or the install fails), skip the password prompt.
+  if ! have_cmd openssl; then
+    printf '\n%s  OpenSSL is %srequired%s to restore your sensitive data. It is highly recommended that you install it now (y/n). %s' "$YEL" "$RED" "$YEL" "$RST" > /dev/tty
+    while :; do
+      read -r ans < /dev/tty || ans="n"
+      case "$ans" in
+        [Yy]*)
+          pm_refresh
+          if capture pm_install openssl && have_cmd openssl; then
+            ok "installed: openssl"
+          else
+            warn "Warning! OpenSSL could not be installed, thus your sensitive data cannot be restored. Continuing ..."
+            export MIGRATE_XFER_PWD=""; return 0
+          fi
+          break ;;
+        [Nn]*)
+          warn "Warning! OpenSSL is not installed, thus your sensitive data cannot be restored. Continuing ..."
+          export MIGRATE_XFER_PWD=""; return 0 ;;
+        *) printf '%s  Please answer y or n: %s' "$RED" "$RST" > /dev/tty ;;
+      esac
+    done
+  fi
+
   while :; do
     printf '  Enter the password used on Windows to encrypt your sensitive data (WiFi passwords, SSH keys, Contacts, wallpaper). Leave empty to skip restoring it: ' > /dev/tty
     read -r MIGRATE_XFER_PWD < /dev/tty || MIGRATE_XFER_PWD=""
@@ -95,24 +128,24 @@ ask_xfer_password() {
     # Verified WRONG. Up to $max total entries get a retry; after that, fall back to
     # the plain continue/exit choice with a note on how to still restore the data.
     if [ "$tries" -lt "$max" ]; then
-      printf '%s  Password entered incorrectly! (r)etry, (y) continue without restoring your sensitive data, or (n) exit? %s' "$RED" "$RST" > /dev/tty
+      printf '%s  Password entered incorrectly! (r)etry, (c)ontinue without restoring your sensitive data, or (e)xit? %s' "$RED" "$RST" > /dev/tty
       while :; do
-        read -r ans < /dev/tty || ans="n"
+        read -r ans < /dev/tty || ans="e"
         case "$ans" in
           [Rr]*) break ;;                        # back to the top: ask the password again
-          [Yy]*) MIGRATE_XFER_PWD=""; break 2 ;;  # continue without restoring
-          [Nn]*) exit 1 ;;                        # quit the script
-          *) printf '%s  Please answer r, y or n: %s' "$RED" "$RST" > /dev/tty ;;
+          [Cc]*) MIGRATE_XFER_PWD=""; break 2 ;;  # continue without restoring
+          [Ee]*) exit 1 ;;                        # quit the script
+          *) printf '%s  Please answer r, c or e: %s' "$RED" "$RST" > /dev/tty ;;
         esac
       done
     else
-      printf '%s  Password entered incorrectly! Continue without restoring your sensitive data? (y/n)  To restore it you must exit now (n) and re-run the script. %s' "$RED" "$RST" > /dev/tty
+      printf '%s  Password entered incorrectly! (c)ontinue without restoring your sensitive data, or (e)xit?  To restore it you must exit now (e) and re-run the script. %s' "$RED" "$RST" > /dev/tty
       while :; do
-        read -r ans < /dev/tty || ans="n"
+        read -r ans < /dev/tty || ans="e"
         case "$ans" in
-          [Yy]*) MIGRATE_XFER_PWD=""; break 2 ;;  # continue without restoring
-          [Nn]*) exit 1 ;;                        # quit the script
-          *) printf '%s  Please answer y or n: %s' "$RED" "$RST" > /dev/tty ;;
+          [Cc]*) MIGRATE_XFER_PWD=""; break 2 ;;  # continue without restoring
+          [Ee]*) exit 1 ;;                        # quit the script
+          *) printf '%s  Please answer c or e: %s' "$RED" "$RST" > /dev/tty ;;
         esac
       done
     fi
@@ -1735,7 +1768,24 @@ main() {
   # Application install list (generated from B_applications.json + the
   # Additional_Manual_Linux_Software_Requirments.csv).
   # ---------------------------------------------------------------------------
-  repo_setup_google_chrome() {
+  repo_setup_docker_desktop() {
+  case "$PM" in
+    apt)
+      install -d -m 0755 /etc/apt/keyrings
+      . /etc/os-release
+      docker_base=debian
+      case " ${ID:-} ${ID_LIKE:-} " in *ubuntu*) docker_base=ubuntu ;; esac
+      docker_suite="${UBUNTU_CODENAME:-${VERSION_CODENAME:-stable}}"
+      curl -fsSL "https://download.docker.com/linux/${docker_base}/gpg" | gpg --batch --yes --dearmor -o /etc/apt/keyrings/docker.gpg
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${docker_base} ${docker_suite} stable" > /etc/apt/sources.list.d/docker.list
+      ;;
+    dnf)
+      dnf -y install dnf-plugins-core
+      dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
+      ;;
+  esac
+}
+repo_setup_google_chrome() {
   case "$PM" in
     apt)
       install -d -m 0755 /etc/apt/keyrings
@@ -1802,8 +1852,8 @@ repo_setup_microsoft_edge() {
   wine_app "Copilot" "" "" ""
   app_alt 1 2 1 100 install_app --name "Discord" --alt "Discord (Linux)" --method flatpak --flatpak "com.discordapp.Discord" --dlpage "https://discord.com/download"
   app_alt 2 2 0 85 install_app --name "Discord" --alt "Discord (Web/PWA)" --method webapp --webapp "https://discord.com/app" --dlpage "https://discord.com/app" --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 1 3 1 120 install_app --name "Docker Desktop" --alt "Podman" --method native --dlpage "https://podman.io/getting-started/installation" --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 2 3 1 120 install_app --name "Docker Desktop" --alt "Docker Engine (native)" --method native --apt "docker-ce docker-ce-cli containerd.io docker-compose-plugin" --dnf "docker-ce docker-ce-cli containerd.io docker-compose-plugin" --zypper "docker" --pacman "docker" --dlpage "https://docs.docker.com/engine/install/" --note "systemctl enable --now docker; add your user to the docker group"
+  app_alt 1 3 1 120 install_app --name "Docker Desktop" --alt "Docker Engine (native)" --winver "4.70.0" --method native --apt "docker-ce docker-ce-cli containerd.io docker-compose-plugin" --dnf "docker-ce docker-ce-cli containerd.io docker-compose-plugin" --zypper "docker" --pacman "docker" --dlpage "https://docs.docker.com/engine/install/" --note "systemctl enable --now docker; add your user to the docker group"
+  app_alt 2 3 1 120 install_app --name "Docker Desktop" --alt "Podman" --method native --dlpage "https://podman.io/getting-started/installation" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 3 3 1 100 install_app --name "Docker Desktop" --alt "Docker Desktop (Linux)" --method native --dlpage "https://docs.docker.com/desktop/install/linux-install/" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 1 3 1 100 install_app --name "Dropbox" --alt "Dropbox (Linux)" --method flatpak --flatpak "com.dropbox.Client" --dlpage "https://www.dropbox.com/install-linux"
   app_alt 2 3 1 85 install_app --name "Dropbox" --alt "Maestral" --method native --dlpage "https://maestral.app/" --note "auto-guessed install from the alternative name (unverified)"
@@ -1836,19 +1886,19 @@ repo_setup_microsoft_edge() {
   app_alt 4 5 1 95 install_app --name "Hotspot Shield" --alt "Windscribe" --method native --dlpage "https://windscribe.com/guides/linux" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 5 5 1 70 install_app --name "Hotspot Shield" --alt "Tor Browser" --method flatpak --flatpak "org.torproject.torbrowser-launcher" --apt "torbrowser-launcher" --dlpage "https://www.torproject.org/download/"
   app_alt 1 5 1 90 install_app --name "Internet Download Manager (IDM)" --alt "uGet" --launch "Search 'uGet' in the start menu (or run 'uget-gtk' in a terminal)." --method native --apt "uget" --dnf "uget" --pacman "uget" --dlpage "https://ugetdm.com/downloads/" --note "also install aria2 for multi-connection downloads"
-  app_alt 2 5 1 85 install_app --name "Internet Download Manager (IDM)" --alt "JDownloader 2" --method native --dlpage "https://jdownloader.org/download/index" --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 3 5 1 85 install_app --name "Internet Download Manager (IDM)" --alt "Xtreme Download Manager (XDM)" --method native --dlpage "https://github.com/subhra74/xdm" --note "auto-guessed install from the alternative name (unverified)"
+  app_alt 2 5 1 85 install_app --name "Internet Download Manager (IDM)" --alt "Xtreme Download Manager (XDM)" --method native --dlpage "https://github.com/subhra74/xdm" --note "auto-guessed install from the alternative name (unverified)"
+  app_alt 3 5 1 85 install_app --name "Internet Download Manager (IDM)" --alt "JDownloader 2" --method native --dlpage "https://jdownloader.org/download/index" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 4 5 1 80 install_app --name "Internet Download Manager (IDM)" --alt "Free Download Manager (FDM)" --method native --dlpage "https://www.freedownloadmanager.org/download-fdm-for-linux.htm" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 5 5 1 75 install_app --name "Internet Download Manager (IDM)" --alt "aria2" --method native --dlpage "https://aria2.github.io/" --note "auto-guessed install from the alternative name (unverified)"
   wine_app "Internet Download Manager (IDM)" "" "" ""
-  app_alt 1 4 1 100 install_app --name "Java 8" --alt "Oracle JDK (Linux)" --method native --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 2 4 1 100 install_app --name "Java 8" --alt "Zulu OpenJDK (Azul)" --method native --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 3 4 1 100 install_app --name "Java 8" --alt "OpenJDK (Eclipse Temurin)" --method native --apt "default-jdk" --dnf "java-latest-openjdk" --zypper "java-openjdk" --pacman "jdk-openjdk" --dlpage "https://adoptium.net/temurin/releases/"
-  app_alt 4 4 1 100 install_app --name "Java 8" --alt "OpenJDK (Distro)" --method native --note "auto-guessed install from the alternative name (unverified)"
+  app_alt 1 4 1 100 install_app --name "Java 8" --alt "OpenJDK (Eclipse Temurin)" --winver "8.0.4910.10" --method native --apt "default-jdk" --dnf "java-latest-openjdk" --zypper "java-openjdk" --pacman "jdk-openjdk" --dlpage "https://adoptium.net/temurin/releases/"
+  app_alt 2 4 1 100 install_app --name "Java 8" --alt "OpenJDK (Distro)" --method native --note "auto-guessed install from the alternative name (unverified)"
+  app_alt 3 4 1 100 install_app --name "Java 8" --alt "Oracle JDK (Linux)" --method native --note "auto-guessed install from the alternative name (unverified)"
+  app_alt 4 4 1 100 install_app --name "Java 8" --alt "Zulu OpenJDK (Azul)" --method native --note "auto-guessed install from the alternative name (unverified)"
   app_alt 1 1 1 100 install_app --name "K-Lite Mega Codec Pack" --alt "VLC + ffmpeg" --method native --note "auto-guessed install from the alternative name (unverified)"
   wine_app "K-Lite Mega Codec Pack" "" "" ""
-  app_alt 1 4 1 150 install_app --name "KMPlayer" --alt "mpv" --method flatpak --flatpak "io.mpv.Mpv" --apt "mpv" --dnf "mpv" --zypper "mpv" --pacman "mpv" --dlpage "https://mpv.io/installation/"
-  app_alt 2 4 1 150 install_app --name "KMPlayer" --alt "VLC Media Player" --method flatpak --flatpak "org.videolan.VLC" --apt "vlc" --dnf "vlc" --zypper "vlc" --pacman "vlc" --dlpage "https://www.videolan.org/vlc/"
+  app_alt 1 4 1 150 install_app --name "KMPlayer" --alt "VLC Media Player" --method flatpak --flatpak "org.videolan.VLC" --apt "vlc" --dnf "vlc" --zypper "vlc" --pacman "vlc" --dlpage "https://www.videolan.org/vlc/"
+  app_alt 2 4 1 150 install_app --name "KMPlayer" --alt "mpv" --method flatpak --flatpak "io.mpv.Mpv" --apt "mpv" --dnf "mpv" --zypper "mpv" --pacman "mpv" --dlpage "https://mpv.io/installation/"
   app_alt 3 4 1 120 install_app --name "KMPlayer" --alt "SMPlayer" --method native --apt "smplayer" --dnf "smplayer" --zypper "smplayer" --pacman "smplayer" --dlpage "https://www.smplayer.info/"
   app_alt 4 4 1 110 install_app --name "KMPlayer" --alt "Haruna Video Player" --method flatpak --flatpak "org.kde.haruna" --dlpage "https://haruna.kde.org/"
   wine_app "KMPlayer" "" "" ""
@@ -1872,11 +1922,11 @@ repo_setup_microsoft_edge() {
   app_alt 1 1 1 85 install_app --name "Longman Dictionary of Contemporary English 5th Edition" --alt "GoldenDict / GoldenDict-ng" --method native --apt "goldendict" --dnf "goldendict" --zypper "goldendict" --pacman "goldendict" --dlpage "https://github.com/xiaoyifang/goldendict-ng/releases"
   wine_app "Longman Dictionary of Contemporary English 5th Edition" "" "" ""
   app_alt 1 1 1 100 install_app --name "Microsoft .NET SDK" --alt ".NET SDK (Linux)" --winver "40.11.22621" --method snap --snap "dotnet-sdk --classic" --note "or use your distro's dotnet-sdk / Microsoft repo"
-  app_alt 1 5 1 85 install_app --name "Microsoft 365 / Office" --alt "OnlyOffice" --method flatpak --flatpak "org.onlyoffice.desktopeditors" --dlpage "https://www.onlyoffice.com/download-desktop.aspx"
-  app_alt 2 5 0 85 install_app --name "Microsoft 365 / Office" --alt "Office for the Web" --method webapp --webapp "https://office.com" --dlpage "https://office.com" --note "auto-guessed install from the alternative name (unverified)"
+  app_alt 1 5 0 85 install_app --name "Microsoft 365 / Office" --alt "Office for the Web" --method webapp --webapp "https://office.com" --dlpage "https://office.com" --note "auto-guessed install from the alternative name (unverified)"
+  app_alt 2 5 1 85 install_app --name "Microsoft 365 / Office" --alt "OnlyOffice" --method flatpak --flatpak "org.onlyoffice.desktopeditors" --dlpage "https://www.onlyoffice.com/download-desktop.aspx"
   app_alt 3 5 1 82 install_app --name "Microsoft 365 / Office" --alt "WPS Office" --method flatpak --flatpak "com.wps.Office" --dlpage "https://www.wps.com/download/"
-  app_alt 4 5 1 80 install_app --name "Microsoft 365 / Office" --alt "SoftMaker FreeOffice" --method native --dlpage "https://www.freeoffice.com/en/download" --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 5 5 1 80 install_app --name "Microsoft 365 / Office" --alt "LibreOffice" --method flatpak --flatpak "org.libreoffice.LibreOffice" --apt "libreoffice" --dnf "libreoffice" --zypper "libreoffice" --pacman "libreoffice" --dlpage "https://www.libreoffice.org/download/download-libreoffice/"
+  app_alt 4 5 1 80 install_app --name "Microsoft 365 / Office" --alt "LibreOffice" --method flatpak --flatpak "org.libreoffice.LibreOffice" --apt "libreoffice" --dnf "libreoffice" --zypper "libreoffice" --pacman "libreoffice" --dlpage "https://www.libreoffice.org/download/download-libreoffice/"
+  app_alt 5 5 1 80 install_app --name "Microsoft 365 / Office" --alt "SoftMaker FreeOffice" --method native --dlpage "https://www.freeoffice.com/en/download" --note "auto-guessed install from the alternative name (unverified)"
   wine_app "Microsoft 365 / Office" "" "" ""
   app_alt 1 1 1 98 install_app --name "Microsoft Edge" --alt "Microsoft Edge (Linux)" --method native --flatpak "com.microsoft.Edge" --apt "microsoft-edge-stable" --dnf "microsoft-edge-stable" --dlpage "https://www.microsoft.com/en-us/edge/download"
   app_alt 1 4 1 90 install_app --name "Microsoft OneDrive" --alt "Insync" --method native --dlpage "https://www.insynchq.com/downloads" --note "auto-guessed install from the alternative name (unverified)" --paid
@@ -1895,8 +1945,8 @@ repo_setup_microsoft_edge() {
   wine_app "Miniconda3" "" "" ""
   app_alt 1 5 1 90 install_app --name "MobaXterm" --alt "Built-in terminal + OpenSSH" --method native --apt "openssh-client" --dnf "openssh-clients" --zypper "openssh" --pacman "openssh" --dlpage "https://www.openssh.com/"
   app_alt 2 5 1 88 install_app --name "MobaXterm" --alt "Tabby" --method native --dlpage "https://tabby.sh/" --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 3 5 1 85 install_app --name "MobaXterm" --alt "WindTerm" --method native --dlpage "https://github.com/kingToolfish/WindTerm" --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 4 5 1 85 install_app --name "MobaXterm" --alt "Remmina" --method flatpak --flatpak "org.remmina.Remmina" --apt "remmina" --dnf "remmina" --dlpage "https://remmina.org/"
+  app_alt 3 5 1 85 install_app --name "MobaXterm" --alt "Remmina" --method flatpak --flatpak "org.remmina.Remmina" --apt "remmina" --dnf "remmina" --dlpage "https://remmina.org/"
+  app_alt 4 5 1 85 install_app --name "MobaXterm" --alt "WindTerm" --method native --dlpage "https://github.com/kingToolfish/WindTerm" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 5 5 1 80 install_app --name "MobaXterm" --alt "Termius" --method native --dlpage "https://termius.com/linux" --note "auto-guessed install from the alternative name (unverified)"
   wine_app "MobaXterm" "" "" ""
   app_alt 1 3 1 105 install_app --name "Mozilla Firefox" --alt "Firefox Developer Edition" --method native --dlpage "https://www.mozilla.org/firefox/developer/" --note "auto-guessed install from the alternative name (unverified)"
@@ -1905,13 +1955,13 @@ repo_setup_microsoft_edge() {
   app_alt 1 1 1 100 install_app --name "ninja" --alt "ninja-build (Linux)" --winver "1.13.2" --method native --apt "ninja-build" --dnf "ninja-build" --zypper "ninja" --pacman "ninja" --dlpage "https://ninja-build.org/"
   app_alt 1 5 1 105 install_app --name "Node.js" --alt "nvm (Node Version Manager)" --method native --dlpage "https://github.com/nvm-sh/nvm" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 2 5 1 105 install_app --name "Node.js" --alt "fnm (Fast Node Manager)" --method native --dlpage "https://github.com/Schniz/fnm" --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 3 5 1 100 install_app --name "Node.js" --alt "Volta" --method native --dlpage "https://volta.sh/" --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 4 5 1 100 install_app --name "Node.js" --alt "Node.js (Linux)" --method native --apt "nodejs" --dnf "nodejs" --zypper "nodejs npm" --pacman "nodejs npm" --dlpage "https://nodejs.org/en/download/package-manager"
+  app_alt 3 5 1 100 install_app --name "Node.js" --alt "Node.js (Linux)" --method native --apt "nodejs" --dnf "nodejs" --zypper "nodejs npm" --pacman "nodejs npm" --dlpage "https://nodejs.org/en/download/package-manager"
+  app_alt 4 5 1 100 install_app --name "Node.js" --alt "Volta" --method native --dlpage "https://volta.sh/" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 5 5 1 90 install_app --name "Node.js" --alt "Bun" --method native --dlpage "https://bun.sh/" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 1 1 1 100 install_app --name "NordVPN" --alt "NordVPN for Linux" --method manual --dlpage "https://nordvpn.com/download/linux/" --note "Install via NordVPN's official script: sh <(curl -sSf https://downloads.nordcdn.com/apps/linux/install.sh)  -- or add their apt/dnf repo. Requires a NordVPN subscription to log in." --paid
   wine_app "NordVPN" "" "" ""
-  app_alt 1 4 1 90 install_app --name "Notepad++" --alt "Kate" --method flatpak --flatpak "org.kde.kate" --apt "kate" --dnf "kate" --zypper "kate" --pacman "kate" --dlpage "https://kate-editor.org/get-it/"
-  app_alt 2 4 1 90 install_app --name "Notepad++" --alt "Notepadqq" --method native --apt "notepadqq" --dlpage "https://notepadqq.com/" --note "alt: install 'code' or a GNOME/KDE editor"
+  app_alt 1 4 1 90 install_app --name "Notepad++" --alt "Notepadqq" --method native --apt "notepadqq" --dlpage "https://notepadqq.com/" --note "alt: install 'code' or a GNOME/KDE editor"
+  app_alt 2 4 1 90 install_app --name "Notepad++" --alt "Kate" --method flatpak --flatpak "org.kde.kate" --apt "kate" --dnf "kate" --zypper "kate" --pacman "kate" --dlpage "https://kate-editor.org/get-it/"
   app_alt 3 4 1 85 install_app --name "Notepad++" --alt "Geany" --method flatpak --flatpak "org.geany.Geany" --apt "geany" --dnf "geany" --zypper "geany" --pacman "geany" --dlpage "https://www.geany.org/download/releases/"
   app_alt 4 4 1 70 install_app --name "Notepad++" --alt "Gedit / GNOME Text Editor" --method native --note "auto-guessed install from the alternative name (unverified)"
   wine_app "Notepad++" "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.9.6.4/npp.8.9.6.4.Installer.x64.exe" "" ""
@@ -1929,24 +1979,24 @@ repo_setup_microsoft_edge() {
   app_alt 3 4 1 88 install_app --name "PowerShell" --alt "Fish" --method native --dlpage "https://fishshell.com/" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 4 4 1 85 install_app --name "PowerShell" --alt "Bash" --method native --dlpage "https://www.gnu.org/software/bash/" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 1 9 1 100 install_app --name "PowerToys" --alt "gpick / KColorChooser (Color Picker)" --method native --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 2 9 1 95 install_app --name "PowerToys" --alt "nautilus-image-converter + ImageMagick (Image Resizer)" --method native --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 3 9 1 95 install_app --name "PowerToys" --alt "Ulauncher (Run replacement)" --method native --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 4 9 1 90 install_app --name "PowerToys" --alt "GNOME Shortcuts overlay (Shortcut Guide)" --method native --note "auto-guessed install from the alternative name (unverified)"
+  app_alt 2 9 1 95 install_app --name "PowerToys" --alt "Ulauncher (Run replacement)" --method native --note "auto-guessed install from the alternative name (unverified)"
+  app_alt 3 9 1 95 install_app --name "PowerToys" --alt "nautilus-image-converter + ImageMagick (Image Resizer)" --method native --note "auto-guessed install from the alternative name (unverified)"
+  app_alt 4 9 1 90 install_app --name "PowerToys" --alt "Frog (Text Extractor replacement)" --method flatpak --flatpak "com.github.tenderowl.frog" --dlpage "https://flathub.org/apps/search?q=frog-(text-extractor-replacement)"
   app_alt 5 9 1 90 install_app --name "PowerToys" --alt "Barrier / Input Leap (Mouse Without Borders)" --method native --dlpage "https://flathub.org/apps/search?q=barrier-/-input-leap-(mouse-without-borders)" --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 6 9 1 90 install_app --name "PowerToys" --alt "Frog (Text Extractor replacement)" --method flatpak --flatpak "com.github.tenderowl.frog" --dlpage "https://flathub.org/apps/search?q=frog-(text-extractor-replacement)"
-  app_alt 7 9 1 85 install_app --name "PowerToys" --alt "lsof / fuser (File Locksmith)" --method native --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 8 9 1 85 install_app --name "PowerToys" --alt "ibus-typing-booster (Keyboard Manager / Accents)" --method native --note "auto-guessed install from the alternative name (unverified)"
+  app_alt 6 9 1 90 install_app --name "PowerToys" --alt "GNOME Shortcuts overlay (Shortcut Guide)" --method native --note "auto-guessed install from the alternative name (unverified)"
+  app_alt 7 9 1 85 install_app --name "PowerToys" --alt "ibus-typing-booster (Keyboard Manager / Accents)" --method native --note "auto-guessed install from the alternative name (unverified)"
+  app_alt 8 9 1 85 install_app --name "PowerToys" --alt "lsof / fuser (File Locksmith)" --method native --note "auto-guessed install from the alternative name (unverified)"
   app_alt 9 9 1 80 install_app --name "PowerToys" --alt "KMag / GNOME Magnifier (ZoomIt)" --method native --note "auto-guessed install from the alternative name (unverified)"
   wine_app "PowerToys" "" "" ""
   app_alt 1 3 1 75 install_app --name "Proxifier" --alt "proxychains-ng" --launch "Command-line tool (no menu entry): run 'proxychains4 <program>' in a terminal." --method native --apt "proxychains4" --dnf "proxychains-ng" --zypper "proxychains-ng" --pacman "proxychains-ng" --dlpage "https://github.com/rofl0r/proxychains-ng"
   app_alt 2 3 1 70 install_app --name "Proxifier" --alt "redsocks" --method native --dlpage "https://github.com/darkk/redsocks" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 3 3 1 65 install_app --name "Proxifier" --alt "torsocks" --method native --dlpage "https://gitweb.torproject.org/torsocks.git" --note "auto-guessed install from the alternative name (unverified)"
   wine_app "Proxifier" "" "" ""
-  app_alt 1 3 1 100 install_app --name "PuTTY" --alt "PuTTY (Linux)" --method native --dlpage "https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html" --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 2 3 1 100 install_app --name "PuTTY" --alt "OpenSSH (native)" --method native --apt "openssh-client" --dnf "openssh-clients" --zypper "openssh" --pacman "openssh" --dlpage "https://www.openssh.com/" --note "GUI alt: install 'putty'"
+  app_alt 1 3 1 100 install_app --name "PuTTY" --alt "OpenSSH (native)" --method native --apt "openssh-client" --dnf "openssh-clients" --zypper "openssh" --pacman "openssh" --dlpage "https://www.openssh.com/" --note "GUI alt: install 'putty'"
+  app_alt 2 3 1 100 install_app --name "PuTTY" --alt "PuTTY (Linux)" --method native --dlpage "https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 3 3 1 85 install_app --name "PuTTY" --alt "Terminator / Tilix" --method native --dlpage "https://gnome-terminator.org/" --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 1 3 1 105 install_app --name "Python" --alt "pyenv" --method native --dlpage "https://github.com/pyenv/pyenv" --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 2 3 1 105 install_app --name "Python" --alt "python3 (system)" --method native --apt "python3 python3-pip" --dnf "python3 python3-pip" --zypper "python3 python3-pip" --pacman "python python-pip" --dlpage "https://www.python.org/downloads/"
+  app_alt 1 3 1 105 install_app --name "Python" --alt "python3 (system)" --winver "3.14.5150.0" --method native --apt "python3 python3-pip" --dnf "python3 python3-pip" --zypper "python3 python3-pip" --pacman "python python-pip" --dlpage "https://www.python.org/downloads/"
+  app_alt 2 3 1 105 install_app --name "Python" --alt "pyenv" --method native --dlpage "https://github.com/pyenv/pyenv" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 3 3 1 100 install_app --name "Python" --alt "Anaconda / Miniconda" --method native --dlpage "https://www.anaconda.com/download" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 1 4 1 105 install_app --name "Nearby Share / Quick Share" --alt "LocalSend" --method flatpak --flatpak "org.localsend.localsend_app" --dlpage "https://flathub.org/apps/search?q=localsend"
   app_alt 2 4 1 100 install_app --name "Nearby Share / Quick Share" --alt "RQuickShare (Packet)" --method native --dlpage "https://flathub.org/apps/search?q=rquickshare-(packet)" --note "auto-guessed install from the alternative name (unverified)"
@@ -1969,8 +2019,8 @@ repo_setup_microsoft_edge() {
   app_alt 3 3 1 90 install_app --name "Snoopy" --alt "Terminator" --method native --dlpage "https://gnome-terminator.org/" --note "auto-guessed install from the alternative name (unverified)"
   wine_app "Snoopy" "" "" ""
   app_alt 1 4 1 85 install_app --name "SQL Server Management Studio (SSMS)" --alt "Azure Data Studio" --method native --dlpage "https://docs.microsoft.com/en-us/sql/azure-data-studio/download-azure-data-studio" --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 2 4 1 80 install_app --name "SQL Server Management Studio (SSMS)" --alt "VS Code + mssql extension" --method native --dlpage "https://code.visualstudio.com/" --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 3 4 1 80 install_app --name "SQL Server Management Studio (SSMS)" --alt "DBeaver" --method flatpak --flatpak "io.dbeaver.DBeaverCommunity" --dlpage "https://flathub.org/apps/search?q=dbeaver"
+  app_alt 2 4 1 80 install_app --name "SQL Server Management Studio (SSMS)" --alt "DBeaver" --method flatpak --flatpak "io.dbeaver.DBeaverCommunity" --dlpage "https://flathub.org/apps/search?q=dbeaver"
+  app_alt 3 4 1 80 install_app --name "SQL Server Management Studio (SSMS)" --alt "VS Code + mssql extension" --method native --dlpage "https://code.visualstudio.com/" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 4 4 1 65 install_app --name "SQL Server Management Studio (SSMS)" --alt "sqlcmd + mssql-cli" --method native --dlpage "https://docs.microsoft.com/en-us/sql/tools/sqlcmd-utility" --note "auto-guessed install from the alternative name (unverified)"
   wine_app "SQL Server Management Studio (SSMS)" "" "" ""
   app_alt 1 1 1 100 install_app --name "Strawberry Perl" --alt "Perl (native)" --winver "5.42.1" --method native --apt "perl" --dnf "perl" --zypper "perl" --pacman "perl"
@@ -1989,12 +2039,12 @@ repo_setup_microsoft_edge() {
   app_alt 1 3 1 100 install_app --name "Alarms & Clock" --alt "GNOME Clocks" --method flatpak --flatpak "org.gnome.clocks" --apt "gnome-clocks" --dnf "gnome-clocks" --pacman "gnome-clocks" --dlpage "https://apps.gnome.org/Clocks/"
   app_alt 2 3 1 95 install_app --name "Alarms & Clock" --alt "KClock" --method native --note "auto-guessed install from the alternative name (unverified)"
   app_alt 3 3 1 75 install_app --name "Alarms & Clock" --alt "Clock (GNOME Shell Extension)" --method native --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 1 4 0 100 install_app --name "Bing Search" --alt "Google Search" --method webapp --webapp "https://google.com" --dlpage "https://google.com" --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 2 4 0 100 install_app --name "Bing Search" --alt "DuckDuckGo" --method webapp --webapp "https://duckduckgo.com" --dlpage "https://duckduckgo.com" --note "auto-guessed install from the alternative name (unverified)"
+  app_alt 1 4 0 100 install_app --name "Bing Search" --alt "DuckDuckGo" --method webapp --webapp "https://duckduckgo.com" --dlpage "https://duckduckgo.com" --note "auto-guessed install from the alternative name (unverified)"
+  app_alt 2 4 0 100 install_app --name "Bing Search" --alt "Google Search" --method webapp --webapp "https://google.com" --dlpage "https://google.com" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 3 4 0 95 install_app --name "Bing Search" --alt "Bing (Web)" --method webapp --webapp "https://bing.com" --dlpage "https://bing.com" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 4 4 0 90 install_app --name "Bing Search" --alt "SearXNG" --method native --dlpage "https://docs.searxng.org/" --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 1 5 1 90 install_app --name "Microsoft To Do" --alt "Super Productivity" --method native --dlpage "https://super-productivity.com/" --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 2 5 0 90 install_app --name "Microsoft To Do" --alt "Microsoft To Do (Web)" --method webapp --webapp "https://to-do.microsoft.com" --dlpage "https://to-do.microsoft.com" --note "auto-guessed install from the alternative name (unverified)"
+  app_alt 1 5 0 90 install_app --name "Microsoft To Do" --alt "Microsoft To Do (Web)" --method webapp --webapp "https://to-do.microsoft.com" --dlpage "https://to-do.microsoft.com" --note "auto-guessed install from the alternative name (unverified)"
+  app_alt 2 5 1 90 install_app --name "Microsoft To Do" --alt "Super Productivity" --method native --dlpage "https://super-productivity.com/" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 3 5 1 85 install_app --name "Microsoft To Do" --alt "Planify" --method native --dlpage "https://flathub.org/apps/io.github.alainm23.planify" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 4 5 0 75 install_app --name "Microsoft To Do" --alt "Tasks.org (Sync)" --method webapp --webapp "See notes for URL" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 5 5 1 70 install_app --name "Microsoft To Do" --alt "GNOME To Do / Endeavour" --method native --dlpage "https://flathub.org/apps/search?q=gnome-to-do-/-endeavour" --note "auto-guessed install from the alternative name (unverified)"
@@ -2008,8 +2058,8 @@ repo_setup_microsoft_edge() {
   app_alt 1 5 1 200 install_app --name "Paint" --alt "GIMP" --method flatpak --flatpak "org.gimp.GIMP" --apt "gimp" --dnf "gimp" --zypper "gimp" --pacman "gimp" --dlpage "https://www.gimp.org/downloads/"
   app_alt 2 5 1 200 install_app --name "Paint" --alt "Krita" --method flatpak --flatpak "org.kde.krita" --apt "krita" --dnf "krita" --zypper "krita" --pacman "krita" --dlpage "https://krita.org/en/download/"
   app_alt 3 5 1 130 install_app --name "Paint" --alt "Pinta" --method flatpak --flatpak "com.github.PintaProject.Pinta" --apt "pinta" --dnf "pinta" --dlpage "https://www.pinta-project.com/"
-  app_alt 4 5 1 110 install_app --name "Paint" --alt "KolourPaint" --method native --dlpage "https://apps.kde.org/kolourpaint/" --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 5 5 1 110 install_app --name "Paint" --alt "Drawing" --method native --dlpage "https://flathub.org/apps/search?q=drawing" --note "auto-guessed install from the alternative name (unverified)"
+  app_alt 4 5 1 110 install_app --name "Paint" --alt "Drawing" --method native --dlpage "https://flathub.org/apps/search?q=drawing" --note "auto-guessed install from the alternative name (unverified)"
+  app_alt 5 5 1 110 install_app --name "Paint" --alt "KolourPaint" --method native --dlpage "https://apps.kde.org/kolourpaint/" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 1 5 1 150 install_app --name "Photos" --alt "digiKam" --method flatpak --flatpak "org.kde.digikam" --apt "digikam" --dnf "digikam" --zypper "digikam" --pacman "digikam" --dlpage "https://www.digikam.org/download/"
   app_alt 2 5 1 105 install_app --name "Photos" --alt "gThumb" --method flatpak --flatpak "org.gnome.gThumb" --apt "gthumb" --dnf "gthumb" --dlpage "https://wiki.gnome.org/Apps/Gthumb"
   app_alt 3 5 1 100 install_app --name "Photos" --alt "Shotwell" --method flatpak --flatpak "org.gnome.Shotwell" --apt "shotwell" --dnf "shotwell" --pacman "shotwell" --dlpage "https://wiki.gnome.org/Apps/Shotwell"
@@ -2020,8 +2070,8 @@ repo_setup_microsoft_edge() {
   app_alt 3 4 1 65 install_app --name "Power Automate" --alt "cron + systemd timers" --method native --note "auto-guessed install from the alternative name (unverified)"
   app_alt 4 4 1 60 install_app --name "Power Automate" --alt "AutoKey" --method native --dlpage "https://github.com/autokey/autokey" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 1 4 1 90 install_app --name "Psiphon Conduit" --alt "Proton VPN" --method manual --url-x86 "https://protonvpn.com/support/official-linux-client/" --dlpage "https://protonvpn.com/support/official-linux-vpn/" --note "Proton VPN app via the official apt/dnf repo"
-  app_alt 2 4 1 85 install_app --name "Psiphon Conduit" --alt "Mullvad VPN" --method native --dlpage "https://mullvad.net/en/download/vpn/linux" --note "auto-guessed install from the alternative name (unverified)" --paid
-  app_alt 3 4 1 85 install_app --name "Psiphon Conduit" --alt "Tor Browser" --method flatpak --flatpak "org.torproject.torbrowser-launcher" --apt "torbrowser-launcher" --dlpage "https://www.torproject.org/download/"
+  app_alt 2 4 1 85 install_app --name "Psiphon Conduit" --alt "Tor Browser" --method flatpak --flatpak "org.torproject.torbrowser-launcher" --apt "torbrowser-launcher" --dlpage "https://www.torproject.org/download/"
+  app_alt 3 4 1 85 install_app --name "Psiphon Conduit" --alt "Mullvad VPN" --method native --dlpage "https://mullvad.net/en/download/vpn/linux" --note "auto-guessed install from the alternative name (unverified)" --paid
   app_alt 4 4 1 80 install_app --name "Psiphon Conduit" --alt "Psiphon (Linux CLI)" --method native --dlpage "https://github.com/Psiphon-Inc/psiphon-tunnel-core" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 1 2 0 95 install_app --name "Samsung Account" --alt "Samsung Account (Web)" --method webapp --webapp "https://account.samsung.com" --dlpage "https://account.samsung.com" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 2 2 0 85 install_app --name "Samsung Account" --alt "SmartThings (Web)" --method webapp --webapp "https://account.smartthings.com" --dlpage "https://account.smartthings.com" --note "auto-guessed install from the alternative name (unverified)"
@@ -2040,8 +2090,8 @@ repo_setup_microsoft_edge() {
   app_alt 2 3 1 85 install_app --name "WhatsApp Desktop" --alt "ZapZap" --method flatpak --flatpak "com.rtosta.zapzap" --dlpage "https://flathub.org/apps/com.rtosta.zapzap"
   app_alt 3 3 1 80 install_app --name "WhatsApp Desktop" --alt "Whatsie" --method native --dlpage "https://snapcraft.io/whatsie" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 1 4 1 130 install_app --name "Windows Calculator" --alt "Qalculate! (GTK/Qt)" --method native --dlpage "https://qalculate.github.io/downloads.html" --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 2 4 1 100 install_app --name "Windows Calculator" --alt "KCalc" --method flatpak --flatpak "org.kde.kcalc" --apt "kcalc" --dnf "kcalc" --zypper "kcalc" --pacman "kcalc" --dlpage "https://apps.kde.org/kcalc/"
-  app_alt 3 4 1 100 install_app --name "Windows Calculator" --alt "GNOME Calculator" --method flatpak --flatpak "org.gnome.Calculator" --apt "gnome-calculator" --dnf "gnome-calculator" --pacman "gnome-calculator" --dlpage "https://apps.gnome.org/Calculator/"
+  app_alt 2 4 1 100 install_app --name "Windows Calculator" --alt "GNOME Calculator" --method flatpak --flatpak "org.gnome.Calculator" --apt "gnome-calculator" --dnf "gnome-calculator" --pacman "gnome-calculator" --dlpage "https://apps.gnome.org/Calculator/"
+  app_alt 3 4 1 100 install_app --name "Windows Calculator" --alt "KCalc" --method flatpak --flatpak "org.kde.kcalc" --apt "kcalc" --dnf "kcalc" --zypper "kcalc" --pacman "kcalc" --dlpage "https://apps.kde.org/kcalc/"
   app_alt 4 4 1 95 install_app --name "Windows Calculator" --alt "SpeedCrunch" --method flatpak --flatpak "org.speedcrunch.SpeedCrunch" --apt "speedcrunch" --dnf "speedcrunch" --dlpage "https://heldercorreia.bitbucket.io/speedcrunch/"
   app_alt 1 4 1 95 install_app --name "Windows Camera" --alt "Cheese" --method flatpak --flatpak "org.gnome.Cheese" --apt "cheese" --dnf "cheese" --pacman "cheese" --dlpage "https://apps.gnome.org/Cheese/"
   app_alt 2 4 1 90 install_app --name "Windows Camera" --alt "GNOME Snapshot" --method native --dlpage "https://apps.gnome.org/Snapshot/" --note "auto-guessed install from the alternative name (unverified)"
@@ -2057,15 +2107,15 @@ repo_setup_microsoft_edge() {
   app_alt 1 6 1 115 install_app --name "Windows Terminal" --alt "Ghostty" --method native --dlpage "https://ghostty.org/" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 2 6 1 110 install_app --name "Windows Terminal" --alt "Konsole" --method flatpak --flatpak "org.kde.konsole" --apt "konsole" --dnf "konsole" --zypper "konsole" --pacman "konsole" --dlpage "https://konsole.kde.org/"
   app_alt 3 6 1 105 install_app --name "Windows Terminal" --alt "Tabby" --method native --dlpage "https://tabby.sh/" --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 4 6 1 100 install_app --name "Windows Terminal" --alt "Alacritty / Kitty / WezTerm" --method native --dlpage "https://alacritty.org/" --note "auto-guessed install from the alternative name (unverified)"
-  app_alt 5 6 1 100 install_app --name "Windows Terminal" --alt "GNOME Console / GNOME Terminal" --method native --apt "gnome-terminal" --dnf "gnome-terminal" --pacman "gnome-terminal" --dlpage "https://apps.gnome.org/Console/" --note "or 'kgx' (GNOME Console)"
+  app_alt 4 6 1 100 install_app --name "Windows Terminal" --alt "GNOME Console / GNOME Terminal" --method native --apt "gnome-terminal" --dnf "gnome-terminal" --pacman "gnome-terminal" --dlpage "https://apps.gnome.org/Console/" --note "or 'kgx' (GNOME Console)"
+  app_alt 5 6 1 100 install_app --name "Windows Terminal" --alt "Alacritty / Kitty / WezTerm" --method native --dlpage "https://alacritty.org/" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 6 6 1 95 install_app --name "Windows Terminal" --alt "Tilix / Terminator" --method native --dlpage "https://gnunn1.github.io/tilix-web/" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 1 6 1 120 install_app --name "Zune Music / Windows Media Player" --alt "VLC Media Player" --method flatpak --flatpak "org.videolan.VLC" --apt "vlc" --dnf "vlc" --zypper "vlc" --pacman "vlc" --dlpage "https://www.videolan.org/vlc/"
   app_alt 2 6 1 110 install_app --name "Zune Music / Windows Media Player" --alt "Rhythmbox" --method flatpak --flatpak "org.gnome.Rhythmbox" --apt "rhythmbox" --dnf "rhythmbox" --pacman "rhythmbox" --dlpage "https://wiki.gnome.org/Apps/Rhythmbox"
   app_alt 3 6 1 110 install_app --name "Zune Music / Windows Media Player" --alt "Lollypop" --method flatpak --flatpak "org.gnome.Lollypop" --dlpage "https://wiki.gnome.org/Apps/Lollypop"
   app_alt 4 6 1 105 install_app --name "Zune Music / Windows Media Player" --alt "Elisa" --method flatpak --flatpak "org.kde.elisa" --apt "elisa" --dnf "elisa" --dlpage "https://apps.kde.org/elisa/"
-  app_alt 5 6 1 100 install_app --name "Zune Music / Windows Media Player" --alt "Strawberry" --method flatpak --flatpak "org.strawberrymusicplayer.strawberry" --apt "strawberry" --dnf "strawberry" --dlpage "https://www.strawberrymusicplayer.org/"
-  app_alt 6 6 1 100 install_app --name "Zune Music / Windows Media Player" --alt "Audacious" --method flatpak --flatpak "org.atheme.audacious" --apt "audacious" --dnf "audacious" --zypper "audacious" --pacman "audacious" --dlpage "https://audacious-media-player.org/"
+  app_alt 5 6 1 100 install_app --name "Zune Music / Windows Media Player" --alt "Audacious" --method flatpak --flatpak "org.atheme.audacious" --apt "audacious" --dnf "audacious" --zypper "audacious" --pacman "audacious" --dlpage "https://audacious-media-player.org/"
+  app_alt 6 6 1 100 install_app --name "Zune Music / Windows Media Player" --alt "Strawberry" --method flatpak --flatpak "org.strawberrymusicplayer.strawberry" --apt "strawberry" --dnf "strawberry" --dlpage "https://www.strawberrymusicplayer.org/"
   app_alt 1 1 1 100 install_app --name "CopyQ" --alt "CopyQ" --method native --flatpak "com.github.hluk.copyq" --apt "copyq" --dnf "copyq" --zypper "copyq" --pacman "copyq" --arch "x86_64 aarch64" --dlpage "https://flathub.org/apps/com.github.hluk.copyq" --note "Binds Win+V (Super+V) as the shortcut to open CopyQ's clipboard history viewer (GNOME / GNOME-based desktops via gsettings)." --post "b=/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/copyq/; base=org.gnome.settings-daemon.plugins.media-keys; list=\$(gsettings get \$base custom-keybindings 2>/dev/null); case \"\$list\" in *copyq*) : ;; *) if [ -z \"\$list\" ] || [ \"\$list\" = \"@as []\" ] || [ \"\$list\" = \"[]\" ]; then list=\"['\$b']\"; else list=\"\${list%]}, '\$b']\"; fi; gsettings set \$base custom-keybindings \"\$list\" ;; esac; k=\"\$base.custom-keybinding:\$b\"; gsettings set \"\$k\" name 'CopyQ Clipboard History'; gsettings set \"\$k\" command 'copyq toggle'; gsettings set \"\$k\" binding '<Super>v'"
   install_app --name "Adobe Acrobat Pro" --alt "Stirling PDF (Docker) + PDF Arranger (APT)" --method manual --url-x86 "https://github.com/Stirling-Tools/Stirling-PDF" --note "Stirling PDF (Docker) + PDF Arranger (APT) | stirlingtools.com (Docker Hub); pdfarranger (APT)"
   install_app --name "Advanced IP Scanner" --alt "Angry IP Scanner (.deb)" --method manual --url-x86 "https://angryip.org/download/" --note "Angry IP Scanner (.deb) | angryip.org"

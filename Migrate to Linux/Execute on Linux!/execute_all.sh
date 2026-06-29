@@ -82,7 +82,40 @@ ask_xfer_password() {
   XFER_PWD_ASKED=1; export XFER_PWD_ASKED
   [ -r /dev/tty ] || { export MIGRATE_XFER_PWD; return 0; }
 
-  local RED=$'\033[1;31m' RST=$'\033[0m' ans tries=0 max=3
+  local RED=$'\033[1;31m' YEL=$'\033[1;33m' RST=$'\033[0m' ans tries=0 max=3
+  local archive="${MIGRATE_STAGE}.tar.enc"
+
+  # Nothing encrypted to restore -> don't bother asking for a password at all.
+  if [ ! -f "$archive" ]; then
+    warn "Warning! No encrypted sensitive-data archive was found - there is nothing to restore. Continuing ..."
+    export MIGRATE_XFER_PWD=""
+    return 0
+  fi
+
+  # openssl is required to decrypt that archive. If it is missing, offer to install
+  # it now; if the user declines (or the install fails), skip the password prompt.
+  if ! have_cmd openssl; then
+    printf '\n%s  OpenSSL is %srequired%s to restore your sensitive data. It is highly recommended that you install it now (y/n). %s' "$YEL" "$RED" "$YEL" "$RST" > /dev/tty
+    while :; do
+      read -r ans < /dev/tty || ans="n"
+      case "$ans" in
+        [Yy]*)
+          pm_refresh
+          if capture pm_install openssl && have_cmd openssl; then
+            ok "installed: openssl"
+          else
+            warn "Warning! OpenSSL could not be installed, thus your sensitive data cannot be restored. Continuing ..."
+            export MIGRATE_XFER_PWD=""; return 0
+          fi
+          break ;;
+        [Nn]*)
+          warn "Warning! OpenSSL is not installed, thus your sensitive data cannot be restored. Continuing ..."
+          export MIGRATE_XFER_PWD=""; return 0 ;;
+        *) printf '%s  Please answer y or n: %s' "$RED" "$RST" > /dev/tty ;;
+      esac
+    done
+  fi
+
   while :; do
     printf '  Enter the password used on Windows to encrypt your sensitive data (WiFi passwords, SSH keys, Contacts, wallpaper). Leave empty to skip restoring it: ' > /dev/tty
     read -r MIGRATE_XFER_PWD < /dev/tty || MIGRATE_XFER_PWD=""
@@ -98,24 +131,24 @@ ask_xfer_password() {
     # Verified WRONG. Up to $max total entries get a retry; after that, fall back to
     # the plain continue/exit choice with a note on how to still restore the data.
     if [ "$tries" -lt "$max" ]; then
-      printf '%s  Password entered incorrectly! (r)etry, (y) continue without restoring your sensitive data, or (n) exit? %s' "$RED" "$RST" > /dev/tty
+      printf '%s  Password entered incorrectly! (r)etry, (c)ontinue without restoring your sensitive data, or (e)xit? %s' "$RED" "$RST" > /dev/tty
       while :; do
-        read -r ans < /dev/tty || ans="n"
+        read -r ans < /dev/tty || ans="e"
         case "$ans" in
           [Rr]*) break ;;                        # back to the top: ask the password again
-          [Yy]*) MIGRATE_XFER_PWD=""; break 2 ;;  # continue without restoring
-          [Nn]*) exit 1 ;;                        # quit the script
-          *) printf '%s  Please answer r, y or n: %s' "$RED" "$RST" > /dev/tty ;;
+          [Cc]*) MIGRATE_XFER_PWD=""; break 2 ;;  # continue without restoring
+          [Ee]*) exit 1 ;;                        # quit the script
+          *) printf '%s  Please answer r, c or e: %s' "$RED" "$RST" > /dev/tty ;;
         esac
       done
     else
-      printf '%s  Password entered incorrectly! Continue without restoring your sensitive data? (y/n)  To restore it you must exit now (n) and re-run the script. %s' "$RED" "$RST" > /dev/tty
+      printf '%s  Password entered incorrectly! (c)ontinue without restoring your sensitive data, or (e)xit?  To restore it you must exit now (e) and re-run the script. %s' "$RED" "$RST" > /dev/tty
       while :; do
-        read -r ans < /dev/tty || ans="n"
+        read -r ans < /dev/tty || ans="e"
         case "$ans" in
-          [Yy]*) MIGRATE_XFER_PWD=""; break 2 ;;  # continue without restoring
-          [Nn]*) exit 1 ;;                        # quit the script
-          *) printf '%s  Please answer y or n: %s' "$RED" "$RST" > /dev/tty ;;
+          [Cc]*) MIGRATE_XFER_PWD=""; break 2 ;;  # continue without restoring
+          [Ee]*) exit 1 ;;                        # quit the script
+          *) printf '%s  Please answer c or e: %s' "$RED" "$RST" > /dev/tty ;;
         esac
       done
     fi
