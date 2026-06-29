@@ -1126,6 +1126,29 @@ wine_primary_lnk() {  # wine_primary_lnk PREFIX
     | head -n1
 }
 
+# Heuristic: did SOMETHING actually get installed into this prefix? Used to rescue installs
+# whose installer crashed on a final step (very common under wine -- a failed HTML/Gecko ad
+# pane, a "run now" step, etc.) AFTER the program's files were already written. Evidence:
+# a real Start-Menu shortcut, OR an application folder under Program Files / a per-user app
+# data folder beyond the empty wine defaults.
+wine_app_installed() {  # wine_app_installed PREFIX
+  local prefix="$1" d base
+  [ -d "$prefix/drive_c" ] || return 1
+  [ -n "$(wine_primary_lnk "$prefix" 2>/dev/null)" ] && return 0
+  while IFS= read -r d; do
+    [ -n "$d" ] || continue
+    base="$(basename "$d")"
+    case "$base" in
+      'Common Files'|'Internet Explorer'|'Windows Media Player'|'Windows NT'|'Windows Mail'|\
+      'Windows Photo Viewer'|'Windows Sidebar'|'Microsoft.NET'|'Uninstall Information'|'desktop.ini') continue ;;
+      *) return 0 ;;
+    esac
+  done <<EOF
+$(find "$prefix"/drive_c/Program\ Files "$prefix"/drive_c/Program\ Files\ \(x86\) -maxdepth 1 -mindepth 1 -type d 2>/dev/null)
+EOF
+  return 1
+}
+
 # Launch the app (non-blocking) so its window appears on the user's desktop.
 wine_launch() {  # wine_launch PREFIX LNK
   local prefix="$1" lnk="$2"
@@ -1376,6 +1399,16 @@ wine_app() {  # wine_app NAME [WINDOWS_INSTALLER_URL] [NOT_RECOMMENDED_REASON] [
       # registry are never touched again on later upgrades.
       wine_tune_appearance "$name" "$prefix"
     fi
+  elif wine_app_installed "$prefix"; then
+    # The installer exited non-zero, but the app's files / shortcut are present: under wine an
+    # installer commonly crashes on a FINAL step (a Gecko/HTML ad pane, a "run now" launch,
+    # etc.) AFTER it has already installed the program. Treat that as installed-but-UNVERIFIED
+    # rather than a hard failure -- still ledger it and create launchers -- so these apps are
+    # not lost. (No interactive appearance tuning here: the install is already questionable;
+    # the 2.5x DPI baseline set above still applies.)
+    ledger_add wine "$prefix"
+    wine_make_launchers "$name" "$prefix" "$slug"
+    mark_unverified "$name (wine - Windows emulator)" "the installer reported an error on exit, but the app appears installed -- launch it from the menu to confirm; if it misbehaves, reinstall with:  WINEPREFIX='$prefix' wine '$winpath'"
   else
     # Surface the most informative line from wine's output (skip fixme/diag noise),
     # then explain likely causes and the exact command to reproduce it interactively.

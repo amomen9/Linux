@@ -546,6 +546,14 @@ WINE (WINDOWS EMULATOR) - OPTIONAL, FOR NON-CROSS-PLATFORM APPS
     working app/data is lost). 64-bit apps keep win64 UNCHANGED. On an UPGRADE the existing
     prefix's arch is kept as-is (never switched/wiped). The c0000135 self-heal also falls
     back to win32 + rebuild + one retry, for installers whose arch could not be detected.
+  * CRASH-BUT-INSTALLED RESCUE: under wine an installer commonly exits non-zero by crashing
+    on a FINAL step (a missing Wine Gecko / HTML ad pane, a "run now" launch, etc.) AFTER it
+    has already written the program. So when wine_run_installer returns non-zero, the engine
+    checks wine_app_installed (a real Start-Menu .lnk, or an app folder under Program Files
+    beyond the wine defaults); if found it marks the app UNVERIFIED (still ledgered, with
+    launchers created) instead of FAILED, so these apps are not lost. A genuine failure (no
+    files written) still reports FAILED with the reason + reproduce command. (Apps that
+    install only into per-user AppData and create no shortcut are not auto-detected.)
   * Install Wine via the native package manager (add i386 first on apt). Then, per app:
       - If the manifest entry has a "windowsInstaller" URL (a trusted, official, DIRECT
         installer link; currently Notepad++ and WinRAR), DOWNLOAD it and run it under
