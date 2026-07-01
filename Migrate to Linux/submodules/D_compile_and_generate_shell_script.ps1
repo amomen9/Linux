@@ -700,6 +700,7 @@ $map = @{
     'apply_settings.sh.tmpl'             = @{ settings = $settingsData; wifi = $wifiData; firewall = $fwData; shortcuts = $scData; startup = $startData; services = $svcData; tasks = $taskData; hosts = $hostsData; printers = $prnData; netcfg = $netData }
     'install_device_drivers.sh.tmpl'     = @{ drivers = $driversData }
     'execute_all.sh.tmpl'                = @{ manual = $manualData; unmatched = $unmatchedData }
+    'restore_user_and_application_data.sh.tmpl' = @{}   # data-driven at runtime; only needs __COMMON__
 }
 
 foreach ($tmplName in $map.Keys) {
@@ -732,6 +733,21 @@ foreach ($tmplName in $map.Keys) {
     $outPath = Join-Path $destDir $outName
     [System.IO.File]::WriteAllText($outPath, $content, $enc)
     Write-Host "  generated: $label" -ForegroundColor Green
+}
+
+# ---------------------------------------------------------------------------
+# 4b. DATA-MIGRATION MANIFEST  (ship D_data_migration.json next to the restore
+#     script so it can classify the backup archive at runtime on Linux).
+# ---------------------------------------------------------------------------
+$dmSrc = Join-Path $documentsDir 'D_data_migration.json'
+if (Test-Path $dmSrc) {
+    $dmDst = Join-Path $subDir 'D_data_migration.json'
+    # Copy with LF + no BOM so jq on Linux reads it cleanly.
+    $dmRaw = (Get-Content -Raw -Path $dmSrc) -replace "`r`n", "`n" -replace "`r", "`n"
+    [System.IO.File]::WriteAllText($dmDst, $dmRaw, $enc)
+    Write-Host "  copied: submodules/D_data_migration.json" -ForegroundColor Green
+} else {
+    Write-Host "  WARNING: documents/D_data_migration.json not found - data restore will be inert." -ForegroundColor Yellow
 }
 
 # ---------------------------------------------------------------------------

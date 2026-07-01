@@ -92,6 +92,39 @@ function Read-HostTimed {
     }
 }
 
+# Visible (un-masked) y/n prompt with the same idle countdown bar. Returns $true/$false.
+# A timeout or non-interactive console returns the default. Reuses the timer visuals above.
+function Read-YNTimed {
+    param([string]$Prompt, [int]$TimeoutSec = 15, [bool]$Default = $true)
+    try { $null = [Console]::KeyAvailable } catch { return $Default }
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    $lastShown = -1
+    Write-Host ''
+    $timerRow = [Console]::CursorTop - 1
+    Write-Host -NoNewline $Prompt
+    while ($true) {
+        $remaining = [int][math]::Ceiling((($deadline) - (Get-Date)).TotalSeconds)
+        if ($remaining -lt 0) { $remaining = 0 }
+        if ($remaining -ne $lastShown) { & $Script:ShowTimer $remaining $timerRow $TimeoutSec; $lastShown = $remaining }
+        if ($remaining -le 0) {
+            & $Script:ClearTimer $timerRow; Write-Host ''
+            Write-Host ('  (no input within the time limit -> default: ' + $(if ($Default) {'yes'} else {'no'}) + ')')
+            return $Default
+        }
+        if ([Console]::KeyAvailable) {
+            $k = [Console]::ReadKey($true)
+            $deadline = (Get-Date).AddSeconds($TimeoutSec)
+            switch ($k.KeyChar) {
+                { $_ -eq 'y' -or $_ -eq 'Y' } { & $Script:ClearTimer $timerRow; Write-Host 'y'; return $true }
+                { $_ -eq 'n' -or $_ -eq 'N' } { & $Script:ClearTimer $timerRow; Write-Host 'n'; return $false }
+            }
+            if ($k.Key -eq 'Enter') { & $Script:ClearTimer $timerRow; Write-Host ''; return $Default }
+        } else {
+            Start-Sleep -Milliseconds 100
+        }
+    }
+}
+
 # Prompt for the transfer password: HIDDEN entry + a "Confirm password:" re-entry,
 # with the idle timeout/countdown. Prints the right Warning! for each skip reason and
 # returns '' when skipped (empty / timeout / non-interactive).

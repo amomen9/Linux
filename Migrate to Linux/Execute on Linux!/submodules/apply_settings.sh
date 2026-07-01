@@ -1899,24 +1899,24 @@ CFG_default_browser="edge"
 WIFI_DATA="$(cat <<'__WIFI_EOF__'
 eduroam	wpa		none
 somenet	open		none
-V.momen	wpa	U2FsdGVkX1+rrFp7XBz7+AgVpb7PFqPFX+/NWvetinE=	enc
+V.momen	wpa	U2FsdGVkX19l7BibsMv+UXge2k9W0llXm4ItbgJy1G0=	enc
 Tbilisi Loves You	open		none
 Tbilisi Airport Free	open		none
 Simorgh-WiFi	open		none
-Shatel	wpa	U2FsdGVkX1/BPx8s/3vDXYAZ57UYKmU82W6qpdLhyvI=	enc
-SHAW-48EE	wpa	U2FsdGVkX1/VTfHSMbRuKYDOUDAPMPX0A12qlNjozTc=	enc
-Redmi Note 10 Pro Max	wpa	U2FsdGVkX1+Cc3ugcF9ePEZs4ouR09OpIMfKYMLESwQ=	enc
-Parsway	wpa	U2FsdGVkX19TZwERHcNv/HobITTR6/hk8hQO4kXMNyE=	enc
-NZT9930134C	wpa	U2FsdGVkX19TRALBnVZjnT5H34SBcVuRQ4JE4FkXsjg=	enc
+Shatel	wpa	U2FsdGVkX19cVBYR73Hc/d4AjtGA8K32rWffGCUDLHY=	enc
+SHAW-48EE	wpa	U2FsdGVkX1+RK2wUcXwVAd70ITIdaEWOLwf489xx/q0=	enc
+Redmi Note 10 Pro Max	wpa	U2FsdGVkX18ngCAzYDZ36CKhYSlAos851hNFosVmnNY=	enc
+Parsway	wpa	U2FsdGVkX18V40s5oCRTClKz6AgBVQB3qIxp9xCg2YM=	enc
+NZT9930134C	wpa	U2FsdGVkX19EXfb3ng6vQXRWRn9Sb/D/QLXgjKtTrB0=	enc
 Mofid-GoHyper!	open		none
-Jobvision-WiFi	wpa	U2FsdGVkX1+Nf3/YFKEmPESUxT+TatqnJijrbnmt6Co=	enc
-JobVision_DLink	wpa	U2FsdGVkX19UO7cci1eh0uB/uZVIVS5UABZ4NwOarRE=	enc
-JobVision-3rd	wpa	U2FsdGVkX1+78XruqRXobmzXlGkjWwegtL3pldaNxxw=	enc
-JobVision	wpa	U2FsdGVkX1+zLQihXqJtmQdhNcO3G8AF7iJQ5dXem24=	enc
-Galaxy A51	wpa	U2FsdGVkX19ZD8Brb7TqJdmOLoPSDPYr10XsBMxxe2M=	enc
-Fatemeh's Galaxy A71	wpa	U2FsdGVkX1+fiqoBKMsJxW8obfWK8zyFpq2kTnG6BIc=	enc
-AndroidAPA50	wpa	U2FsdGVkX1/zRLc/+VgaRlnhP7O8xtwpuKHnaVz6psM=	enc
-DivorceHousing	wpa	U2FsdGVkX18VB4EO+9rlndD/90Hjc7Sq/pPYBfSjApD8NxsNyH8EJLgzP24F74ZG	enc
+Jobvision-WiFi	wpa	U2FsdGVkX19Gp4iHf5aR7XaXJf8+OKbAxR5vajKWN1E=	enc
+JobVision_DLink	wpa	U2FsdGVkX18VXaTyhkZVInjAdyVt01YpLva9y7OvDTo=	enc
+JobVision-3rd	wpa	U2FsdGVkX18UqKuhZ1L1wBlibT7VLobeHzyz8tYkmMY=	enc
+JobVision	wpa	U2FsdGVkX1+xRGZThZv6TbZ7opY3po3MgX9AA0z3XK8=	enc
+Galaxy A51	wpa	U2FsdGVkX19zqEtgm9Y43Fz8vOqY7RoA/SE22WTDTkA=	enc
+Fatemeh's Galaxy A71	wpa	U2FsdGVkX19cjIZCyYs4sbBiu89CBihFYcix6WdWcPA=	enc
+DivorceHousing	wpa	U2FsdGVkX19NE40mICMAbP8Cyb1/GIb9pmPj8D8HNvy/jOrySHbyYlKwx5nkbCUP	enc
+AndroidAPA50	wpa	U2FsdGVkX1/Wz2vvQLPdXI4EzPyeU0zRnEoQwVjl4Ck=	enc
 __WIFI_EOF__
 )"
 
@@ -2344,6 +2344,7 @@ Microsoft 365 Copilot	Outbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsAp
 Microsoft 365 Copilot	Outbound	Allow	True	UDP	Any	Any	C:\Program Files\WindowsApps\Microsoft.MicrosoftOfficeHub_19.2606.55071.0_x64__8wekyb3d8bbwe\M365Copilot.exe	
 Microsoft 365 Copilot	Outbound	Allow	True	Any	Any	Any		
 Microsoft 365 Copilot	Inbound	Allow	True	Any	Any	Any		
+Google Chrome (mDNS-In)	Inbound	Allow	True	UDP	5353	Any	C:\Program Files\Google\Chrome\Application\chrome.exe	
 __FW_EOF__
 )"
 
@@ -2373,7 +2374,6 @@ desktop	restart explorer.bat - Shortcut	restart explorer
 desktop	restart firefox.bat - Shortcut	restart firefox
 desktop	restart jabber.bat - Shortcut	restart jabber
 desktop	Hotspot Shield	hsscp
-desktop	NordVPN	NordVPN
 desktop	VMware Workstation Pro	vmware
 __SC_EOF__
 )"
@@ -2456,12 +2456,12 @@ RPCServiceHealthCheck	User	daily,00,45	RPCDownloader
 update-S-1-5-21-134476807-1998891258-1216728456-1001	User	daily,15,45	Updater
 Quick Share Relaunch	User	daily,22,10	nearby_share_launcher
 RunPlatformExperienceHelper_Daily	User	daily,10,44	platform_experience_helper
-RunPlatformExperienceHelper_Metrics	User	daily,10,48	platform_experience_helper
+RunPlatformExperienceHelper_Metrics	User	daily,10,47	platform_experience_helper
 Lenovo Professional Ultraslim Wireless Combo Gen2 OSD task	User	onlogon	UltraslimOSD
 Firefox Default Browser Agent 308046B0AF4A39CB	User	daily,13,49	default-browser-agent
 Autorun for Ali	User	onlogon	PowerToys
 SoftLandingCreativeManagementTask	User	unsupported	
-SoftLandingDeferralTask-{b154b073-3f78-4a3e-bd33-ef240538b16f}	User	daily,12,32	
+SoftLandingDeferralTask-{b20ad050-8177-498b-bd64-bf08d06ec3ba}	User	daily,12,32	
 __TK_EOF__
 )"
 
@@ -2534,7 +2534,6 @@ VMware Network Adapter VMnet11	192.168.171.1
 VMware Network Adapter VMnet12	172.23.124.1		
 vEthernet (Default Switch)	172.26.0.1		
 vEthernet (WSL (Hyper-V firewall))	172.18.80.1		
-NordLynx	10.5.0.2		
 Wi-Fi 2		10.112.63.254 1.1.1.1	10.112.10.254,10.112.11.254
 __NE_EOF__
 )"

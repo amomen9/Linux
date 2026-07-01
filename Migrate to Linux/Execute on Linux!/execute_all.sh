@@ -1944,7 +1944,7 @@ show_config() {  # show_config CONFIG_FILE
       INSTALL_DRIVERS)   label="Install device drivers?" ;;
       INSTALL_APPS)      label="Install must-have software?" ;;
       BEST_ALTERNATIVES) label="How many best alternatives of an application to install (excluding wine - Windows emulator)?" ;;
-      VERSION_MODE)      label="Version of exact equivalents (same/latest)?" ;;
+      VERSION_MODE)      label="Version of application exact equivalents (Apps data restore might not be applicable with 'same' - same/latest)?" ;;
       UPDATE_EXISTING)   label="Update apps already installed on Linux?" ;;
       INSTALL_SECURITY)  label="Install security-suite equivalents?" ;;
       FREE_ONLY)         label="Only install free applications (skip paid)?" ;;
@@ -2231,7 +2231,7 @@ main() {
     if [ "$do_apps" -eq 1 ]; then
       MIGRATE_ALT_LIMIT="$(ask_number "(3/10) How many (if applicable) best alternatives of an application do you want to install (excluding wine - Windows emulator)?" 1)"
       export MIGRATE_ALT_LIMIT
-      MIGRATE_VERSION_MODE="$(ask_ab "(4/10) Want to install same version of exact equivalents from Windows to Linux or the latest version?" "Same version" "Latest version")"
+      MIGRATE_VERSION_MODE="$(ask_ab "(4/10) Want to install same version of exact equivalents from Windows to Linux or the latest version? (Apps data restore might not be applicable with 'same')" "Same version" "Latest version")"
       export MIGRATE_VERSION_MODE
       if ask "(5/10) Update apps that are already installed on Linux?" n; then MIGRATE_UPDATE_EXISTING=yes; else MIGRATE_UPDATE_EXISTING=no; fi
       export MIGRATE_UPDATE_EXISTING
@@ -2270,6 +2270,9 @@ main() {
     [ "$do_apps" -eq 1 ] && install_manual_apps
     # ---- Post-install settings: shortcuts/favourites, ~/.ssh, Contacts ----
     [ "$do_settings" -eq 1 ] && run_stage apply_settings.sh post
+    # ---- Restore the user & application data backup (self-gating: prompts for the
+    #      archive path, 's' to skip). Runs after apps+settings so home dirs exist. ----
+    [ -f "$here/submodules/restore_user_and_application_data.sh" ] && run_stage restore_user_and_application_data.sh
     # ---- Docker rebuild last (needs Docker, which the apps stage installs) ----
     if [ "$do_docker" -eq 1 ]; then
       log "=== Running docker_rebuild.sh ==="

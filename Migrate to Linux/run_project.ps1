@@ -149,6 +149,7 @@ $scriptConfig   = Join-Path $submodulesDir 'C_detect_windows_settings.ps1'
 $scriptSoftware = Join-Path $submodulesDir 'B_detect_installed_windows_software.ps1'
 $scriptDriver   = Join-Path $submodulesDir 'A_detect_installed_drivers.ps1'
 $scriptGenerator = Join-Path $submodulesDir 'D_compile_and_generate_shell_script.ps1'
+$scriptBackup    = Join-Path $submodulesDir 'E_backup_user&application_data.ps1'
 
 # Path to the manifest
 $manifestPath = Join-Path $OutputDir 'B_applications.json'
@@ -501,7 +502,7 @@ if (-not $SkipDetection) {
     # so the later steps (B/A/D) don't inherit it in their environment.
     $env:MIGRATE_XFER_PROMPTED = '1'
     $env:MIGRATE_XFER_PWD = $xferPwd
-    Invoke-Step -StepLabel '1/5  Config (Windows settings extraction)' `
+    Invoke-Step -StepLabel '1/6  Config (Windows settings extraction)' `
                 -ScriptPath $scriptConfig `
                 -OutputPath $configOutput `
                 -ExtraArgs { if ($forwardVerbose) { '-Verbose' } }
@@ -512,7 +513,7 @@ if (-not $SkipDetection) {
     # 2. SOFTWARE  - B_detect_installed_windows_software.ps1
     # -----------------------------------------------------------------------
     $softwareOutput = Join-Path $OutputDir 'B_installed_windows_software.csv'
-    Invoke-Step -StepLabel '2/5  Software (installed applications detection)' `
+    Invoke-Step -StepLabel '2/6  Software (installed applications detection)' `
                 -ScriptPath $scriptSoftware `
                 -OutputPath $softwareOutput `
                 -ExtraArgs {
@@ -529,7 +530,7 @@ if (-not $SkipDetection) {
     # 3. DRIVER  - A_detect_installed_drivers.ps1
     # -----------------------------------------------------------------------
     $driverOutput = Join-Path $OutputDir 'A_installed_windows_drivers.csv'
-    Invoke-Step -StepLabel '3/5  Drivers (device driver inventory)' `
+    Invoke-Step -StepLabel '3/6  Drivers (device driver inventory)' `
                 -ScriptPath $scriptDriver `
                 -OutputPath $driverOutput `
                 -ExtraArgs {
@@ -547,7 +548,7 @@ if (-not $SkipDetection) {
 # ---------------------------------------------------------------------------
 if (-not $SkipGenerator) {
     Write-Host "`n$('=' * 70)" -ForegroundColor Cyan
-    Write-Host "  STEP: 4/5  Generator (universal installer set)" -ForegroundColor Yellow
+    Write-Host "  STEP: 4/6  Generator (universal installer set)" -ForegroundColor Yellow
     Write-Host "  Script: $scriptGenerator" -ForegroundColor Gray
     Write-Host "  Target: $installerDir" -ForegroundColor Gray
     Write-Host "$('=' * 70)" -ForegroundColor Cyan
@@ -581,7 +582,7 @@ if (-not $SkipGenerator) {
 # 5. SUPPORTED DISTRIBUTIONS  - generate dynamically from manifest
 # ---------------------------------------------------------------------------
 Write-Host "`n$('=' * 70)" -ForegroundColor Cyan
-Write-Host "  STEP: 5/5  Supported Distributions (dynamic from manifest)" -ForegroundColor Yellow
+Write-Host "  STEP: 5/6  Supported Distributions (dynamic from manifest)" -ForegroundColor Yellow
 Write-Host "  Manifest: $manifestPath" -ForegroundColor Gray
 Write-Host "$('=' * 70)" -ForegroundColor Cyan
 Write-Host ""
@@ -596,6 +597,47 @@ catch {
     Write-Host "  >> Supported Distributions generation FAILED: $_" -ForegroundColor Red
     if (-not $ContinueOnError) {
         throw
+    }
+}
+
+# ---------------------------------------------------------------------------
+# 6. BACKUP  - E_backup_user&application_data.ps1  (optional; y/n, default y)
+# ---------------------------------------------------------------------------
+Write-Host "`n$('=' * 70)" -ForegroundColor Cyan
+Write-Host "  STEP: 6/6  Back up user & application data (optional)" -ForegroundColor Yellow
+Write-Host "  Script: $scriptBackup" -ForegroundColor Gray
+Write-Host "$('=' * 70)" -ForegroundColor Cyan
+Write-Host ""
+
+if (-not (Test-Path $scriptBackup)) {
+    Write-Host "  >> E_backup script not found - skipping the data backup." -ForegroundColor Yellow
+} else {
+    Write-Host "  This can back up your important user files and application data into a" -ForegroundColor White
+    Write-Host "  password-protected archive on your Desktop, ready to carry to Linux." -ForegroundColor White
+    Write-Host "  Note: it may take a long time and will not capture everything." -ForegroundColor DarkYellow
+
+    $doBackup = $true
+    if (Get-Command Read-YNTimed -ErrorAction SilentlyContinue) {
+        $doBackup = Read-YNTimed -Prompt "  Back up your important user & application data now? (y/n, default y, 15s): " -TimeoutSec 15 -Default $true
+    }
+
+    if ($doBackup) {
+        try {
+            $env:MIGRATE_XFER_PWD = $xferPwd
+            $backupTokens = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $scriptBackup)
+            $bproc = Start-Process -FilePath $psExe -ArgumentList (Get-ArgLine $backupTokens) -NoNewWindow -Wait -PassThru
+            if ($bproc.ExitCode -ne 0) { Write-Warning "Backup step exited with code $($bproc.ExitCode)." }
+            else { Write-Host "  >> Backup step completed." -ForegroundColor Green }
+        }
+        catch {
+            Write-Host "  >> Backup step FAILED: $_" -ForegroundColor Red
+            if (-not $ContinueOnError) { throw }
+        }
+        finally {
+            Remove-Item Env:\MIGRATE_XFER_PWD -ErrorAction SilentlyContinue
+        }
+    } else {
+        Write-Host "  >> Skipped the data backup." -ForegroundColor Yellow
     }
 }
 
