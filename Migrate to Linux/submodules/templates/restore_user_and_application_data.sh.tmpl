@@ -83,6 +83,29 @@ place_tree() {  # place_tree SRCDIR DESTDIR
   fix_owner "$dst"
 }
 
+# Find a 7-Zip binary (7z/7zz/7za) for zip/7z archives; install the distro's p7zip/7zip
+# package on demand if none is present. Echoes the binary name, or returns 1 if unavailable.
+ensure_7z() {
+  local b pkg=""
+  for b in 7z 7zz 7za; do have_cmd "$b" && { printf '%s' "$b"; return 0; }; done
+  case "$FAMILY" in
+    debian) pkg="p7zip-full" ;;
+    rhel)   pkg="p7zip" ;;
+    suse)   pkg="7zip" ;;
+    arch)   pkg="p7zip" ;;
+    *)      pkg="p7zip" ;;
+  esac
+  log "Installing 7-Zip ($pkg) to extract the backup archive ..."
+  pm_refresh >/dev/null 2>&1 || true
+  capture pm_install $pkg >/dev/null 2>&1 || true
+  # Fedora/RHEL split the extra codecs into p7zip-plugins.
+  { [ "$FAMILY" = "rhel" ] && ! have_cmd 7z; } && capture pm_install p7zip-plugins >/dev/null 2>&1
+  # openSUSE's older package is p7zip; try it as a fallback.
+  { [ "$FAMILY" = "suse" ] && ! have_cmd 7z && ! have_cmd 7zz; } && capture pm_install p7zip >/dev/null 2>&1
+  for b in 7z 7zz 7za; do have_cmd "$b" && { printf '%s' "$b"; return 0; }; done
+  return 1
+}
+
 restore_main() {
   MODULE="User data"
   : "${MIGRATE_VERSION_MODE:=latest}"
@@ -146,8 +169,8 @@ restore_main() {
 
   # ---- Prompt 1: archive path ----
   printf '\n' >&3
-  info "Enter the path to the backup archive you created on Windows (.tar.gz or .tar.gz.enc),"
-  info "for example '${TARGET_HOME}/Downloads/MigrateToLinux_UserData_20260101_120000.tar.gz.enc'."
+  info "Enter the path to the backup archive you created on Windows (.zip, .7z, .tar.gz or .tar.gz.enc),"
+  info "for example '${TARGET_HOME}/Downloads/MigrateToLinux_UserData_20260101_120000.zip'."
   local arch ans
   while :; do
     printf "  Data archive ('archive file path'/s=skip): " > /dev/tty
@@ -160,11 +183,18 @@ restore_main() {
     esac
   done
 
-  # ---- Detect encryption + tools ----
-  local magic encrypted=0
-  magic="$(head -c 8 "$arch" 2>/dev/null)"
-  [ "$magic" = "Salted__" ] && encrypted=1
-  if [ "$encrypted" = 1 ]; then
+  # ---- Detect archive format by magic bytes, and the tools it needs ----
+  #   "Salted__" -> enctar (OpenSSL-encrypted tar.gz);  "PK" -> zip;  "7z" -> 7z;  else plain tar.gz
+  local m2 m8 fmt encrypted=0 zbin=""
+  m8="$(head -c 8 "$arch" 2>/dev/null)"
+  m2="$(head -c 2 "$arch" 2>/dev/null)"
+  if   [ "$m8" = "Salted__" ]; then fmt="enctar"; encrypted=1
+  elif [ "$m2" = "PK" ];       then fmt="zip"
+  elif [ "$m2" = "7z" ];       then fmt="7z"
+  else                              fmt="enctar"; encrypted=0
+  fi
+  info "Archive format          : $fmt"
+  if [ "$fmt" = "enctar" ] && [ "$encrypted" = 1 ]; then
     if ! have_cmd openssl; then
       ask_install_addition "data restore" "openssl" "decrypting your backup archive" || { warn "openssl unavailable -- cannot decrypt. Skipping."; return 0; }
     fi
@@ -172,6 +202,9 @@ restore_main() {
       warn "This archive is encrypted but no password was provided. It COULD be restored if you re-run and supply the password. Skipping."
       return 0
     fi
+  fi
+  if [ "$fmt" = "zip" ] || [ "$fmt" = "7z" ]; then
+    zbin="$(ensure_7z)" || { warn "7-Zip (p7zip) is unavailable and could not be installed (an internet connection + working package repos are needed) -- cannot extract a $fmt archive. Install p7zip/7zip and re-run, or skip. Skipping."; return 0; }
   fi
 
   # ---- Size + storage precheck ----
@@ -213,6 +246,10 @@ restore_main() {
   local ok_extract=1
   if is_dry_run; then
     info "[dry-run] would extract $arch"
+  elif [ "$fmt" = "zip" ] || [ "$fmt" = "7z" ]; then
+    # 7-Zip extracts both AES zip and 7z; -p is ignored on an unencrypted archive, and a
+    # wrong/missing password on an encrypted one makes it fail (caught below).
+    "$zbin" x -p"${MIGRATE_XFER_PWD:-}" -o"$tmp" "$arch" -y -bsp0 >/dev/null 2>&1 || ok_extract=0
   elif [ "$encrypted" = 1 ]; then
     openssl enc -d -aes-256-cbc -pbkdf2 -salt -pass pass:"$MIGRATE_XFER_PWD" -in "$arch" 2>/dev/null \
       | tar -xzf - -C "$tmp" 2>/dev/null || ok_extract=0

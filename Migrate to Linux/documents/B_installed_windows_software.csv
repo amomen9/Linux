@@ -1,5 +1,6 @@
 ﻿"Name","Version","Publisher","Source","Linux Availability","Best Linux Alternative","Alternative Competency","Pricing model","Must be included on Linux","Can be synched to Linux alternative","Linux Alternative Type","Download URL"
 "µTorrent","3.6.0.47228","BitTorrent Limited","Win32","Not Available; Native Alternative","qBittorrent (install: apt)","70","Free (FOSS)","yes","No, manual transfer","Native (APT package)","https://www.qbittorrent.org/download"
+"7-Zip 26.02 (x64 edition)","26.02.00.0","Igor Pavlov","Win32","Available on Linux","See Native alternative in manifest","70","Unknown","yes","No, manual transfer","Native",""
 "Adobe Connect","2025.5.5.64","Adobe Systems Inc.","Win32","Available as WebApp","Adobe Connect (Web) (install: web)","70","Paid","yes","No, manual transfer","WebApp","See notes for URL"
 "Anki Launcher","25.09","","Win32","Available on Linux","See Native alternative in manifest","70","Unknown","yes","No, manual transfer","Native",""
 "AnyDesk","ad 9.6.2","AnyDesk Software GmbH","Win32","Available on Linux","AnyDesk (Linux) (install: manual)","70","Freemium","yes","No, manual transfer","Native (manual install)","https://anydesk.com/en/downloads/linux"

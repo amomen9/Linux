@@ -171,14 +171,27 @@ STEP 6 - USER & APPLICATION DATA BACKUP / RESTORE (data-driven):
     Google DriveFS, and HKLM SyncRootManager\*\UserSyncRoots), any file with the
     online-only/recall attributes (0x1000/0x40000/0x400000), and ALL browser profile
     data - whether or not downloaded locally. ~/.ssh + Contacts are excluded here (they
-    ship in migrated_user_data.tar.enc) but listed. Archive: tar + gzip(-6) + OpenSSL
-    AES-256-CBC/PBKDF2 -> Desktop, SAME transfer password (unencrypted .tar.gz if none).
-    OpenSSL is preferred 64-bit; the archive is streamed via stdin so a 32-bit OpenSSL
-    also works on multi-GB files. tar/openssl exit codes AND output size are validated
-    (fails loudly instead of writing a garbage archive). Report table (<=30 rows else
-    log-only), size + free-space precheck (confirm if tight or >50GB), progress bars.
-    Auto-cleans temp leftovers (mtl_backup_* / mtl_*.tar.gz / mtl_enc_*.cmd) from this
-    and any previous/aborted run; only the final archive + .log remain on the Desktop.
+    ship in migrated_user_data.tar.enc) but listed. Archive -> Desktop, SAME transfer
+    password (unencrypted if none). Format chosen by --archive-format[=]VALUE:
+      * zip    (DEFAULT) single-stage compress + AES-256 encrypt via 7-Zip -> .zip
+      * 7z     single-stage compress + AES-256 encrypt (encrypted headers) via 7-Zip -> .7z
+      * enctar tar + gzip(-6) + OpenSSL AES-256-CBC/PBKDF2 -> .tar.gz(.enc); OpenSSL preferred
+               64-bit and streamed via stdin so a 32-bit OpenSSL also works on multi-GB files.
+    Tool acquisition is robust + fail-fast: Initialize-BackupTools runs at the VERY START (before
+    any staging) and, for the tool the chosen format+encryption needs, tries: already-installed ->
+    winget -> Chocolatey -> (7-Zip only) standalone 7za bootstrap (7zr.exe from a stable URL
+    extracts 7za.exe from the GitHub "extra" package; no admin/pm). Automatic install needs
+    internet, so it is checked first (Test-Internet); if the REQUIRED tool is absent AND
+    uninstallable (no internet or no method), it prints the exact reason and EXITS immediately.
+    An unencrypted zip needs NO external tool (plain .NET System.IO.Compression zip fallback).
+    OpenSSL is auto-installed for enctar+password (winget/choco, or Git which bundles it). Exit codes AND
+    output size are validated (fails loudly instead of writing a garbage archive; disk-full is
+    stated explicitly). Report table (<=30 rows else log-only), size + free-space precheck
+    (peak ~2x source; confirm if tight or >50GB), progress bars. Staging is freed BEFORE the
+    (enctar) encrypt so staging+archive+enc don't pile up. Auto-cleans temp leftovers
+    (mtl_backup_* / mtl_*.tar.gz / mtl_*.cmd) from this and any previous/aborted run; only the
+    final archive + .log remain on the Desktop, and "The staged/temporary files have been
+    deleted." is printed on every path (success or failure).
     Flags: --data-backup runs the FULL pipeline but auto-confirms the two step-6 prompts
     (the "Back up now?" y/n AND E_'s low-space confirmation), yes with no timeout wait,
     leaving other prompts (password) normal. --data-backup-only skips detection+generation
@@ -187,7 +200,10 @@ STEP 6 - USER & APPLICATION DATA BACKUP / RESTORE (data-driven):
   - LINUX side: submodules/restore_user_and_application_data.sh, called by execute_all.sh
     after apply_settings post (self-gating: prompts 'archive file path'/s=skip, then
     'restore path'/s=skip for the deviated dir). Reads the manifest via jq, detects the
-    "Salted__" magic to decide decrypt-vs-plain. Decision table = safe value x runtime
+    archive format by magic ("PK"->zip, "7z"->7z, "Salted__"->enctar-encrypted, else plain
+    tar.gz): zip/7z are extracted with 7z (p7zip/7zip auto-installed via ensure_7z per family -
+    apt p7zip-full, dnf p7zip[+p7zip-plugins], zypper 7zip, pacman p7zip), enctar via
+    openssl|tar. Decision table = safe value x runtime
     (4/10) MIGRATE_VERSION_MODE: yes->promote to linuxTarget; yes-after-rewrite->rewrite
     text configs (winpath_to_linux / userprofile_to_home / drive_map / find-replace,
     always keeping .bak) then promote; 'same version'->promote iff mode==same else

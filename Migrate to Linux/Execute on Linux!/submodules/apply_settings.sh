@@ -1899,24 +1899,24 @@ CFG_default_browser="edge"
 WIFI_DATA="$(cat <<'__WIFI_EOF__'
 eduroam	wpa		none
 somenet	open		none
-V.momen	wpa	U2FsdGVkX1/mo9yT8lmjYrUGy2K1mtquIlvMZYBQUjA=	enc
+V.momen	wpa	U2FsdGVkX18lhHY/K4iOK9hCh1KXoZ/36o8HNcBuYDk=	enc
 Tbilisi Loves You	open		none
 Tbilisi Airport Free	open		none
 Simorgh-WiFi	open		none
-Shatel	wpa	U2FsdGVkX19cEIkGIQHf5DKojr3zi100hCoepxM5woM=	enc
-SHAW-48EE	wpa	U2FsdGVkX18OVygtH6kzda2jtqrQcEyWvLvzLYoZ+io=	enc
-Redmi Note 10 Pro Max	wpa	U2FsdGVkX1+T0qVISfQ8Qd8ZY+TsiJvPy6L+GYbqc2o=	enc
-Parsway	wpa	U2FsdGVkX1+xohMXBcZi8IgLO7hKa1h8i/zsfRXm81U=	enc
-NZT9930134C	wpa	U2FsdGVkX195/Gg8WhbVdHmh6titApq1PIfl8yPuzfk=	enc
+Shatel	wpa	U2FsdGVkX19Kj7v3Cyjniuos0Vi/SMF5AT+kIziARNo=	enc
+SHAW-48EE	wpa	U2FsdGVkX1+wVUy6FtIGaENkI1XptYyJ1tugJNQwI3U=	enc
+Redmi Note 10 Pro Max	wpa	U2FsdGVkX188s+USEVsP1YDVUyDxnOMbAoA4Fv4aqlU=	enc
+Parsway	wpa	U2FsdGVkX18XFtSEsktgo8h0s9vQNJGC1qCirlFF1Zg=	enc
+NZT9930134C	wpa	U2FsdGVkX18/ODYPF/9zUknpfM7Q+M4xy0TSmy2Mg9Y=	enc
 Mofid-GoHyper!	open		none
-Jobvision-WiFi	wpa	U2FsdGVkX1/K2D3pzM2f0L34ACcrQPEQS5pgYBF+XBU=	enc
-JobVision_DLink	wpa	U2FsdGVkX1/r3LOifkXivv6GB2N0Vj1lK8jBEq45OP8=	enc
-JobVision-3rd	wpa	U2FsdGVkX19y/YBZbIMFNxSTEyLG1CsMK/EJVyNzmsQ=	enc
-JobVision	wpa	U2FsdGVkX1+sWo7bFERymTdmPv3P+iRrcF2BITjtC/4=	enc
-Galaxy A51	wpa	U2FsdGVkX19Uw0j4bUUhJWYsaxNiOCXP93baO/GogAQ=	enc
-Fatemeh's Galaxy A71	wpa	U2FsdGVkX18spGs6pUDAk/0p9STRHCBRXkgcbr0KLiM=	enc
-DivorceHousing	wpa	U2FsdGVkX19lNpBgQ7JNk0R1bERq1gVcZYFa2OWR1bdqJaOH6s0a7kZvEBDLM/3T	enc
-AndroidAPA50	wpa	U2FsdGVkX1+7RGkqeiPBZkCQna29M8NLNLRwN4hcqOY=	enc
+Jobvision-WiFi	wpa	U2FsdGVkX19hDgEy+P/Nz3+M75YgTSg0gRV11ZPwYyI=	enc
+JobVision_DLink	wpa	U2FsdGVkX18ILLo5W9MlzYQEX3KDiAHiK2qgiw+UyaU=	enc
+JobVision-3rd	wpa	U2FsdGVkX1+TClhRODTrStOh2VA5++thP1QRT35MDMA=	enc
+JobVision	wpa	U2FsdGVkX1+zxhNR8tGICOyzN0TSEWDCHpAOwwFJiuk=	enc
+Galaxy A51	wpa	U2FsdGVkX19vKrxaSypp7bpOwcYsxIWTy9+NisP0FSI=	enc
+Fatemeh's Galaxy A71	wpa	U2FsdGVkX19bOlpyBS2CUP/bCQSkilV4krev3X5huf0=	enc
+DivorceHousing	wpa	U2FsdGVkX194oGMSVoj3Rt7KXQgfYkarNNp6biG2zxHEzcqLSlD5coDj3uqddH6F	enc
+AndroidAPA50	wpa	U2FsdGVkX1/yEFhUMgKz5Jko4V8jAoPNYguc71XIvd4=	enc
 __WIFI_EOF__
 )"
 

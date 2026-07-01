@@ -73,7 +73,9 @@
                                                   "installMethod":  "apt",
                                                   "appType":  "Native (APT package)",
                                                   "downloadUrl":  "apt install p7zip-/-p7zip-full"
-                                              }
+                                              },
+                             "installedVersion":  "26.02.00.0",
+                             "installedEdition":  "x64 edition"
                          },
                          {
                              "name":  "ABBYY FineReader PDF",

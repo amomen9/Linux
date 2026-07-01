@@ -267,6 +267,7 @@ the data backup, non-interactively, in the default location.
 | `-SkipGenerator`              | off        | Skip step 4; only run detection.                                            |
 | `-DataBackup` / `--data-backup` | off      | Run the **full** pipeline, but auto-confirm the step-6 backup: the "Back up now?" question is answered **yes with no timeout wait**, and E_'s low-disk-space confirmation is auto-answered yes too. Every other prompt (e.g. the password) is normal. |
 | `-DataBackupOnly` / `--data-backup-only` | off | Skip detection + generation; **only** create the data backup (step 6) in the default location (Desktop) with no prompts at all - not even the low-space one. Encrypts if `-EncPwd`/`--enc_pwd` is given, else unencrypted. |
+| `-ArchiveFormat` / `--archive-format` | `zip` | Backup archive format: `zip` (AES-256 zip via 7-Zip, default), `7z` (AES-256 7z with encrypted headers), or `enctar` (tar+gzip+OpenSSL). The required tool is auto-installed when needed (Windows: winget → Chocolatey → standalone 7-Zip download; Linux: the distro's p7zip/7zip). An **internet connection is required only if a tool must be installed**. If the tool for the chosen format truly can't be obtained automatically, the script says so **at the very start and exits** (suggesting: install it, pick another format, or drop the password so no encryption/tool is needed - an unencrypted `zip` needs no external tool at all). |
 | `-EncPwd <secret>` / `--enc_pwd` | (prompt) | Transfer password used to encrypt exported secrets **and** the data backup. When given, the interactive password prompt is skipped. |
 | `-MustIncludeThreshold <int>` | 70         | Forwarded to B script - minimum competency for "Must be included on Linux". |
 | `-IncludeSystemComponents`    | off        | Forwarded to B script - keep redistributables / runtimes / drivers.         |
@@ -339,13 +340,17 @@ application data** across. It is data-driven by
   browser profile data** are excluded - whether or not they are downloaded locally -
   because the service restores them on its own. `~/.ssh` and Contacts are excluded here too
   (they already travel in the encrypted settings archive) but are still listed for you.
-- Packs everything into **one archive on your Desktop**: `tar` + `gzip` (medium) +
-  OpenSSL AES-256-CBC/PBKDF2, using the **same transfer password** as the rest of the
-  toolkit. No password → an unencrypted `.tar.gz` (your choice). Large archives stream
-  through OpenSSL so this works even with a 32-bit OpenSSL. Live progress bars, size and
-  free-space pre-checks (with a confirmation if it looks tight or exceeds 50 GB), and a
-  neat `<source> --> <Linux target>` table are shown. Temp leftovers from this and any
-  previous/aborted run are auto-cleaned; only the final archive + a `.log` remain on the Desktop.
+- Packs everything into **one archive on your Desktop**, using the **same transfer password**
+  as the rest of the toolkit. The format is chosen with `--archive-format`:
+  - **`zip`** (default) - AES-256 encrypted ZIP, created via 7-Zip in a single compress+encrypt pass.
+  - **`7z`** - AES-256 7z with **encrypted file names** (headers), also single-pass via 7-Zip.
+  - **`enctar`** - `tar` + `gzip` (medium) + OpenSSL AES-256-CBC/PBKDF2 (streamed, so a 32-bit
+    OpenSSL works on multi-GB data too).
+  7-Zip (Windows) / p7zip (Linux) is **auto-installed when needed**. No password → an
+  unencrypted archive (your choice). Live progress bars, size and free-space pre-checks (with a
+  confirmation if it looks tight or exceeds 50 GB), and a neat `<source> --> <Linux target>`
+  table are shown. Temp leftovers from this and any previous/aborted run are auto-cleaned; only
+  the final archive + a `.log` remain on the Desktop.
 
 **On Linux** (`submodules/restore_user_and_application_data.sh`, called by `execute_all.sh`
 after settings, self-gating with an archive-path prompt / `s` to skip):

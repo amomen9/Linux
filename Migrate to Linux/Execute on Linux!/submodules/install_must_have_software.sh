@@ -1907,6 +1907,7 @@ repo_setup_microsoft_edge() {
   app_alt 4 5 1 95 install_app --name "µTorrent" --alt "KTorrent" --method flatpak --flatpak "org.kde.ktorrent" --apt "ktorrent" --dnf "ktorrent" --zypper "ktorrent" --pacman "ktorrent"
   app_alt 5 5 1 80 install_app --name "µTorrent" --alt "aria2" --method native --dlpage "https://aria2.github.io/" --note "auto-guessed install from the alternative name (unverified)"
   wine_app "µTorrent" "" "uTorrent-under-Wine is fragile and its Windows installer bundles adware." "Install the native qBittorrent alternative instead."
+  app_alt 1 1 1 100 install_app --name "7-Zip" --alt "p7zip / p7zip-full" --method native --note "auto-guessed install from the alternative name (unverified)"
   app_alt 1 4 1 90 install_app --name "Adobe Connect" --alt "Zoom Workplace" --method flatpak --flatpak "us.zoom.Zoom" --dlpage "https://zoom.us/download?os=linux"
   app_alt 2 4 0 85 install_app --name "Adobe Connect" --alt "Adobe Connect (Web)" --method webapp --webapp "See notes for URL" --note "auto-guessed install from the alternative name (unverified)" --paid
   app_alt 3 4 0 80 install_app --name "Adobe Connect" --alt "Jitsi Meet" --method webapp --webapp "https://meet.jit.si" --dlpage "https://meet.jit.si" --note "auto-guessed install from the alternative name (unverified)"

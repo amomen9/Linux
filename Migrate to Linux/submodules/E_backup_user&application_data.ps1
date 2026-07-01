@@ -44,6 +44,12 @@ param(
     [Alias('enc_pwd')]
     [string] $EncPwd,
     [switch] $AssumeYes,
+    # Archive format (accepts --archive-format[=]VALUE):
+    #   'zip'    (DEFAULT) single-stage compress + AES-256 encrypt via 7-Zip -> .zip
+    #   '7z'     single-stage compress + AES-256 encrypt (encrypted headers) via 7-Zip -> .7z
+    #   'enctar' tar + gzip + OpenSSL AES-256-CBC/PBKDF2 -> .tar.gz(.enc)
+    [ValidateSet('zip', '7z', 'enctar')]
+    [string] $ArchiveFormat = 'zip',
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]] $ExtraArgs
 )
@@ -66,13 +72,16 @@ if (-not $OutputDir)         { $OutputDir = [Environment]::GetFolderPath('Deskto
 
 # Password: explicit param > env (from run_project) > literal --enc_pwd in ExtraArgs.
 if (-not $EncPwd) { $EncPwd = $env:MIGRATE_XFER_PWD }
-if (-not $EncPwd -and $ExtraArgs) {
+if ($ExtraArgs) {
     for ($i = 0; $i -lt $ExtraArgs.Count; $i++) {
         $a = [string]$ExtraArgs[$i]
-        if ($a -like '--enc_pwd=*') { $EncPwd = $a.Substring(10) }
-        elseif ($a -eq '--enc_pwd' -and ($i + 1) -lt $ExtraArgs.Count) { $EncPwd = [string]$ExtraArgs[$i + 1]; $i++ }
+        if (-not $EncPwd -and $a -like '--enc_pwd=*') { $EncPwd = $a.Substring(10) }
+        elseif (-not $EncPwd -and $a -eq '--enc_pwd' -and ($i + 1) -lt $ExtraArgs.Count) { $EncPwd = [string]$ExtraArgs[$i + 1]; $i++ }
+        elseif ($a -like '--archive-format=*') { $ArchiveFormat = $a.Substring(17) }
+        elseif ($a -eq '--archive-format' -and ($i + 1) -lt $ExtraArgs.Count) { $ArchiveFormat = [string]$ExtraArgs[$i + 1]; $i++ }
     }
 }
+if ($ArchiveFormat -notin @('zip', '7z', 'enctar')) { $ArchiveFormat = 'zip' }
 
 function Write-Info  { param($m) Write-Host "       $m" }
 function Write-OkLine { param($m) Write-Host "       $m" -ForegroundColor Green }
@@ -135,6 +144,11 @@ if (-not (Test-Path $DataMigrationJson)) {
 }
 $plan = Get-Content -Raw -Path $DataMigrationJson -Encoding UTF8 | ConvertFrom-Json
 
+# Fail fast: make sure the tool the chosen --archive-format needs is available (installing it
+# automatically if possible) BEFORE any collection/staging work. Exits with a clear message here
+# if it cannot be obtained.
+Initialize-BackupTools
+
 # Human-readable size, max 2 decimals.
 function Format-Size {
     param([double] $Bytes)
@@ -186,6 +200,180 @@ function Invoke-CmdWithProgress {
         Remove-Item -LiteralPath $cmdFile -Force -ErrorAction SilentlyContinue
     }
     return $rc
+}
+
+# --------------------------- external-tool acquisition -----------------------
+function Resolve-Tool {
+    param([string] $Name, [string[]] $Fallbacks)
+    $c = Get-Command $Name -ErrorAction SilentlyContinue
+    if ($c) { return $c.Source }
+    foreach ($p in $Fallbacks) { if ($p -and (Test-Path $p)) { return $p } }
+    return $null
+}
+# Read a PE header's machine type: '64' (x64/arm64), '32' (x86), or '' on error.
+function Get-PEBitness {
+    param([string] $Path)
+    try {
+        $fs = [IO.File]::OpenRead($Path); $br = New-Object IO.BinaryReader($fs)
+        $fs.Position = 0x3C; $peOff = $br.ReadInt32(); $fs.Position = $peOff + 4
+        $m = $br.ReadUInt16(); $br.Close(); $fs.Close()
+        switch ($m) { 0x8664 { '64' } 0xAA64 { '64' } 0x14c { '32' } default { '' } }
+    } catch { '' }
+}
+# Try to install a package via whatever package manager exists (winget, then Chocolatey).
+# $Probe returns $true once the tool is present. Returns $true on success.
+function Install-ViaManagers {
+    param([string[]] $WingetIds, [string[]] $ChocoIds, [scriptblock] $Probe)
+    if (& $Probe) { return $true }
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        foreach ($id in $WingetIds) {
+            try { Write-Info "Installing $id via winget ..."; winget install --id $id -e --accept-source-agreements --accept-package-agreements --silent 2>$null | Out-Null } catch {}
+            if (& $Probe) { return $true }
+        }
+    }
+    if (Get-Command choco -ErrorAction SilentlyContinue) {
+        foreach ($id in $ChocoIds) {
+            try { Write-Info "Installing $id via Chocolatey ..."; choco install $id -y --no-progress 2>$null | Out-Null } catch {}
+            if (& $Probe) { return $true }
+        }
+    }
+    return $false
+}
+# Find OpenSSL (64-bit preferred), installing on demand. Returns @{Exe;Bits} or $null.
+function Resolve-OpenSSL {
+    $cands = {
+        @("$env:ProgramFiles\Git\usr\bin\openssl.exe", "$env:ProgramFiles\Git\mingw64\bin\openssl.exe",
+          'C:\OpenSSL-Win64\bin\openssl.exe', (Get-Command openssl -ErrorAction SilentlyContinue).Source,
+          "${env:ProgramFiles(x86)}\Git\usr\bin\openssl.exe", 'C:\OpenSSL-Win32\bin\openssl.exe'
+        ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+    }
+    # existing -> winget/choco (OpenSSL builds, or Git which bundles a 64-bit openssl)
+    Install-ViaManagers -WingetIds @('ShiningLight.OpenSSL.Light', 'FireDaemon.OpenSSL', 'Git.Git') -ChocoIds @('openssl', 'git') -Probe { [bool]((& $cands) | Select-Object -First 1) } | Out-Null
+    $list = & $cands
+    $exe = $null; $bits = ''
+    foreach ($x in $list) { if ((Get-PEBitness $x) -eq '64') { $exe = $x; $bits = '64'; break } }
+    if (-not $exe -and $list.Count -gt 0) { $exe = $list[0]; $bits = (Get-PEBitness $exe) }
+    if ($exe) { return @{ Exe = $exe; Bits = $bits } }
+    return $null
+}
+# Find a 7-Zip that can create AES zip/7z, installing on demand. Returns the exe path or $null.
+# Order: existing -> winget -> choco -> standalone 7za bootstrap (no admin / no package manager:
+# 7zr.exe from a stable URL extracts 7za.exe from the versioned "extra" package on GitHub).
+function Resolve-7Zip {
+    $find = {
+        @((Get-Command 7z -ErrorAction SilentlyContinue).Source, "$env:ProgramFiles\7-Zip\7z.exe",
+          "${env:ProgramFiles(x86)}\7-Zip\7z.exe", (Get-Command 7za -ErrorAction SilentlyContinue).Source,
+          (Join-Path ([System.IO.Path]::GetTempPath()) 'mtl_7z\7za.exe')
+        ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+    }
+    $p = & $find; if ($p) { return $p }
+    Install-ViaManagers -WingetIds @('7zip.7zip') -ChocoIds @('7zip') -Probe { [bool](& $find) } | Out-Null
+    $p = & $find; if ($p) { return $p }
+    try {
+        Write-Info "No package manager available - fetching the standalone 7-Zip (7za) directly ..."
+        $bin = Join-Path ([System.IO.Path]::GetTempPath()) 'mtl_7z'
+        New-Item -ItemType Directory -Path $bin -Force | Out-Null
+        $7zr = Join-Path $bin '7zr.exe'
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest 'https://www.7-zip.org/a/7zr.exe' -OutFile $7zr -UseBasicParsing -TimeoutSec 60
+        $rel = Invoke-RestMethod 'https://api.github.com/repos/ip7z/7zip/releases/latest' -UseBasicParsing -TimeoutSec 60 -Headers @{ 'User-Agent' = 'mtl' }
+        $asset = $rel.assets | Where-Object { $_.name -match 'extra\.7z$' } | Select-Object -First 1
+        if ($asset) {
+            $extra = Join-Path $bin 'extra.7z'
+            Invoke-WebRequest $asset.browser_download_url -OutFile $extra -UseBasicParsing -TimeoutSec 300 -Headers @{ 'User-Agent' = 'mtl' }
+            foreach ($member in @('7za.exe', 'x64\7za.exe')) {
+                & $7zr e $extra -o"$bin" $member -y 2>$null | Out-Null
+                $7za = Join-Path $bin '7za.exe'
+                if (Test-Path $7za) { return $7za }
+            }
+        }
+    } catch {}
+    return $null
+}
+
+# Find an already-installed 7-Zip / OpenSSL WITHOUT trying to install (so we can tell whether an
+# internet-dependent install is actually needed). Return the path, or $null.
+function Find-7Zip {
+    @((Get-Command 7z -ErrorAction SilentlyContinue).Source, "$env:ProgramFiles\7-Zip\7z.exe",
+      "${env:ProgramFiles(x86)}\7-Zip\7z.exe", (Get-Command 7za -ErrorAction SilentlyContinue).Source,
+      (Join-Path ([System.IO.Path]::GetTempPath()) 'mtl_7z\7za.exe')
+    ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+}
+function Find-OpenSSL {
+    @("$env:ProgramFiles\Git\usr\bin\openssl.exe", "$env:ProgramFiles\Git\mingw64\bin\openssl.exe",
+      'C:\OpenSSL-Win64\bin\openssl.exe', (Get-Command openssl -ErrorAction SilentlyContinue).Source,
+      "${env:ProgramFiles(x86)}\Git\usr\bin\openssl.exe", 'C:\OpenSSL-Win32\bin\openssl.exe'
+    ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+}
+# Quick internet check (a couple of short TCP connects); automatic installs need it.
+function Test-Internet {
+    foreach ($hp in @(@('github.com', 443), @('www.7-zip.org', 443), @('8.8.8.8', 53))) {
+        try {
+            $c = New-Object System.Net.Sockets.TcpClient
+            $iar = $c.BeginConnect($hp[0], $hp[1], $null, $null)
+            if ($iar.AsyncWaitHandle.WaitOne(2500)) { $c.EndConnect($iar); $c.Close(); return $true }
+            $c.Close()
+        } catch {}
+    }
+    return $false
+}
+
+# Resolve every external tool the CHOSEN format+encryption needs, installing on demand. If the
+# required tool truly cannot be obtained automatically -- because there is no internet, or no
+# install method works -- print the exact reason and EXIT here, at the very beginning, before any
+# staging/compression work is done. Sets script-scoped vars.
+function Initialize-BackupTools {
+    $script:tarExe       = Resolve-Tool 'tar' @()
+    $script:encrypt      = [bool]$EncPwd
+    $script:sevenZip     = $null
+    $script:opensslExe   = $null
+    $script:opensslBits  = ''
+    $script:useZipFallback = $false
+    if (-not $EncPwd) { Write-WarnY "No transfer password was set -- the archive will be created UNENCRYPTED (your choice)." }
+
+    # For a REQUIRED tool that is not already installed: if there is no internet we cannot install
+    # it automatically -- say so and exit. $NoInstallHint is the extra "or ..." guidance.
+    function _need_tool {
+        param([string] $Kind, [scriptblock] $Find, [scriptblock] $Resolve, [string] $Missing, [string] $NoInstallHint)
+        $p = & $Find
+        if ($p) { return $p }
+        if (-not (Test-Internet)) {
+            Write-ErrR ("$Missing (there is no internet connection to install it automatically). Connect to the internet and re-run, install $Kind manually, $NoInstallHint")
+            exit 1
+        }
+        $p = & $Resolve
+        if (-not $p) { Write-ErrR ("$Missing. Install $Kind manually and re-run, $NoInstallHint"); exit 1 }
+        return $p
+    }
+
+    switch ($ArchiveFormat) {
+        '7z' {
+            $script:sevenZip = _need_tool '7-Zip' { Find-7Zip } { Resolve-7Zip } `
+                "--archive-format 7z is selected but 7-Zip cannot be installed automatically" `
+                "or choose 'zip'/'enctar' for --archive-format, or simply do not provide a password to imply that you do not require encryption of your data that is being backed up to be transferred."
+        }
+        'zip' {
+            if ($script:encrypt) {
+                $script:sevenZip = _need_tool '7-Zip' { Find-7Zip } { Resolve-7Zip } `
+                    "--archive-format zip is selected but 7-Zip cannot be installed automatically" `
+                    "or choose 'enctar' for --archive-format, or simply do not provide a password to imply that you do not require encryption of your data that is being backed up to be transferred."
+            } else {
+                # Unencrypted zip needs no external tool: use 7-Zip if already here, else a plain .NET zip.
+                $p = Find-7Zip
+                if ($p) { $script:sevenZip = $p } else { $script:useZipFallback = $true }
+            }
+        }
+        'enctar' {
+            if (-not $script:tarExe) { Write-ErrR "tar.exe not found (it ships with Windows 10/11). Cannot create the archive."; exit 1 }
+            if ($script:encrypt) {
+                $osslPath = _need_tool 'OpenSSL' { Find-OpenSSL } { $o = Resolve-OpenSSL; if ($o) { $o.Exe } else { $null } } `
+                    "OpenSSL cannot be installed automatically" `
+                    "or choose 'zip'/'7z' for --archive-format, or simply do not provide a password to imply that you do not require encryption of your data that is being backed up."
+                $script:opensslExe = $osslPath
+                $script:opensslBits = if ($osslPath) { Get-PEBitness $osslPath } else { '' }
+            }
+        }
+    }
 }
 
 # Slug shared with the bash side (_common.sh slugify): lowercase, non [a-z0-9-_] stripped.
@@ -413,54 +601,8 @@ if ($needConfirm -and -not $AssumeYes) {
 }
 
 # ---------------------------------------------------------------------------
-# Stage -> tar.gz -> (openssl) -> Desktop
+# Stage -> archive (tools were resolved / validated by Initialize-BackupTools)
 # ---------------------------------------------------------------------------
-function Resolve-Tool {
-    param([string] $Name, [string[]] $Fallbacks)
-    $c = Get-Command $Name -ErrorAction SilentlyContinue
-    if ($c) { return $c.Source }
-    foreach ($p in $Fallbacks) { if ($p -and (Test-Path $p)) { return $p } }
-    return $null
-}
-# Read a PE header's machine type: '64' (x64/arm64), '32' (x86), or '' on error.
-function Get-PEBitness {
-    param([string] $Path)
-    try {
-        $fs = [IO.File]::OpenRead($Path); $br = New-Object IO.BinaryReader($fs)
-        $fs.Position = 0x3C; $peOff = $br.ReadInt32(); $fs.Position = $peOff + 4
-        $m = $br.ReadUInt16(); $br.Close(); $fs.Close()
-        switch ($m) { 0x8664 { '64' } 0xAA64 { '64' } 0x14c { '32' } default { '' } }
-    } catch { '' }
-}
-$tarExe = Resolve-Tool 'tar' @()
-# OpenSSL must be 64-bit: a 32-bit build fails to open the multi-GB archive as -in and
-# silently produces a truncated/garbage file. Prefer a 64-bit build (Git ships one),
-# fall back to whatever exists (with a warning) only if no 64-bit build is found.
-$opensslExe = $null; $opensslBits = ''
-$osslCands = @(
-    "$env:ProgramFiles\Git\usr\bin\openssl.exe",
-    "$env:ProgramFiles\Git\mingw64\bin\openssl.exe",
-    'C:\OpenSSL-Win64\bin\openssl.exe',
-    (Get-Command openssl -ErrorAction SilentlyContinue).Source,
-    "${env:ProgramFiles(x86)}\Git\usr\bin\openssl.exe",
-    'C:\OpenSSL-Win32\bin\openssl.exe'
-) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
-foreach ($c in $osslCands) { if ((Get-PEBitness $c) -eq '64') { $opensslExe = $c; $opensslBits = '64'; break } }
-if (-not $opensslExe -and $osslCands.Count -gt 0) { $opensslExe = $osslCands[0]; $opensslBits = (Get-PEBitness $opensslExe) }
-
-if (-not $tarExe) {
-    Write-ErrR "tar.exe not found (ships with Windows 10/11). Cannot create the archive."
-    exit 1
-}
-$encrypt = [bool]$EncPwd
-if ($encrypt -and -not $opensslExe) {
-    Write-WarnY "A password was provided but OpenSSL was not found -- the archive will be created UNENCRYPTED."
-    $encrypt = $false
-}
-if (-not $EncPwd) {
-    Write-WarnY "No transfer password was set -- the archive will be created UNENCRYPTED (your choice)."
-}
-
 $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 $staging = Join-Path ([System.IO.Path]::GetTempPath()) ("mtl_backup_" + $stamp)
 New-Item -ItemType Directory -Path $staging -Force | Out-Null
@@ -479,98 +621,133 @@ foreach ($it in $items) {
 }
 Write-Progress -Activity "Staging files" -Completed
 
-$tarGz = Join-Path $staging "..\mtl_$stamp.tar.gz"
-$tarGz = [System.IO.Path]::GetFullPath($tarGz)
-Write-Info "Compressing (tar + gzip, medium) ..."
-# Default gzip level is 6 (medium); bsdtar ignores the GZIP env var but this documents intent.
-$env:GZIP = '-6'
-# Progress is driven from the growing OUTPUT archive size (bsdtar has no GNU --checkpoint).
-# tar's stderr is captured to a file inside the generated .cmd (2> ...), so there is no pipe
-# to deadlock and the exit code from the .NET process is reliable.
-$tarErr = [System.IO.Path]::GetTempFileName()
 $denom = [Math]::Max([double]1, $estArchive)
-$tarCmdText = '@"' + $tarExe + '" -czf "' + $tarGz + '" -C "' + $staging + '" . 2> "' + $tarErr + '"'
-$tarRc = Invoke-CmdWithProgress -CmdText $tarCmdText -WatchFile $tarGz -Denom $denom -Activity "Compressing (tar + gzip, medium)"
-Remove-Item Env:\GZIP -ErrorAction SilentlyContinue
-$tarErrText = (Get-Content -LiteralPath $tarErr -Raw -ErrorAction SilentlyContinue)
-Remove-Item -LiteralPath $tarErr -Force -ErrorAction SilentlyContinue
-$tarGzSize = if (Test-Path $tarGz) { (Get-Item $tarGz).Length } else { 0 }
-# bsdtar exit codes: 0 = ok, 1 = WARNING (some files skipped, archive still valid),
-# >=2 = fatal. Only a fatal error or an empty/missing output counts as a failure.
-if ($tarGzSize -eq 0 -or $tarRc -ge 2) {
-    Write-ErrR ("Compression FAILED (tar exit {0}, output {1}). Archive not created." -f $tarRc, (Format-Size $tarGzSize))
-    if ($tarErrText) { Write-ErrR ("tar said: " + ($tarErrText.Trim() -split "`n" | Select-Object -First 3 | Out-String).Trim()) }
-    Remove-Item -LiteralPath $tarGz -Force -ErrorAction SilentlyContinue
+
+if ($ArchiveFormat -eq 'enctar') {
+    # ---- enctar: tar + gzip (medium) -> OpenSSL AES-256-CBC/PBKDF2 ----
+    $tarGz = [System.IO.Path]::GetFullPath((Join-Path $staging "..\mtl_$stamp.tar.gz"))
+    Write-Info "Compressing (tar + gzip, medium) ..."
+    $env:GZIP = '-6'   # default gzip level is 6 (medium); documents intent (bsdtar ignores it)
+    $tarErr = [System.IO.Path]::GetTempFileName()
+    $tarCmdText = '@"' + $tarExe + '" -czf "' + $tarGz + '" -C "' + $staging + '" . 2> "' + $tarErr + '"'
+    $tarRc = Invoke-CmdWithProgress -CmdText $tarCmdText -WatchFile $tarGz -Denom $denom -Activity "Compressing (tar + gzip, medium)"
+    Remove-Item Env:\GZIP -ErrorAction SilentlyContinue
+    $tarErrText = (Get-Content -LiteralPath $tarErr -Raw -ErrorAction SilentlyContinue)
+    Remove-Item -LiteralPath $tarErr -Force -ErrorAction SilentlyContinue
+    $tarGzSize = if (Test-Path $tarGz) { (Get-Item $tarGz).Length } else { 0 }
+    # bsdtar exit codes: 0 = ok, 1 = WARNING (files skipped, archive still valid), >=2 = fatal.
+    if ($tarGzSize -eq 0 -or $tarRc -ge 2) {
+        Write-ErrR ("Compression FAILED (tar exit {0}, output {1}). Archive not created." -f $tarRc, (Format-Size $tarGzSize))
+        if ($tarErrText) { Write-ErrR ("tar said: " + ($tarErrText.Trim() -split "`n" | Select-Object -First 3 | Out-String).Trim()) }
+        Remove-Item -LiteralPath $tarGz -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Info "The staged/temporary files have been deleted."
+        exit 1
+    }
+    if ($tarRc -ne 0) {
+        Write-WarnY "tar reported warnings (some files may have been skipped); continuing with the archive."
+        if ($tarErrText) { Write-WarnY ("tar said: " + ($tarErrText.Trim() -split "`n" | Select-Object -First 2 | Out-String).Trim()) }
+    }
+    $finalName = if ($encrypt) { "MigrateToLinux_UserData_$stamp.tar.gz.enc" } else { "MigrateToLinux_UserData_$stamp.tar.gz" }
+    $finalPath = Join-Path $OutputDir $finalName
+    # Free staging BEFORE encryption so staging + .tar.gz + .enc don't all pile up on one drive.
     Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
-    Write-Info "The staged/temporary files have been deleted."
-    exit 1
-}
-if ($tarRc -ne 0) {
-    Write-WarnY "tar reported warnings (some files may have been skipped); continuing with the archive."
-    if ($tarErrText) { Write-WarnY ("tar said: " + ($tarErrText.Trim() -split "`n" | Select-Object -First 2 | Out-String).Trim()) }
-}
-
-$finalName = if ($encrypt) { "MigrateToLinux_UserData_$stamp.tar.gz.enc" } else { "MigrateToLinux_UserData_$stamp.tar.gz" }
-$finalPath = Join-Path $OutputDir $finalName
-
-# Free the staging tree NOW -- tar no longer needs it, and the .tar.gz plus the .enc still have
-# to fit on the drive. Deleting staging here (instead of after encryption) is what prevents the
-# out-of-disk "error writing output file" when staging + archive + encrypted archive would
-# otherwise pile up on the same volume at once.
-Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
-
-if ($encrypt) {
-    # Make sure the encrypted output actually fits before openssl starts, so we never leave a
-    # half-written .enc behind. (The .enc is ~the same size as the .tar.gz.)
-    $freeNow = $null
-    try { $freeNow = (Get-PSDrive ($drive.TrimEnd(':')) -ErrorAction SilentlyContinue).Free } catch {}
-    if (($null -ne $freeNow) -and ($freeNow -lt ($tarGzSize * 1.02))) {
-        Write-ErrR ("Backup FAILED - NOT ENOUGH DISK SPACE to write the encrypted archive on {0}: need ~{1}, only {2} free. Free up space and re-run." -f $drive, (Format-Size $tarGzSize), (Format-Size $freeNow))
-        Remove-Item -LiteralPath $tarGz -Force -ErrorAction SilentlyContinue
-        Write-Info "The staged/temporary files have been deleted."
-        exit 1
-    }
-    if ($opensslBits -ne '64') {
-        Write-Info ("OpenSSL is {0}; the archive is streamed to it via stdin, so large files ({1}) work on a 32-bit build too." -f ($(if($opensslBits){"$opensslBits-bit"}else{'of unknown bitness'}), (Format-Size $tarGzSize)))
-    }
-    Write-Info "Encrypting (OpenSSL AES-256-CBC / PBKDF2) ..."
-    # Progress driven by the encrypted OUTPUT size vs the (known) input size. The password
-    # is passed via an env var (-pass env:) so it never appears on the visible command line.
-    $encDenom = [Math]::Max([int64]1, $tarGzSize)
-    $env:MTL_ENCPW = $EncPwd
-    $encErr = [System.IO.Path]::GetTempFileName()
-    # Feed the (possibly multi-GB) archive to OpenSSL on STDIN via a redirect rather than
-    # -in <file>: cmd.exe (64-bit) opens the big file and passes OpenSSL the handle, so even a
-    # 32-bit OpenSSL -- which cannot fopen a >2GB file itself -- works. The password stays in
-    # the env var (never in the .cmd); stderr is captured to a file (2> ...). Reliable exit code.
-    $encCmdText = '@"' + $opensslExe + '" enc -aes-256-cbc -pbkdf2 -salt -pass env:MTL_ENCPW -out "' + $finalPath + '" < "' + $tarGz + '" 2> "' + $encErr + '"'
-    $encRc = Invoke-CmdWithProgress -CmdText $encCmdText -WatchFile $finalPath -Denom $encDenom -Activity "Encrypting (OpenSSL AES-256-CBC / PBKDF2)"
-    Remove-Item Env:\MTL_ENCPW -ErrorAction SilentlyContinue
-    $encErrText = (Get-Content -LiteralPath $encErr -Raw -ErrorAction SilentlyContinue)
-    Remove-Item -LiteralPath $encErr -Force -ErrorAction SilentlyContinue
-    # A valid AES-256-CBC/PBKDF2 output is the input + salt header + padding, so it must be
-    # at least as large as the input. Anything smaller means openssl failed -- do NOT pass it
-    # off as a good backup.
-    $encSize = if (Test-Path $finalPath) { (Get-Item $finalPath).Length } else { 0 }
-    if ($encRc -ne 0 -or $encSize -lt $tarGzSize) {
-        # A partial output / "error writing output file" almost always means the disk filled up.
-        $freeAtFail = $null; try { $freeAtFail = (Get-PSDrive ($drive.TrimEnd(':')) -ErrorAction SilentlyContinue).Free } catch {}
-        $looksLikeDiskFull = ($encErrText -match '(?i)writ|space|disk') -or ($encSize -lt $tarGzSize)
-        if ($looksLikeDiskFull) {
-            $fm = if ($null -ne $freeAtFail) { (Format-Size $freeAtFail) } else { 'unknown' }
-            Write-ErrR ("Backup FAILED - NOT ENOUGH DISK SPACE on {0} to write the encrypted archive: needed ~{1}, only {2} free. Free up space and re-run." -f $drive, (Format-Size $tarGzSize), $fm)
-        } else {
-            Write-ErrR ("Encryption FAILED (openssl exit {0}; output {1}, expected >= {2})." -f $encRc, (Format-Size $encSize), (Format-Size $tarGzSize))
+    if ($encrypt) {
+        $freeNow = $null
+        try { $freeNow = (Get-PSDrive ($drive.TrimEnd(':')) -ErrorAction SilentlyContinue).Free } catch {}
+        if (($null -ne $freeNow) -and ($freeNow -lt ($tarGzSize * 1.02))) {
+            Write-ErrR ("Backup FAILED - NOT ENOUGH DISK SPACE to write the encrypted archive on {0}: need ~{1}, only {2} free. Free up space and re-run." -f $drive, (Format-Size $tarGzSize), (Format-Size $freeNow))
+            Remove-Item -LiteralPath $tarGz -Force -ErrorAction SilentlyContinue
+            Write-Info "The staged/temporary files have been deleted."
+            exit 1
         }
-        if ($encErrText) { Write-ErrR ("openssl said: " + ($encErrText.Trim() -split "`n" | Select-Object -First 3 | Out-String).Trim()) }
-        Remove-Item -LiteralPath $finalPath -Force -ErrorAction SilentlyContinue
+        if ($opensslBits -ne '64') {
+            Write-Info ("OpenSSL is {0}; the archive is streamed to it via stdin, so large files ({1}) work on a 32-bit build too." -f ($(if($opensslBits){"$opensslBits-bit"}else{'of unknown bitness'}), (Format-Size $tarGzSize)))
+        }
+        Write-Info "Encrypting (OpenSSL AES-256-CBC / PBKDF2) ..."
+        $encDenom = [Math]::Max([int64]1, $tarGzSize)
+        $env:MTL_ENCPW = $EncPwd
+        $encErr = [System.IO.Path]::GetTempFileName()
+        # Archive fed to OpenSSL on STDIN (cmd opens the big file) so a 32-bit OpenSSL works too;
+        # password stays in the env var (never in the .cmd); stderr captured (2> ...).
+        $encCmdText = '@"' + $opensslExe + '" enc -aes-256-cbc -pbkdf2 -salt -pass env:MTL_ENCPW -out "' + $finalPath + '" < "' + $tarGz + '" 2> "' + $encErr + '"'
+        $encRc = Invoke-CmdWithProgress -CmdText $encCmdText -WatchFile $finalPath -Denom $encDenom -Activity "Encrypting (OpenSSL AES-256-CBC / PBKDF2)"
+        Remove-Item Env:\MTL_ENCPW -ErrorAction SilentlyContinue
+        $encErrText = (Get-Content -LiteralPath $encErr -Raw -ErrorAction SilentlyContinue)
+        Remove-Item -LiteralPath $encErr -Force -ErrorAction SilentlyContinue
+        $encSize = if (Test-Path $finalPath) { (Get-Item $finalPath).Length } else { 0 }
+        if ($encRc -ne 0 -or $encSize -lt $tarGzSize) {
+            $freeAtFail = $null; try { $freeAtFail = (Get-PSDrive ($drive.TrimEnd(':')) -ErrorAction SilentlyContinue).Free } catch {}
+            if (($encErrText -match '(?i)writ|space|disk') -or ($encSize -lt $tarGzSize)) {
+                $fm = if ($null -ne $freeAtFail) { (Format-Size $freeAtFail) } else { 'unknown' }
+                Write-ErrR ("Backup FAILED - NOT ENOUGH DISK SPACE on {0} to write the encrypted archive: needed ~{1}, only {2} free. Free up space and re-run." -f $drive, (Format-Size $tarGzSize), $fm)
+            } else {
+                Write-ErrR ("Encryption FAILED (openssl exit {0}; output {1}, expected >= {2})." -f $encRc, (Format-Size $encSize), (Format-Size $tarGzSize))
+            }
+            if ($encErrText) { Write-ErrR ("openssl said: " + ($encErrText.Trim() -split "`n" | Select-Object -First 3 | Out-String).Trim()) }
+            Remove-Item -LiteralPath $finalPath -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $tarGz -Force -ErrorAction SilentlyContinue
+            Write-Info "The staged/temporary files have been deleted."
+            exit 1
+        }
         Remove-Item -LiteralPath $tarGz -Force -ErrorAction SilentlyContinue
-        Write-Info "The staged/temporary files have been deleted."
-        exit 1
+    } else {
+        Move-Item -LiteralPath $tarGz -Destination $finalPath -Force
     }
-    Remove-Item -LiteralPath $tarGz -Force -ErrorAction SilentlyContinue
 } else {
-    Move-Item -LiteralPath $tarGz -Destination $finalPath -Force
+    # ---- zip / 7z: single-stage compress (+AES-256 encrypt) via 7-Zip ----
+    # Tools were already resolved/validated by Initialize-BackupTools: $sevenZip is set, unless
+    # this is an UNENCRYPTED zip on a machine with no 7-Zip ($useZipFallback -> plain .NET zip).
+    $finalName = if ($ArchiveFormat -eq 'zip') { "MigrateToLinux_UserData_$stamp.zip" } else { "MigrateToLinux_UserData_$stamp.7z" }
+    $finalPath = Join-Path $OutputDir $finalName
+    if ($useZipFallback) {
+        Write-Info "Creating ZIP archive (no encryption; 7-Zip is not available) ..."
+        try {
+            Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
+            [System.IO.Compression.ZipFile]::CreateFromDirectory($staging, $finalPath, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+        } catch {
+            Write-ErrR ("ZIP creation FAILED: {0}" -f $_.Exception.Message)
+            Remove-Item -LiteralPath $finalPath -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Info "The staged/temporary files have been deleted."
+            exit 1
+        }
+        Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
+    } else {
+        if ($ArchiveFormat -eq 'zip') {
+            $typeOpt = '-tzip'
+            $encOpt = if ($encrypt) { ' -mem=AES256 -p"' + $EncPwd + '"' } else { '' }   # AES-256 ZIP (filenames NOT encrypted - zip format limit)
+        } else {
+            $typeOpt = '-t7z'
+            $encOpt = if ($encrypt) { ' -mhe=on -p"' + $EncPwd + '"' } else { '' }        # AES-256 7z with encrypted headers
+        }
+        Write-Info ("Creating {0} archive (compress + {1} in one pass) ..." -f $ArchiveFormat.ToUpper(), $(if($encrypt){'AES-256 encrypt'}else{'no encryption'}))
+        if ($encrypt) { Write-Info "  (7-Zip takes the password on its command line, so the running 7z process briefly shows it; the temp launcher is deleted immediately.)" }
+        $zErr = [System.IO.Path]::GetTempFileName()
+        # cd into staging so entries are stored as user\... / apps\... (not the temp path).
+        $zCmdText = '@cd /d "' + $staging + '"' + "`r`n" + '@"' + $sevenZip + '" a ' + $typeOpt + ' -mx=5 -bsp0' + $encOpt + ' "' + $finalPath + '" * > "' + $zErr + '" 2>&1'
+        $zRc = Invoke-CmdWithProgress -CmdText $zCmdText -WatchFile $finalPath -Denom $denom -Activity ("Creating {0} archive (compress + encrypt)" -f $ArchiveFormat.ToUpper())
+        $zErrText = (Get-Content -LiteralPath $zErr -Raw -ErrorAction SilentlyContinue)
+        Remove-Item -LiteralPath $zErr -Force -ErrorAction SilentlyContinue
+        $zSize = if (Test-Path $finalPath) { (Get-Item $finalPath).Length } else { 0 }
+        # 7-Zip exit codes: 0 = ok, 1 = WARNING (non-fatal), >=2 = fatal.
+        if ($zSize -eq 0 -or $zRc -ge 2) {
+            $freeAtFail = $null; try { $freeAtFail = (Get-PSDrive ($drive.TrimEnd(':')) -ErrorAction SilentlyContinue).Free } catch {}
+            if (($zErrText -match '(?i)space|disk|writ|not enough') -or ($zRc -ge 2 -and $zSize -gt 0)) {
+                $fm = if ($null -ne $freeAtFail) { (Format-Size $freeAtFail) } else { 'unknown' }
+                Write-ErrR ("Backup FAILED - possibly NOT ENOUGH DISK SPACE on {0} (free ~{1}) to write the archive. 7-Zip exit {2}. Free up space and re-run." -f $drive, $fm, $zRc)
+            } else {
+                Write-ErrR ("{0} archive creation FAILED (7-Zip exit {1}, output {2})." -f $ArchiveFormat.ToUpper(), $zRc, (Format-Size $zSize))
+            }
+            if ($zErrText) { Write-ErrR ("7-Zip said: " + ($zErrText.Trim() -split "`n" | Select-Object -First 3 | Out-String).Trim()) }
+            Remove-Item -LiteralPath $finalPath -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Info "The staged/temporary files have been deleted."
+            exit 1
+        }
+        if ($zRc -ne 0) { Write-WarnY "7-Zip reported warnings (some files may have been skipped); continuing with the archive." }
+        Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 if (-not (Test-Path $finalPath)) {
     Write-ErrR "Archive creation failed."

@@ -109,6 +109,11 @@ param(
     # Usable as -DataBackupOnly or the literal --data-backup-only.
     [switch] $DataBackupOnly,
 
+    # Backup archive format (forwarded to E_): 'zip' (default; AES-256 zip via 7-Zip),
+    # '7z' (AES-256 7z, encrypted headers) or 'enctar' (tar+gzip+OpenSSL). --archive-format[=]VALUE.
+    [ValidateSet('zip', '7z', 'enctar')]
+    [string] $ArchiveFormat = 'zip',
+
     # Encryption password for the exported sensitive data (WiFi/SSH/Contacts/wallpaper).
     # When supplied, the interactive transfer-password prompt is skipped. Usable as
     # -EncPwd "secret", -enc_pwd "secret", or the literal --enc_pwd / --enc_pwd=secret.
@@ -127,13 +132,17 @@ if (-not $EncPwd -and $ExtraArgs) {
         elseif ($a -eq '--enc_pwd' -and ($i + 1) -lt $ExtraArgs.Count) { $EncPwd = [string]$ExtraArgs[$i + 1]; $i++ }
     }
 }
-# Accept the literal "--data-backup" / "--data-backup-only" forms (mirror the switches).
+# Accept the literal "--data-backup" / "--data-backup-only" / "--archive-format" forms.
 if ($ExtraArgs) {
-    foreach ($a in $ExtraArgs) {
-        if ([string]$a -eq '--data-backup-only') { $DataBackupOnly = $true }
-        elseif ([string]$a -eq '--data-backup')  { $DataBackup = $true }
+    for ($i = 0; $i -lt $ExtraArgs.Count; $i++) {
+        $a = [string]$ExtraArgs[$i]
+        if ($a -eq '--data-backup-only') { $DataBackupOnly = $true }
+        elseif ($a -eq '--data-backup')  { $DataBackup = $true }
+        elseif ($a -like '--archive-format=*') { $ArchiveFormat = $a.Substring(17) }
+        elseif ($a -eq '--archive-format' -and ($i + 1) -lt $ExtraArgs.Count) { $ArchiveFormat = [string]$ExtraArgs[$i + 1]; $i++ }
     }
 }
+if ($ArchiveFormat -notin @('zip', '7z', 'enctar')) { $ArchiveFormat = 'zip' }
 # Backup-ONLY mode reuses the existing skip logic so detection (1-3) and generation (4) are
 # bypassed; only the step-6 backup runs (step 5 is guarded separately below). The plain
 # --data-backup runs the FULL pipeline and only auto-confirms the step-6 prompts.
@@ -656,7 +665,7 @@ if (-not (Test-Path $scriptBackup)) {
     if ($doBackup) {
         try {
             $env:MIGRATE_XFER_PWD = $xferPwd
-            $backupTokens = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $scriptBackup)
+            $backupTokens = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $scriptBackup, '-ArchiveFormat', $ArchiveFormat)
             if ($DataBackup -or $DataBackupOnly) { $backupTokens += '-AssumeYes' }   # skip the low-space confirmation too
             $bproc = Start-Process -FilePath $psExe -ArgumentList (Get-ArgLine $backupTokens) -NoNewWindow -Wait -PassThru
             if ($bproc.ExitCode -ne 0) { Write-Warning "Backup step exited with code $($bproc.ExitCode)." }
