@@ -144,11 +144,6 @@ if (-not (Test-Path $DataMigrationJson)) {
 }
 $plan = Get-Content -Raw -Path $DataMigrationJson -Encoding UTF8 | ConvertFrom-Json
 
-# Fail fast: make sure the tool the chosen --archive-format needs is available (installing it
-# automatically if possible) BEFORE any collection/staging work. Exits with a clear message here
-# if it cannot be obtained.
-Initialize-BackupTools
-
 # Human-readable size, max 2 decimals.
 function Format-Size {
     param([double] $Bytes)
@@ -488,6 +483,11 @@ function Add-Tree {
     }
     return $any
 }
+
+# Fail fast: make sure the tool the chosen --archive-format needs is available (installing it
+# automatically if possible) BEFORE any collection/staging work. Exits with a clear message if it
+# cannot be obtained. (Runs here, after all functions are defined, but before any real work.)
+Initialize-BackupTools
 
 # Sweep any leftover junk from this or previous/aborted runs up front, so the disk is
 # reclaimed before staging and the free-space estimate is accurate.

@@ -13,7 +13,7 @@
 "Docker Desktop","4.70.0","Docker Inc.","Win32","Available on Linux","Docker Engine (native) (install: apt)","70","Free (FOSS)","yes","Yes","Native (APT package)","https://docs.docker.com/engine/install/"
 "Dropbox","258.4.3749","Dropbox, Inc.","Win32","Available on Linux","Dropbox (Linux) (install: apt)","70","Freemium","yes","Yes","Native (APT package)","https://www.dropbox.com/install-linux"
 "Git","2.54.0","The Git Development Community","Win32","Available on Linux","See Native alternative in manifest","70","Unknown","yes","No, manual transfer","Native",""
-"GitHub Desktop","3.6.1","GitHub, Inc.","Win32","Not Available; Native Alternative","GitKraken (install: flatpak)","70","Freemium","yes","Yes","Native (Flatpak)","https://flathub.org/apps/search?q=gitkraken"
+"GitHub Desktop","3.6.2","GitHub, Inc.","Win32","Not Available; Native Alternative","GitKraken (install: flatpak)","70","Freemium","yes","Yes","Native (Flatpak)","https://flathub.org/apps/search?q=gitkraken"
 "GnuWin32: Grep-2.5.4","2.5.4","GnuWin32","Win32","Available on Linux","See Native alternative in manifest","70","Unknown","yes","No, manual transfer","Native",""
 "Google Chrome","149.0.7827.201","Google LLC","Win32","Available on Linux","Google Chrome (Linux) (install: apt)","70","Free","yes","Yes","Native (APT package)","https://www.google.com/chrome/"
 "Google Drive","127.0.1.0","Google LLC","Win32","Native Alternative; Available as WebApp","Insync (install: apt)","70","Paid","yes","Yes","Native (APT package)","https://www.insynchq.com/downloads"
