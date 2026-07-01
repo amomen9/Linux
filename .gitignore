@@ -1,1 +1,4 @@
 notes.txt
+
+# Generated encrypted user-data backup artifact (do not commit — bloats history)
+migrated_user_data.tar.enc
