@@ -1874,11 +1874,7 @@ MANUAL_APPS=(
 
 # Windows apps that were detected but NOT found in the manifest (no Linux mapping).
 UNMATCHED_APPS=(
-  "NordUpdater"
-  "Python Launcher"
-  "Windows Software Development Kit - Windows 10.0.26100.7705"
-  "Windows Software Development Kit - Windows 10.0.26100.8249"
-  "Python Manager"
+
 )
 
 here=""

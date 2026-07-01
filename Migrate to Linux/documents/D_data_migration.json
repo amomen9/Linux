@@ -5,6 +5,7 @@
   "_safe_values": "yes = the data works as-is on the corresponding Linux path -> always promote to linuxTarget. 'same version' = promote ONLY when the user answered 'same' to the (4/10) version question; otherwise quarantine. no = never promote (quarantine). 'yes-after-rewrite' = promote, but first apply contentRewrites (always writing a .bak). A rewrite is text-only and reversible; it never applies to binary / database / version-pinned on-disk formats.",
   "_decisionTable": "safe==yes -> promote. safe==yes-after-rewrite -> rewrite(+.bak) then promote. safe=='same version' -> promote iff MIGRATE_VERSION_MODE==same else quarantine. safe==no -> quarantine. Quarantine = <restore path>/<key>/<scope>/. Wine apps set wine:true and point linuxTarget into ~/.wine/drive_c so their Windows-format paths keep working under Wine (so they are always 'safe' and are NEVER rewritten).",
   "_contentRewrites": "Optional per-scope list. Each item: { files:[regex...], rules:[ {kind:'winpath_to_linux'|'userprofile_to_home'|'drive_map'} | {find:'regex', replace:'text'} ], backup:true }. Named 'kind' transformers are curated + tested; raw find/replace is the author's responsibility. Applies ONLY to plain-text config files. Promotion correctness is never guaranteed by a rewrite alone -- the restore script always tells the user to test the app afterwards.",
+  "_excludedByPolicy": "Cloud-synced data (OneDrive, Dropbox, Google Drive, iCloud, Box, ...) and ALL browser profile data are NEVER backed up -- they restore from their own service. E_backup_user&application_data.ps1 drops them at collection time, whether online-only or fully downloaded, so do NOT add app entries for browsers or for folders that live under a cloud-sync root.",
   "userProfile": {
     "_comment": "Static important parts of C:\\Users\\<name>. Each entry: path (relative to the profile), linuxTarget, optional exclude regex list. These always restore verbatim into the target user's home; never rewritten.",
     "inclusions": [
@@ -86,17 +87,6 @@
         "userdir_safe_to_transfer_to_corresponding_paths_for_linux": "yes",
         "DataTransferInclusions": ["\\.xml$", "/themes/", "/plugins/Config/"],
         "DataTransferExclusions": ["/backup/", "/plugins/.*\\.dll$"]
-      }
-    },
-    "Google Chrome": {
-      "wine": false,
-      "note": "EXCLUDED ON PURPOSE. Chrome's profile (bookmarks/history/passwords/extensions) is restorable from the user's Google account on Linux, so it is classified 'no' and only ever quarantined -- never auto-promoted -- to avoid a stale/locked-profile mess.",
-      "userdir": {
-        "sources": ["%LOCALAPPDATA%\\Google\\Chrome\\User Data\\Default"],
-        "linuxTarget": "~/.config/google-chrome/Default",
-        "userdir_safe_to_transfer_to_corresponding_paths_for_linux": "no",
-        "DataTransferInclusions": ["Bookmarks$"],
-        "DataTransferExclusions": ["/Cache/", "/Code Cache/", "/GPUCache/", "/Service Worker/"]
       }
     }
   }

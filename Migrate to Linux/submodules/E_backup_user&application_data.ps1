@@ -56,6 +56,11 @@ $ErrorActionPreference = 'Stop'
 $scriptDir = $PSScriptRoot
 if (-not $scriptDir) { $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path }
 $projRoot  = Split-Path -Parent $scriptDir
+
+# Reuse the shared timed y/n prompt (Read-YNTimed) so confirmations here match the
+# password prompt: 15s idle countdown, default answer on timeout / no console.
+$xferShared = Join-Path $scriptDir '_xfer_password.ps1'
+if (Test-Path $xferShared) { . $xferShared }
 if (-not $DataMigrationJson) { $DataMigrationJson = Join-Path $projRoot 'documents\D_data_migration.json' }
 if (-not $OutputDir)         { $OutputDir = [Environment]::GetFolderPath('Desktop') }
 
@@ -138,6 +143,51 @@ function Format-Size {
     return ('{0:0.##} {1}' -f $Bytes, $u[$i])
 }
 
+# Remove every temp leftover this tool can create -- staging trees, intermediate .tar.gz
+# archives, and the throwaway encrypt .cmd -- from THIS run and any previous/aborted run by
+# anyone. The only artifacts a run ever leaves are the final .enc/.tar.gz + .log on the Desktop.
+function Clear-Leftovers {
+    $tmp = [System.IO.Path]::GetTempPath()
+    foreach ($pat in @('mtl_backup_*', 'mtl_*.tar.gz', 'mtl_*.cmd')) {
+        Get-ChildItem -LiteralPath $tmp -Filter $pat -Force -ErrorAction SilentlyContinue |
+            ForEach-Object { try { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction Stop } catch {} }
+    }
+}
+
+# Run a shell command line (its own stderr redirect included) via a tiny generated .cmd,
+# launched with [Diagnostics.Process]::Start so the exit code is ALWAYS reliable (unlike
+# Start-Process -PassThru, whose .ExitCode can come back $null without -Wait). Polls
+# $WatchFile's growing size to drive a progress bar. Returns the real integer exit code
+# (or 1 if the process could not even be started).
+function Invoke-CmdWithProgress {
+    param([string] $CmdText, [string] $WatchFile, [double] $Denom, [string] $Activity)
+    $cmdFile = Join-Path ([System.IO.Path]::GetTempPath()) ('mtl_run_' + [System.Guid]::NewGuid().ToString('N').Substring(0, 8) + '.cmd')
+    Set-Content -LiteralPath $cmdFile -Value $CmdText
+    $rc = 1
+    try {
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = $env:ComSpec
+        $psi.Arguments = '/c "' + $cmdFile + '"'
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        $p = [System.Diagnostics.Process]::Start($psi)
+        while (-not $p.HasExited) {
+            $cur = 0; try { $cur = (Get-Item -LiteralPath $WatchFile -ErrorAction SilentlyContinue).Length } catch {}
+            $pct = [Math]::Min(99, [int](($cur / $Denom) * 100))
+            Write-Progress -Activity $Activity -Status ("{0} / ~{1}" -f (Format-Size $cur), (Format-Size $Denom)) -PercentComplete $pct
+            Start-Sleep -Milliseconds 250
+        }
+        $p.WaitForExit()
+        $rc = $p.ExitCode
+    } catch {
+        $rc = 1
+    } finally {
+        Write-Progress -Activity $Activity -Completed
+        Remove-Item -LiteralPath $cmdFile -Force -ErrorAction SilentlyContinue
+    }
+    return $rc
+}
+
 # Slug shared with the bash side (_common.sh slugify): lowercase, non [a-z0-9-_] stripped.
 function Get-Slug {
     param([string] $Name)
@@ -161,20 +211,78 @@ function Test-Included {
 }
 
 # ---------------------------------------------------------------------------
+# Cloud-storage + browser exclusion. Per policy, data that a service restores on its
+# own is NEVER backed up -- whether it is online-only OR fully downloaded locally:
+#   * cloud-sync roots (OneDrive, Dropbox, Google Drive, iCloud, Box, ...)
+#   * files carrying the online-only / cloud-recall attributes
+#   * browser profile data (Chrome/Edge/Brave/Firefox/Opera/...)
+# ---------------------------------------------------------------------------
+function Get-CloudRoots {
+    $roots = New-Object System.Collections.Generic.List[string]
+    $add = { param($p) if ($p) { $roots.Add([string]$p) } }
+    foreach ($v in 'OneDrive','OneDriveConsumer','OneDriveCommercial') { & $add ([Environment]::GetEnvironmentVariable($v)) }
+    # OneDrive accounts (registry) -> UserFolder
+    try { Get-ChildItem 'HKCU:\Software\Microsoft\OneDrive\Accounts' -ErrorAction SilentlyContinue | ForEach-Object {
+        & $add ((Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).UserFolder) } } catch {}
+    # Dropbox info.json (personal + business)
+    foreach ($ij in @("$env:APPDATA\Dropbox\info.json","$env:LOCALAPPDATA\Dropbox\info.json")) {
+        if (Test-Path $ij) { try { (Get-Content -Raw $ij | ConvertFrom-Json).PSObject.Properties |
+            ForEach-Object { & $add $_.Value.path } } catch {} }
+    }
+    # Common local mount points under the profile
+    foreach ($rel in 'Dropbox','OneDrive','My Drive','Google Drive','iCloudDrive','iCloud Drive','Box','Box Sync') {
+        $p = Join-Path $env:USERPROFILE $rel; if (Test-Path $p) { & $add $p }
+    }
+    # Google DriveFS local cache
+    if ($env:LOCALAPPDATA) { $p = "$env:LOCALAPPDATA\Google\DriveFS"; if (Test-Path $p) { & $add $p } }
+    # Windows Cloud Files sync roots -- the generic registry that EVERY Cloud Filter API
+    # provider (OneDrive/Dropbox/Google Drive/iCloud) registers its root(s) under.
+    try { Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\SyncRootManager' -ErrorAction SilentlyContinue |
+        ForEach-Object { Get-ChildItem "$($_.PSPath)\UserSyncRoots" -ErrorAction SilentlyContinue |
+            ForEach-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).PSObject.Properties |
+                Where-Object { $_.Name -notmatch '^PS' } | ForEach-Object { & $add $_.Value } } } } catch {}
+    return ($roots | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\').ToLowerInvariant() } | Sort-Object -Unique)
+}
+$script:CloudRoots = @(Get-CloudRoots)
+# Browser profile data (restorable from the browser account / sync).
+$script:BrowserFrags = @(
+    '\google\chrome\user data', '\google\chrome sxs\user data', '\google\chrome beta\user data',
+    '\microsoft\edge\user data', '\bravesoftware\brave-browser\user data', '\chromium\user data',
+    '\vivaldi\user data', '\opera software\', '\mozilla\firefox', '\yandex\yandexbrowser\user data'
+) | ForEach-Object { $_.ToLowerInvariant() }
+
+# True when a path is cloud-synced, browser data, or (for files) online-only / recall.
+function Test-ExcludedPath {
+    param([string] $Full, [int] $Attrs = 0)
+    $lp = $Full.ToLowerInvariant().TrimEnd('\')
+    foreach ($r in $script:CloudRoots)   { if ($lp -eq $r -or $lp.StartsWith($r + '\')) { return $true } }
+    foreach ($b in $script:BrowserFrags) { if ($lp.Contains($b)) { return $true } }
+    if ($Attrs -band 0x1000)   { return $true }   # FILE_ATTRIBUTE_OFFLINE (online-only)
+    if ($Attrs -band 0x40000)  { return $true }   # FILE_ATTRIBUTE_RECALL_ON_OPEN
+    if ($Attrs -band 0x400000) { return $true }   # FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS
+    return $false
+}
+
+# ---------------------------------------------------------------------------
 # Collect: returns a list of @{ Src; Rel; Size } and builds the report rows.
 # ---------------------------------------------------------------------------
 $items = New-Object System.Collections.Generic.List[object]   # files to stage
 $report = New-Object System.Collections.Generic.List[object]  # @{ Source; Target } collapsed parents
 $totalBytes = [double]0
+$script:excludedCount = 0
+$script:excludedBytes = [double]0
 
 function Add-Tree {
     # Walk one source root, keep matching files, stage them under $archPrefix/<rel>.
     param([string] $SrcRoot, [string] $ArchPrefix, [string[]] $Incl, [string[]] $Excl)
     if (-not (Test-Path $SrcRoot)) { return $false }
+    # Whole root is cloud-synced / browser data -> skip the entire subtree (never enumerate it).
+    if (Test-ExcludedPath $SrcRoot) { return $false }
     $any = $false
     if (Test-Path $SrcRoot -PathType Leaf) {
         $fi = Get-Item -LiteralPath $SrcRoot
         $rel = $fi.Name
+        if (Test-ExcludedPath $fi.FullName ([int]$fi.Attributes)) { $script:excludedCount++; $script:excludedBytes += $fi.Length; return $false }
         if (Test-Included ($rel -replace '\\','/') $Incl $Excl) {
             $items.Add(@{ Src = $fi.FullName; Rel = "$ArchPrefix/$rel"; Size = $fi.Length })
             $script:totalBytes += $fi.Length; $any = $true
@@ -183,6 +291,8 @@ function Add-Tree {
     }
     $base = (Get-Item -LiteralPath $SrcRoot).FullName.TrimEnd('\')
     foreach ($f in (Get-ChildItem -LiteralPath $SrcRoot -Recurse -File -Force -ErrorAction SilentlyContinue)) {
+        # Cloud-synced / online-only / browser data -> excluded, whatever its inclusion match.
+        if (Test-ExcludedPath $f.FullName ([int]$f.Attributes)) { $script:excludedCount++; $script:excludedBytes += $f.Length; continue }
         $rel = $f.FullName.Substring($base.Length + 1) -replace '\\','/'
         if (-not (Test-Included $rel $Incl $Excl)) { continue }
         $items.Add(@{ Src = $f.FullName; Rel = "$ArchPrefix/$rel"; Size = $f.Length })
@@ -190,6 +300,10 @@ function Add-Tree {
     }
     return $any
 }
+
+# Sweep any leftover junk from this or previous/aborted runs up front, so the disk is
+# reclaimed before staging and the free-space estimate is accurate.
+Clear-Leftovers
 
 # ---- 1. Static user-profile data ----
 $userDir = $env:USERPROFILE
@@ -213,12 +327,10 @@ if ($appsObj) {
             if (-not $scope) { continue }
             $incl = @(); if ($scope.DataTransferInclusions) { $incl = @($scope.DataTransferInclusions) }
             $excl = @(); if ($scope.DataTransferExclusions) { $excl = @($scope.DataTransferExclusions) }
-            $stagedHere = $false
             foreach ($s in @($scope.sources)) {
                 $sp = Expand-Src $s
                 if (Add-Tree -SrcRoot $sp -ArchPrefix "apps/$slug/$scopeName" -Incl $incl -Excl $excl) {
                     $report.Add(@{ Source = $sp; Target = "[$appKey/$scopeName] $($scope.linuxTarget)" })
-                    $stagedHere = $true
                 }
             }
         }
@@ -254,6 +366,12 @@ $logLines = @('Migrate to Linux -- backup report (' + (Get-Date) + ')','')
 foreach ($r in $reportSorted) { $logLines += ('{0}  -->  {1}' -f $r.Source, $r.Target) }
 [System.IO.File]::WriteAllText($logPath, ($logLines -join "`r`n"), (New-Object System.Text.UTF8Encoding($false)))
 
+if ($script:excludedCount -gt 0) {
+    Write-Host ""
+    Write-Info ("Skipped {0} file(s) (~{1}) that a service restores on its own: cloud storage (OneDrive/Dropbox/Google Drive/iCloud/...) and browser data -- excluded whether online-only or downloaded." -f $script:excludedCount, (Format-Size $script:excludedBytes))
+    if ($script:CloudRoots.Count -gt 0) { Write-Info ("Cloud roots detected: {0}" -f (($script:CloudRoots) -join '; ')) }
+}
+
 Write-Host ""
 Write-WarnY "WARNING: depending on how much data you have, this can take a long time."
 Write-WarnY "WARNING: this backup will probably NOT include everything you might want. Review the list above; continue only if you accept that risk."
@@ -261,26 +379,37 @@ Write-WarnY "WARNING: this backup will probably NOT include everything you might
 # ---------------------------------------------------------------------------
 # Size estimate + storage-space precheck
 # ---------------------------------------------------------------------------
-$estArchive = [double]($totalBytes * 0.6)     # rough: medium gzip on mixed data
+$estArchive = [double]($totalBytes * 0.6)     # rough only; incompressible media can be ~1:1
+# Worst case the archive is nearly as large as the source (incompressible media), and the
+# staging tree briefly coexists with the .tar.gz (and later the .tar.gz with the .enc) on the
+# same drive. Staging is freed BEFORE encryption, so the guaranteed peak is ~2x the source.
+$peakNeeded = [double]($totalBytes * 2)
 $drive = (Split-Path -Qualifier $OutputDir)
 $free = $null
 try { $free = (Get-PSDrive ($drive.TrimEnd(':')) -ErrorAction SilentlyContinue).Free } catch {}
 Write-Host ""
 Write-Info ("Data to back up (uncompressed) : {0}" -f (Format-Size $totalBytes))
-Write-Info ("Estimated archive size         : ~{0}" -f (Format-Size $estArchive))
+Write-Info ("Estimated archive size         : ~{0} (rough; can be much larger for media)" -f (Format-Size $estArchive))
+Write-Info ("Peak temp space needed         : ~{0}" -f (Format-Size $peakNeeded))
 Write-Info ("Estimated size needed on Linux : ~{0}" -f (Format-Size $totalBytes))
-if ($free -ne $null) { Write-Info ("Free space on {0} (Desktop)     : {1}" -f $drive, (Format-Size $free)) }
+if ($null -ne $free) { Write-Info ("Free space on {0} (Desktop)     : {1}" -f $drive, (Format-Size $free)) }
 
 $needConfirm = $false; $why = New-Object System.Collections.Generic.List[string]
-# The archive is built via a temp .tar.gz next to the output, so we need ~estArchive*2 transiently.
-if ($free -ne $null -and $free -lt ($estArchive * 2)) { $needConfirm = $true; $why.Add('predicted free space on the Desktop drive may be insufficient') }
-if ($totalBytes -gt 50GB -or $estArchive -gt 50GB)   { $needConfirm = $true; $why.Add('the backup exceeds 50 GB') }
+# Need room for the staging tree AND the archive to coexist briefly (~2x the source size).
+if (($null -ne $free) -and ($free -lt $peakNeeded)) { $needConfirm = $true; $why.Add('free space may be insufficient - the staged copy and the archive briefly coexist (~2x the data size)') }
+if ($totalBytes -gt 50GB) { $needConfirm = $true; $why.Add('the backup exceeds 50 GB') }
 
 if ($needConfirm -and -not $AssumeYes) {
     Write-Host ""
     Write-WarnY ("You are being asked to confirm because " + ($why -join ' and ') + ".")
-    $ans = Read-Host "  Continue with the backup anyway? (y/n)"
-    if ($ans -notmatch '^(?i)y') { Write-Info "Backup cancelled."; exit 0 }
+    $cont = $true
+    if (Get-Command Read-YNTimed -ErrorAction SilentlyContinue) {
+        $cont = Read-YNTimed -Prompt "  Continue with the backup anyway? (y/n, default y, 15s): " -TimeoutSec 15 -Default $true
+    } else {
+        $ans = Read-Host "  Continue with the backup anyway? (y/n, default y)"
+        $cont = ($ans -notmatch '^\s*[nN]')     # default y: only an explicit 'n' cancels
+    }
+    if (-not $cont) { Write-Info "Backup cancelled."; exit 0 }
 }
 
 # ---------------------------------------------------------------------------
@@ -293,11 +422,31 @@ function Resolve-Tool {
     foreach ($p in $Fallbacks) { if ($p -and (Test-Path $p)) { return $p } }
     return $null
 }
+# Read a PE header's machine type: '64' (x64/arm64), '32' (x86), or '' on error.
+function Get-PEBitness {
+    param([string] $Path)
+    try {
+        $fs = [IO.File]::OpenRead($Path); $br = New-Object IO.BinaryReader($fs)
+        $fs.Position = 0x3C; $peOff = $br.ReadInt32(); $fs.Position = $peOff + 4
+        $m = $br.ReadUInt16(); $br.Close(); $fs.Close()
+        switch ($m) { 0x8664 { '64' } 0xAA64 { '64' } 0x14c { '32' } default { '' } }
+    } catch { '' }
+}
 $tarExe = Resolve-Tool 'tar' @()
-$opensslExe = Resolve-Tool 'openssl' @(
+# OpenSSL must be 64-bit: a 32-bit build fails to open the multi-GB archive as -in and
+# silently produces a truncated/garbage file. Prefer a 64-bit build (Git ships one),
+# fall back to whatever exists (with a warning) only if no 64-bit build is found.
+$opensslExe = $null; $opensslBits = ''
+$osslCands = @(
     "$env:ProgramFiles\Git\usr\bin\openssl.exe",
     "$env:ProgramFiles\Git\mingw64\bin\openssl.exe",
-    "${env:ProgramFiles(x86)}\Git\usr\bin\openssl.exe")
+    'C:\OpenSSL-Win64\bin\openssl.exe',
+    (Get-Command openssl -ErrorAction SilentlyContinue).Source,
+    "${env:ProgramFiles(x86)}\Git\usr\bin\openssl.exe",
+    'C:\OpenSSL-Win32\bin\openssl.exe'
+) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+foreach ($c in $osslCands) { if ((Get-PEBitness $c) -eq '64') { $opensslExe = $c; $opensslBits = '64'; break } }
+if (-not $opensslExe -and $osslCands.Count -gt 0) { $opensslExe = $osslCands[0]; $opensslBits = (Get-PEBitness $opensslExe) }
 
 if (-not $tarExe) {
     Write-ErrR "tar.exe not found (ships with Windows 10/11). Cannot create the archive."
@@ -333,74 +482,100 @@ Write-Progress -Activity "Staging files" -Completed
 $tarGz = Join-Path $staging "..\mtl_$stamp.tar.gz"
 $tarGz = [System.IO.Path]::GetFullPath($tarGz)
 Write-Info "Compressing (tar + gzip, medium) ..."
-# bsdtar honours GZIP=-6 for medium compression of the gzip filter.
+# Default gzip level is 6 (medium); bsdtar ignores the GZIP env var but this documents intent.
 $env:GZIP = '-6'
-# Windows ships bsdtar (no GNU --checkpoint), so we can't read progress FROM tar. Instead
-# run it asynchronously and drive a progress bar from the OUTPUT archive's growing size,
-# measured against the estimate (approximate but a real, moving indicator).
+# Progress is driven from the growing OUTPUT archive size (bsdtar has no GNU --checkpoint).
+# tar's stderr is captured to a file inside the generated .cmd (2> ...), so there is no pipe
+# to deadlock and the exit code from the .NET process is reliable.
 $tarErr = [System.IO.Path]::GetTempFileName()
-$tarArgLine = (@('-czf', $tarGz, '-C', $staging, '.') | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } }) -join ' '
-$denom = [Math]::Max(1, $estArchive)
-try {
-    $tp = Start-Process -FilePath $tarExe -ArgumentList $tarArgLine -NoNewWindow -PassThru -RedirectStandardError $tarErr
-    while (-not $tp.HasExited) {
-        $cur = 0; try { $cur = (Get-Item -LiteralPath $tarGz -ErrorAction SilentlyContinue).Length } catch {}
-        $pct = [Math]::Min(99, [int](($cur / $denom) * 100))
-        Write-Progress -Activity "Compressing (tar + gzip, medium)" -Status ("{0} / ~{1}" -f (Format-Size $cur), (Format-Size $estArchive)) -PercentComplete $pct
-        Start-Sleep -Milliseconds 250
-    }
-    $tp.WaitForExit()
-} catch {
-    # Fallback: synchronous compression with no progress bar.
-    & $tarExe -czf $tarGz -C $staging . 2>$null
-} finally {
-    Write-Progress -Activity "Compressing (tar + gzip, medium)" -Completed
-    Remove-Item Env:\GZIP -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $tarErr -Force -ErrorAction SilentlyContinue
-}
-if (-not (Test-Path $tarGz) -or (Get-Item $tarGz).Length -eq 0) {
-    Write-ErrR "Compression failed -- archive not created."
+$denom = [Math]::Max([double]1, $estArchive)
+$tarCmdText = '@"' + $tarExe + '" -czf "' + $tarGz + '" -C "' + $staging + '" . 2> "' + $tarErr + '"'
+$tarRc = Invoke-CmdWithProgress -CmdText $tarCmdText -WatchFile $tarGz -Denom $denom -Activity "Compressing (tar + gzip, medium)"
+Remove-Item Env:\GZIP -ErrorAction SilentlyContinue
+$tarErrText = (Get-Content -LiteralPath $tarErr -Raw -ErrorAction SilentlyContinue)
+Remove-Item -LiteralPath $tarErr -Force -ErrorAction SilentlyContinue
+$tarGzSize = if (Test-Path $tarGz) { (Get-Item $tarGz).Length } else { 0 }
+# bsdtar exit codes: 0 = ok, 1 = WARNING (some files skipped, archive still valid),
+# >=2 = fatal. Only a fatal error or an empty/missing output counts as a failure.
+if ($tarGzSize -eq 0 -or $tarRc -ge 2) {
+    Write-ErrR ("Compression FAILED (tar exit {0}, output {1}). Archive not created." -f $tarRc, (Format-Size $tarGzSize))
+    if ($tarErrText) { Write-ErrR ("tar said: " + ($tarErrText.Trim() -split "`n" | Select-Object -First 3 | Out-String).Trim()) }
+    Remove-Item -LiteralPath $tarGz -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Info "The staged/temporary files have been deleted."
     exit 1
+}
+if ($tarRc -ne 0) {
+    Write-WarnY "tar reported warnings (some files may have been skipped); continuing with the archive."
+    if ($tarErrText) { Write-WarnY ("tar said: " + ($tarErrText.Trim() -split "`n" | Select-Object -First 2 | Out-String).Trim()) }
 }
 
 $finalName = if ($encrypt) { "MigrateToLinux_UserData_$stamp.tar.gz.enc" } else { "MigrateToLinux_UserData_$stamp.tar.gz" }
 $finalPath = Join-Path $OutputDir $finalName
+
+# Free the staging tree NOW -- tar no longer needs it, and the .tar.gz plus the .enc still have
+# to fit on the drive. Deleting staging here (instead of after encryption) is what prevents the
+# out-of-disk "error writing output file" when staging + archive + encrypted archive would
+# otherwise pile up on the same volume at once.
+Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
+
 if ($encrypt) {
+    # Make sure the encrypted output actually fits before openssl starts, so we never leave a
+    # half-written .enc behind. (The .enc is ~the same size as the .tar.gz.)
+    $freeNow = $null
+    try { $freeNow = (Get-PSDrive ($drive.TrimEnd(':')) -ErrorAction SilentlyContinue).Free } catch {}
+    if (($null -ne $freeNow) -and ($freeNow -lt ($tarGzSize * 1.02))) {
+        Write-ErrR ("Backup FAILED - NOT ENOUGH DISK SPACE to write the encrypted archive on {0}: need ~{1}, only {2} free. Free up space and re-run." -f $drive, (Format-Size $tarGzSize), (Format-Size $freeNow))
+        Remove-Item -LiteralPath $tarGz -Force -ErrorAction SilentlyContinue
+        Write-Info "The staged/temporary files have been deleted."
+        exit 1
+    }
+    if ($opensslBits -ne '64') {
+        Write-Info ("OpenSSL is {0}; the archive is streamed to it via stdin, so large files ({1}) work on a 32-bit build too." -f ($(if($opensslBits){"$opensslBits-bit"}else{'of unknown bitness'}), (Format-Size $tarGzSize)))
+    }
     Write-Info "Encrypting (OpenSSL AES-256-CBC / PBKDF2) ..."
     # Progress driven by the encrypted OUTPUT size vs the (known) input size. The password
     # is passed via an env var (-pass env:) so it never appears on the visible command line.
-    $encDenom = [Math]::Max(1, (Get-Item $tarGz).Length)
+    $encDenom = [Math]::Max([int64]1, $tarGzSize)
     $env:MTL_ENCPW = $EncPwd
     $encErr = [System.IO.Path]::GetTempFileName()
-    $encArgLine = (@('enc','-aes-256-cbc','-pbkdf2','-salt','-pass','env:MTL_ENCPW','-in',$tarGz,'-out',$finalPath) |
-                   ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } }) -join ' '
-    try {
-        $ep = Start-Process -FilePath $opensslExe -ArgumentList $encArgLine -NoNewWindow -PassThru -RedirectStandardError $encErr
-        while (-not $ep.HasExited) {
-            $cur = 0; try { $cur = (Get-Item -LiteralPath $finalPath -ErrorAction SilentlyContinue).Length } catch {}
-            $pct = [Math]::Min(99, [int](($cur / $encDenom) * 100))
-            Write-Progress -Activity "Encrypting (OpenSSL AES-256-CBC / PBKDF2)" -Status ("{0} / ~{1}" -f (Format-Size $cur), (Format-Size $encDenom)) -PercentComplete $pct
-            Start-Sleep -Milliseconds 250
+    # Feed the (possibly multi-GB) archive to OpenSSL on STDIN via a redirect rather than
+    # -in <file>: cmd.exe (64-bit) opens the big file and passes OpenSSL the handle, so even a
+    # 32-bit OpenSSL -- which cannot fopen a >2GB file itself -- works. The password stays in
+    # the env var (never in the .cmd); stderr is captured to a file (2> ...). Reliable exit code.
+    $encCmdText = '@"' + $opensslExe + '" enc -aes-256-cbc -pbkdf2 -salt -pass env:MTL_ENCPW -out "' + $finalPath + '" < "' + $tarGz + '" 2> "' + $encErr + '"'
+    $encRc = Invoke-CmdWithProgress -CmdText $encCmdText -WatchFile $finalPath -Denom $encDenom -Activity "Encrypting (OpenSSL AES-256-CBC / PBKDF2)"
+    Remove-Item Env:\MTL_ENCPW -ErrorAction SilentlyContinue
+    $encErrText = (Get-Content -LiteralPath $encErr -Raw -ErrorAction SilentlyContinue)
+    Remove-Item -LiteralPath $encErr -Force -ErrorAction SilentlyContinue
+    # A valid AES-256-CBC/PBKDF2 output is the input + salt header + padding, so it must be
+    # at least as large as the input. Anything smaller means openssl failed -- do NOT pass it
+    # off as a good backup.
+    $encSize = if (Test-Path $finalPath) { (Get-Item $finalPath).Length } else { 0 }
+    if ($encRc -ne 0 -or $encSize -lt $tarGzSize) {
+        # A partial output / "error writing output file" almost always means the disk filled up.
+        $freeAtFail = $null; try { $freeAtFail = (Get-PSDrive ($drive.TrimEnd(':')) -ErrorAction SilentlyContinue).Free } catch {}
+        $looksLikeDiskFull = ($encErrText -match '(?i)writ|space|disk') -or ($encSize -lt $tarGzSize)
+        if ($looksLikeDiskFull) {
+            $fm = if ($null -ne $freeAtFail) { (Format-Size $freeAtFail) } else { 'unknown' }
+            Write-ErrR ("Backup FAILED - NOT ENOUGH DISK SPACE on {0} to write the encrypted archive: needed ~{1}, only {2} free. Free up space and re-run." -f $drive, (Format-Size $tarGzSize), $fm)
+        } else {
+            Write-ErrR ("Encryption FAILED (openssl exit {0}; output {1}, expected >= {2})." -f $encRc, (Format-Size $encSize), (Format-Size $tarGzSize))
         }
-        $ep.WaitForExit()
-    } catch {
-        # Fallback: synchronous encryption with no progress bar.
-        & $opensslExe enc -aes-256-cbc -pbkdf2 -salt -pass env:MTL_ENCPW -in $tarGz -out $finalPath 2>$null
-    } finally {
-        Write-Progress -Activity "Encrypting (OpenSSL AES-256-CBC / PBKDF2)" -Completed
-        Remove-Item Env:\MTL_ENCPW -ErrorAction SilentlyContinue
-        Remove-Item -LiteralPath $encErr -Force -ErrorAction SilentlyContinue
+        if ($encErrText) { Write-ErrR ("openssl said: " + ($encErrText.Trim() -split "`n" | Select-Object -First 3 | Out-String).Trim()) }
+        Remove-Item -LiteralPath $finalPath -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $tarGz -Force -ErrorAction SilentlyContinue
+        Write-Info "The staged/temporary files have been deleted."
+        exit 1
     }
     Remove-Item -LiteralPath $tarGz -Force -ErrorAction SilentlyContinue
 } else {
     Move-Item -LiteralPath $tarGz -Destination $finalPath -Force
 }
-# Clean the clear-text staging tree (data now lives only inside the archive).
-Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
-
 if (-not (Test-Path $finalPath)) {
     Write-ErrR "Archive creation failed."
+    Write-Info "The staged/temporary files have been deleted."
+    Write-Host ""
     exit 1
 }
 $archSize = (Get-Item $finalPath).Length
@@ -414,5 +589,7 @@ if ($encrypt) {
 } else {
     Write-WarnY "  UNENCRYPTED. Keep it private and delete it after restoring."
 }
-Write-Info ("  Full file list     : $logPath")
+Write-OkLine ("  Log (full file list): $logPath")
+Write-Info "The staged/temporary files have been deleted."
+Write-Host ""
 exit 0

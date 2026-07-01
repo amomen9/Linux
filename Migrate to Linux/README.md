@@ -27,12 +27,12 @@ sudo ./execute_all.sh        # drivers → apps → settings, continue-on-error
 
 Several tools touch the same problem from different angles. Here is how this kit relates to them:
 
-| Project | What it does | Link |
-| --- | --- | --- |
-| **Operese** | In-place Windows 10 → **Kubuntu only** conversion of files/settings (written in Rust); app migration is explicitly unfinished. Converts the partition in place. | <https://codeberg.org/Operese/operese> |
-| **WinApps** | Does not migrate - it **runs** the real Windows apps (Office/Adobe) inside a Windows VM and surfaces them on the Linux desktop over RDP. | <https://github.com/winapps-org/winapps> |
-| **AlternativeTo** | A manual directory for looking up Linux equivalents; no detection, no automation. | <https://alternativeto.net> |
-| **Ubuntu wiki: software-alternatives-migration** | A documented concept / checklist, not a working tool. | <https://wiki.ubuntu.com/software-alternatives-migration> |
+| Project                                                | What it does                                                                                                                                                          | Link                                                                                                            |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| **Operese**                                      | In-place Windows 10 →**Kubuntu only** conversion of files/settings (written in Rust); app migration is explicitly unfinished. Converts the partition in place. | [https://codeberg.org/Operese/operese](https://codeberg.org/Operese/operese)                                       |
+| **WinApps**                                      | Does not migrate - it**runs** the real Windows apps (Office/Adobe) inside a Windows VM and surfaces them on the Linux desktop over RDP.                         | [https://github.com/winapps-org/winapps](https://github.com/winapps-org/winapps)                                   |
+| **AlternativeTo**                                | A manual directory for looking up Linux equivalents; no detection, no automation.                                                                                     | [https://alternativeto.net](https://alternativeto.net)                                                             |
+| **Ubuntu wiki: software-alternatives-migration** | A documented concept / checklist, not a working tool.                                                                                                                 | [https://wiki.ubuntu.com/software-alternatives-migration](https://wiki.ubuntu.com/software-alternatives-migration) |
 
 **What makes this project different**
 
@@ -53,6 +53,7 @@ In one line: **Operese migrates a machine, WinApps emulates apps, AlternativeTo 
 >
 > An AI agent (which reads [`instructions.txt`](documents/instructions.txt)) is only needed for a
 > few **optional, one-off** tasks that are specific to *your* case:
+>
 > - **Regenerating the reports/installer from scratch** with freshly-researched data for a **different Windows PC** than the one captured here.
 > - **Adding a new target OS/distro** (e.g. Fedora, Arch) - generating a fresh set of installer scripts for it.
 > - **Refreshing the Linux app ratings and driver mappings** with the latest web research.
@@ -132,6 +133,7 @@ Dry-run needs no root, makes no changes and writes nothing - it just prints the 
    sequences both phases for you. The full category set:
 
    **Pre-phase (applied before apps):**
+
    - **Power:** lid-close action (battery & AC) → `logind.conf`; sleep timeouts
    - **Display:** resolution → `xrandr`, scaling → system-wide dconf default
    - **Keyboard:** layout → `localectl` + `setxkbmap`; key-repeat delay/rate; NumLock
@@ -152,6 +154,7 @@ Dry-run needs no root, makes no changes and writes nothing - it just prints the 
    - **Auto-update:** install `system_update.service` + `system_update.timer` from the repo
 
    **Post-phase (applied after apps, unpacks the encrypted bundle first):**
+
    - **Shortcuts:** taskbar / Start-menu / Desktop pins → installed `.desktop` favourites
    - **Startup items / Services / Scheduled tasks:** re-created when they resolve to an installed app/unit
    - **Default browser:** `xdg-settings` (once the equivalent is installed)
@@ -168,6 +171,7 @@ Dry-run needs no root, makes no changes and writes nothing - it just prints the 
 ### Workflow 3 - Migrate device drivers
 
 1. **Generate the report** *(Windows; skip if already present)* - run `submodules/A_detect_installed_drivers.ps1` (or `.\run_project.ps1`) on the Windows PC:
+
    ```powershell
    powershell -ExecutionPolicy Bypass -File submodules/A_detect_installed_drivers.ps1
    ```
@@ -176,6 +180,7 @@ Dry-run needs no root, makes no changes and writes nothing - it just prints the 
    `documents/A_installed_windows_drivers.csv`, classifying each device for Linux.
 2. **No copy needed** - the driver installer detects hardware live on Linux and carries the detected Windows-device list baked in as a reference. Just copy the `Execute on Linux!/` folder over.
 3. **Install on Linux** - from that folder, run as root:
+
    ```bash
    cd "Migrate to Linux/Execute on Linux!"
    sudo ./install_device_drivers.sh
@@ -184,6 +189,7 @@ Dry-run needs no root, makes no changes and writes nothing - it just prints the 
    The installer **detects the hardware live** (lspci/lsusb/lscpu/DMI - the
    authoritative source, since Windows device names don't map cleanly to Linux
    modules), cross-references the CSV, then installs only what's needed:- **GPU:** NVIDIA proprietary driver (via `ubuntu-drivers`); AMD/Intel in-kernel + Mesa/VA-API.
+
    - **Network:** Realtek `r8168`/`r8125-dkms`, Broadcom `broadcom-sta-dkms`, Realtek USB-Wi-Fi DKMS; everything else is in-kernel + `linux-firmware`.
    - **CPU:** `intel-microcode` / `amd64-microcode`.
    - **Printers/scanners:** CUPS driverless + HPLIP (HP) + SANE.
@@ -197,17 +203,17 @@ Dry-run needs no root, makes no changes and writes nothing - it just prints the 
 
 ### Windows-side (run on Windows, in `Migrate to Linux/`)
 
-| File                                                                                    | What it is                                                                                                                                                                                                                                                                                                |
-| --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`run_project.ps1`](run_project.ps1)                                                    | **Windows orchestrator** - runs the three detection scripts (steps 1-3) then the generator (step 4). Forwards parameters to the sub-scripts. |
-| [`submodules/`](submodules/)                                                            | Detection scripts (A/B/C), the generator `D_compile_and_generate_shell_script.ps1`, the universal `templates/` (`_common.sh` + `*.sh.tmpl`), and `docker_discovery.sh` / `docker_discovery.ps1`. |
-| [`Supported Distributions.txt`](Supported%20Distributions.txt)                          | Distro-family groupings (apt/dnf/zypper/pacman) and supported CPU architectures (x86_64/aarch64). |
+| File                                                                                                  | What it is                                                                                                                                                                                                                                               |
+| ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`run_project.ps1`](run_project.ps1)                                                                   | **Windows orchestrator** - runs the three detection scripts (steps 1-3), the generator (step 4), Supported Distributions (5) and the optional user/app data backup (6). Forwards parameters to the sub-scripts. `--data-backup` auto-confirms step 6; `--data-backup-only` runs only step 6.        |
+| [`submodules/`](submodules/)                                                                           | Detection scripts (A/B/C), the generator`D_compile_and_generate_shell_script.ps1`, the universal `templates/` (`_common.sh` + `*.sh.tmpl`), and `docker_discovery.sh` / `docker_discovery.ps1`.                                              |
+| [`Supported Distributions.txt`](Supported%20Distributions.txt)                                         | Distro-family groupings (apt/dnf/zypper/pacman) and supported CPU architectures (x86_64/aarch64).                                                                                                                                                        |
 | [`Additional_Manual_Linux_Software_Requirments.csv`](Additional_Manual_Linux_Software_Requirments.csv) | **Hand-curated** list of hardcoded applications included regardless of the Windows CSV - apps absent from the Windows PC and apps whose install logic goes beyond the CSV (Wine installs, multi-package splits like PowerToys, web-app shortcuts). |
-| [`documents/B_applications.json`](documents/B_applications.json)                         | The manifest: every app's Linux alternatives plus the per-distro `install{}` descriptor (method, flatpakId, native names per family, arch) the generator reads. |
-| [`documents/B_installed_windows_software.csv`](documents/B_installed_windows_software.csv) | Generated software report (one row per app). |
-| [`documents/A_installed_windows_drivers.csv`](documents/A_installed_windows_drivers.csv) | Generated driver report (12 columns, one row per device). |
-| [`documents/C_windows_configs.csv`](documents/C_windows_configs.csv)                     | Generated settings CSV (produced by `C_detect_windows_settings.ps1`). |
-| [`documents/instructions.txt`](documents/instructions.txt)                              | Self-contained spec to **reproduce** all artifacts from scratch with fresh data. |
+| [`documents/B_applications.json`](documents/B_applications.json)                                       | The manifest: every app's Linux alternatives plus the per-distro`install{}` descriptor (method, flatpakId, native names per family, arch) the generator reads.                                                                                         |
+| [`documents/B_installed_windows_software.csv`](documents/B_installed_windows_software.csv)             | Generated software report (one row per app).                                                                                                                                                                                                             |
+| [`documents/A_installed_windows_drivers.csv`](documents/A_installed_windows_drivers.csv)               | Generated driver report (12 columns, one row per device).                                                                                                                                                                                                |
+| [`documents/C_windows_configs.csv`](documents/C_windows_configs.csv)                                   | Generated settings CSV (produced by`C_detect_windows_settings.ps1`).                                                                                                                                                                                   |
+| [`documents/instructions.txt`](documents/instructions.txt)                                             | Self-contained spec to**reproduce** all artifacts from scratch with fresh data.                                                                                                                                                                    |
 
 ### Linux-side (run on the target machine, in `Execute on Linux!/`)
 
@@ -216,12 +222,12 @@ supported distribution. They detect the distro family (apt/dnf/zypper/pacman) an
 CPU architecture (x86_64/aarch64) at runtime and install everything **Flatpak-first**
 with native fallbacks. See [`Supported Distributions.txt`](Supported%20Distributions.txt).
 
-| File                                              | What it is                                                                                                                                   |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| File                                                | What it is                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Execute on Linux!/execute_all.sh`                | **One-shot orchestrator** - asks **up front** which stages to run (drivers / apps / settings) and whether to *"Migrate docker components?"* (only if a `docker_rebuild.sh` snapshot exists); runs them **unattended**; then handles manual-download apps **last** (type the installer's path in single quotes, or `skip`/`skip all`, with red errors + retry on a bad path). Also supports `--dry-run`. |
-| `Execute on Linux!/install_must_have_software.sh` | Unattended **root installer** - installs every app flagged `Must be included on Linux = yes`, Flatpak-first with per-family native fallback. |
-| `Execute on Linux!/install_device_drivers.sh`     | **Root driver installer** - firmware, GPU drivers, printing/scanning, plus a reference list of the Windows devices detected.                 |
-| `Execute on Linux!/apply_settings.sh`             | **Settings runner** - applies the captured Windows settings (scaling, lock, layout, privacy, lid) to GNOME/Cinnamon; KDE/others noted.      |
+| `Execute on Linux!/install_must_have_software.sh` | Unattended**root installer** - installs every app flagged `Must be included on Linux = yes`, Flatpak-first with per-family native fallback.                                                                                                                                                                                                                                                                                       |
+| `Execute on Linux!/install_device_drivers.sh`     | **Root driver installer** - firmware, GPU drivers, printing/scanning, plus a reference list of the Windows devices detected.                                                                                                                                                                                                                                                                                                        |
+| `Execute on Linux!/apply_settings.sh`             | **Settings runner** - applies the captured Windows settings (scaling, lock, layout, privacy, lid) to GNOME/Cinnamon; KDE/others noted.                                                                                                                                                                                                                                                                                              |
 
 ### run_project.ps1 - Windows orchestrator
 
@@ -233,29 +239,41 @@ It lives in `Migrate to Linux/`; the sub-scripts live in `submodules/`.
 ```
 
 This runs in order:
+
 1. `submodules/C_detect_windows_settings.ps1` → `documents/C_windows_configs.csv`
 2. `submodules/B_detect_installed_windows_software.ps1` → `documents/B_installed_windows_software.csv`
 3. `submodules/A_detect_installed_drivers.ps1` → `documents/A_installed_windows_drivers.csv`
 4. `submodules/D_compile_and_generate_shell_script.ps1` → the universal installer set in `Execute on Linux!/`
+5. Generates `Supported Distributions.txt` dynamically from the manifest.
+6. **User & application data backup** *(optional)* - offers (y/n, 15s timeout, default **yes**)
+   to run `submodules/E_backup_user&application_data.ps1`, which packs your important user +
+   application data into one password-protected archive on your Desktop. See
+   [Step 6 - data backup & restore](#step-6---user--application-data-backup--restore).
 
 Steps 1-3 need no administrator rights. If a step fails the pipeline stops unless
 `-ContinueOnError` is passed. Use `-SkipDetection` to regenerate the scripts from
-existing CSVs, or `-SkipGenerator` to only run detection.
+existing CSVs, or `-SkipGenerator` to only run detection. Use `-DataBackup`
+(`--data-backup`) to run the full pipeline but auto-confirm the step-6 backup prompts, or
+`-DataBackupOnly` (`--data-backup-only`) to skip detection/generation and **only** create
+the data backup, non-interactively, in the default location.
 
 #### Options
 
-| Parameter                       | Default | Purpose                                                                      |
-| ------------------------------- | ------- | ---------------------------------------------------------------------------- |
-| `-OutputDir <path>`             | documents/ | Directory where the three CSV files are written.                         |
-| `-ContinueOnError`              | off     | Skip failed steps instead of stopping the pipeline.                          |
-| `-SkipDetection`                | off     | Skip steps 1-3; regenerate the installer scripts from existing CSVs.         |
-| `-SkipGenerator`                | off     | Skip step 4; only run detection.                                            |
-| `-MustIncludeThreshold <int>`   | 70      | Forwarded to B script - minimum competency for "Must be included on Linux".  |
-| `-IncludeSystemComponents`      | off     | Forwarded to B script - keep redistributables / runtimes / drivers.          |
-| `-IncludeStoreApps <bool>`      | $true   | Forwarded to B script - include filtered Store/UWP apps.                     |
-| `-Online`                       | off     | Forwarded to B script - query repology.org live for unknown apps.            |
-| `-IncludeVirtualDevices`        | off     | Forwarded to A script - keep ROOT\ and SW\ virtual devices.                  |
-| `-IncludeMicrosoftInbox`        | off     | Forwarded to A script - keep generic Microsoft in-box drivers.               |
+| Parameter                       | Default    | Purpose                                                                     |
+| ------------------------------- | ---------- | --------------------------------------------------------------------------- |
+| `-OutputDir <path>`           | documents/ | Directory where the three CSV files are written.                            |
+| `-ContinueOnError`            | off        | Skip failed steps instead of stopping the pipeline.                         |
+| `-SkipDetection`              | off        | Skip steps 1-3; regenerate the installer scripts from existing CSVs.        |
+| `-SkipGenerator`              | off        | Skip step 4; only run detection.                                            |
+| `-DataBackup` / `--data-backup` | off      | Run the **full** pipeline, but auto-confirm the step-6 backup: the "Back up now?" question is answered **yes with no timeout wait**, and E_'s low-disk-space confirmation is auto-answered yes too. Every other prompt (e.g. the password) is normal. |
+| `-DataBackupOnly` / `--data-backup-only` | off | Skip detection + generation; **only** create the data backup (step 6) in the default location (Desktop) with no prompts at all - not even the low-space one. Encrypts if `-EncPwd`/`--enc_pwd` is given, else unencrypted. |
+| `-EncPwd <secret>` / `--enc_pwd` | (prompt) | Transfer password used to encrypt exported secrets **and** the data backup. When given, the interactive password prompt is skipped. |
+| `-MustIncludeThreshold <int>` | 70         | Forwarded to B script - minimum competency for "Must be included on Linux". |
+| `-IncludeSystemComponents`    | off        | Forwarded to B script - keep redistributables / runtimes / drivers.         |
+| `-IncludeStoreApps <bool>`    | $true      | Forwarded to B script - include filtered Store/UWP apps.                    |
+| `-Online`                     | off        | Forwarded to B script - query repology.org live for unknown apps.           |
+| `-IncludeVirtualDevices`      | off        | Forwarded to A script - keep ROOT\ and SW\ virtual devices.                 |
+| `-IncludeMicrosoftInbox`      | off        | Forwarded to A script - keep generic Microsoft in-box drivers.              |
 
 ### Directory layout
 
@@ -272,13 +290,15 @@ Migrate to Linux/
 │  ├─ B_detect_installed_windows_software.ps1
 │  ├─ C_detect_windows_settings.ps1
 │  ├─ D_compile_and_generate_shell_script.ps1   # builds the universal installer set
+│  ├─ E_backup_user&application_data.ps1   # step 6: packs important user+app data -> Desktop archive
 │  ├─ docker_discovery.sh / .ps1           # snapshot Docker -> cross-platform rebuild script
-│  └─ templates/                           # _common.sh engine + the four *.sh.tmpl templates
+│  └─ templates/                           # _common.sh engine + *.sh.tmpl (incl. restore_user_and_application_data)
 │
 ├─ documents/                              # generated data + the manifest
 │  ├─ A_installed_windows_drivers.csv
 │  ├─ B_installed_windows_software.csv
 │  ├─ B_applications.json                  # manifest with per-distro install{} descriptors
+│  ├─ D_data_migration.json                # step 6: what user/app data to back up + how to restore it
 │  ├─ C_windows_configs.csv
 │  ├─ settings_config.txt
 │  └─ instructions.txt                     # reproducibility spec
@@ -288,6 +308,7 @@ Migrate to Linux/
 │  ├─ install_must_have_software.sh        # Flatpak-first installer, per-family native fallback
 │  ├─ install_device_drivers.sh            # firmware / GPU / printing + device report
 │  ├─ apply_settings.sh                    # Windows settings -> Linux desktop
+│  ├─ submodules/                          # generated stage scripts + restore_user_and_application_data.sh + D_data_migration.json
 │  └─ docker_rebuild.sh                    # only if Docker was installed on the Windows source
 │
 └─ History/                                # archived previous versions + retired_distro_folders/
@@ -297,6 +318,53 @@ The generated scripts in `Execute on Linux!/` are **universal**: they detect the
 distribution family and CPU architecture at runtime, so the same set runs on every
 distro listed in [`Supported Distributions.txt`](Supported%20Distributions.txt) - no
 per-distro folders needed.
+
+---
+
+## Step 6 - user & application data backup & restore
+
+Beyond apps, drivers and settings, the toolkit can carry your **important user files and
+application data** across. It is data-driven by
+[`documents/D_data_migration.json`](documents/D_data_migration.json).
+
+**On Windows** (`submodules/E_backup_user&application_data.ps1`, offered at the end of
+`run_project.ps1`):
+
+- Collects the **static** important parts of your profile (`Desktop`, `Documents`,
+  `Pictures`, `Music`, `Videos`, `Downloads`, `.gitconfig`, `.config`, …) plus **per-app**
+  data described in the manifest (VS Code, `.claude`, Obsidian, PostgreSQL configs, Wine
+  apps, …), matched by tight include/exclude regex.
+- **Never backs up cloud-restorable data.** Anything under a cloud-sync root (OneDrive,
+  Dropbox, Google Drive, iCloud, Box, …), any file flagged **online-only**, and **all
+  browser profile data** are excluded - whether or not they are downloaded locally -
+  because the service restores them on its own. `~/.ssh` and Contacts are excluded here too
+  (they already travel in the encrypted settings archive) but are still listed for you.
+- Packs everything into **one archive on your Desktop**: `tar` + `gzip` (medium) +
+  OpenSSL AES-256-CBC/PBKDF2, using the **same transfer password** as the rest of the
+  toolkit. No password → an unencrypted `.tar.gz` (your choice). Large archives stream
+  through OpenSSL so this works even with a 32-bit OpenSSL. Live progress bars, size and
+  free-space pre-checks (with a confirmation if it looks tight or exceeds 50 GB), and a
+  neat `<source> --> <Linux target>` table are shown. Temp leftovers from this and any
+  previous/aborted run are auto-cleaned; only the final archive + a `.log` remain on the Desktop.
+
+**On Linux** (`submodules/restore_user_and_application_data.sh`, called by `execute_all.sh`
+after settings, self-gating with an archive-path prompt / `s` to skip):
+
+- Decrypts and, per application scope, applies a decision table keyed on
+  `safe_to_transfer_to_corresponding_paths_for_linux` × the (4/10) "same/latest" answer:
+  `yes` → restore to the corresponding Linux path; `yes-after-rewrite` → rewrite text
+  configs (Windows→Linux paths, always keeping a `.bak`) then restore; `same version` →
+  restore only if you chose "same"; `no` → place in a **deviated directory** of your choice.
+- Static profile data always restores into your home. At the end it tells you where the
+  deviated directory is and **warns you to promote that data by hand at your own risk and
+  test each affected app afterwards** (a correct copy/rewrite never guarantees the app
+  accepts the migrated state).
+
+**Automatic / non-interactive backup:**
+`.\run_project.ps1 --data-backup` runs the full pipeline and auto-confirms the two step-6
+questions (backup + low-space) - yes, with no timeout wait - leaving other prompts normal.
+`.\run_project.ps1 --data-backup-only` (optionally `--enc_pwd SECRET`) skips
+detection/generation and creates just the archive in the default location with no prompts at all.
 
 ---
 
@@ -311,42 +379,42 @@ This runs config → software → drivers in sequence. No administrator rights r
 
 ### Options - Software inventory (standalone script)
 
-| Parameter                       | Default                                                | Purpose                                                                              |
-| ------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| Parameter                       | Default                                                  | Purpose                                                                              |
+| ------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | `-OutputPath <path>`          | `B_installed_windows_software.csv` (beside the script) | Where to write the CSV.                                                              |
-| `-MustIncludeThreshold <int>` | `70`                                                 | Minimum*Alternative Competency* (%) for **Must be included on Linux = yes**. |
-| `-IncludeSystemComponents`    | off                                                    | Keep redistributables, runtimes and drivers.                                         |
-| `-IncludeStoreApps <bool>`    | `$true`                                              | Include filtered Microsoft Store/UWP apps.                                           |
-| `-Online`                     | off                                                    | Query repology.org live for unknown apps.                                            |
+| `-MustIncludeThreshold <int>` | `70`                                                   | Minimum*Alternative Competency* (%) for **Must be included on Linux = yes**. |
+| `-IncludeSystemComponents`    | off                                                      | Keep redistributables, runtimes and drivers.                                         |
+| `-IncludeStoreApps <bool>`    | `$true`                                                | Include filtered Microsoft Store/UWP apps.                                           |
+| `-Online`                     | off                                                      | Query repology.org live for unknown apps.                                            |
 
 ### The CSV columns (software inventory)
 
-| Column                                    | Source  | Meaning                                                                                                |
-| ----------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------- |
-| **Name**                            | from PC | Human-friendly product name.                                                                          |
-| **Version**                         | from PC | Installed version.                                                                                    |
-| **Publisher**                       | from PC | Vendor.                                                                                               |
-| **Source**                          | from PC | `Win32` (registry) or `Store` (UWP/Appx).                                                         |
-| **Linux Availability**              | curated | Flags: Available on Linux, Native Alternative, Available as WebApp, etc.                               |
-| **Best Linux Alternative**          | curated | The best Linux option. Free alt appended if paid.                                                     |
-| **Alternative Competency**          | curated | Rough % vs Windows (≥100 = Linux is better).                                                          |
-| **Pricing model**                   | curated | Free (FOSS), Free, Freemium, Shareware, or Paid.                                                       |
-| **Must be included on Linux**       | derived | `yes` / `no` - computed from competency threshold.                                                |
-| **Can be synched to Linux alternative** | curated | Whether the app's data auto-syncs into the Linux alternative by signing in (cloud): `Yes` or `No, manual transfer`. |
-| **Linux Alternative Type**          | curated | How the alternative is delivered - WebApp, Native (Flatpak/APT/Docker), Wine, etc.; this drives the generated installer's method. |
-| **Download URL**                    | curated | The official download or web-app URL for the chosen Linux alternative. |
+| Column                                        | Source  | Meaning                                                                                                                           |
+| --------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Name**                                | from PC | Human-friendly product name.                                                                                                      |
+| **Version**                             | from PC | Installed version.                                                                                                                |
+| **Publisher**                           | from PC | Vendor.                                                                                                                           |
+| **Source**                              | from PC | `Win32` (registry) or `Store` (UWP/Appx).                                                                                     |
+| **Linux Availability**                  | curated | Flags: Available on Linux, Native Alternative, Available as WebApp, etc.                                                          |
+| **Best Linux Alternative**              | curated | The best Linux option. Free alt appended if paid.                                                                                 |
+| **Alternative Competency**              | curated | Rough % vs Windows (≥100 = Linux is better).                                                                                     |
+| **Pricing model**                       | curated | Free (FOSS), Free, Freemium, Shareware, or Paid.                                                                                  |
+| **Must be included on Linux**           | derived | `yes` / `no` - computed from competency threshold.                                                                            |
+| **Can be synched to Linux alternative** | curated | Whether the app's data auto-syncs into the Linux alternative by signing in (cloud):`Yes` or `No, manual transfer`.            |
+| **Linux Alternative Type**              | curated | How the alternative is delivered - WebApp, Native (Flatpak/APT/Docker), Wine, etc.; this drives the generated installer's method. |
+| **Download URL**                        | curated | The official download or web-app URL for the chosen Linux alternative.                                                            |
 
 ### The CSV columns (settings migration - `C_windows_configs.csv`)
 
-| Column                 | Source  | Meaning                                                                                  |
-| ---------------------- | ------- | ---------------------------------------------------------------------------------------- |
-| **Category**     | from PC | One of ~26: `Power`, `Display`, `Keyboard`, `Mouse`, `Touchpad`, `Accessibility`, `Telemetry`, `Screen`, `Time`, `Locale`, `Proxy`, `Appearance`, `DefaultApps`, `Hosts`, `Printers`, `NetConfig`, `Wifi`, `Firewall`, `AutoUpdate`, `Shortcuts`, `Startup`, `Services`, `ScheduledTasks`, `SSH`, `Contacts`, `Wallpaper`. |
-| **ConfigKey**    | from PC | Specific setting key (e.g.`lid_close_on_ac`, `resolution`, `lock_screen_timeout`, `wifi_profile`, `fw_rule`). |
-| **WindowsValue** | from PC | The extracted value (e.g.`sleep`, `1920x1080`, `10 min` / `never`). Multi-field categories (Wi-Fi, firewall, shortcuts) pipe-pack their fields. |
-| **LinuxCommand** | from PC | Input language tags for keyboard mapping (optional).                                     |
-| **Notes**        | from PC | Human-readable note about the Linux mapping.                                             |
-| **Phase**        | from PC | `pre` (applied before apps install) or `post` (after - needs the apps/desktop to exist). |
-| **Scope**        | from PC | `System` (machine-wide) or `User` (GNOME keys, written as system-wide dconf defaults so they reach every user). |
+| Column                 | Source  | Meaning                                                                                                                                                                                                                                                                                                                                                                       |
+| ---------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Category**     | from PC | One of ~26:`Power`, `Display`, `Keyboard`, `Mouse`, `Touchpad`, `Accessibility`, `Telemetry`, `Screen`, `Time`, `Locale`, `Proxy`, `Appearance`, `DefaultApps`, `Hosts`, `Printers`, `NetConfig`, `Wifi`, `Firewall`, `AutoUpdate`, `Shortcuts`, `Startup`, `Services`, `ScheduledTasks`, `SSH`, `Contacts`, `Wallpaper`. |
+| **ConfigKey**    | from PC | Specific setting key (e.g.`lid_close_on_ac`, `resolution`, `lock_screen_timeout`, `wifi_profile`, `fw_rule`).                                                                                                                                                                                                                                                       |
+| **WindowsValue** | from PC | The extracted value (e.g.`sleep`, `1920x1080`, `10 min` / `never`). Multi-field categories (Wi-Fi, firewall, shortcuts) pipe-pack their fields.                                                                                                                                                                                                                       |
+| **LinuxCommand** | from PC | Input language tags for keyboard mapping (optional).                                                                                                                                                                                                                                                                                                                          |
+| **Notes**        | from PC | Human-readable note about the Linux mapping.                                                                                                                                                                                                                                                                                                                                  |
+| **Phase**        | from PC | `pre` (applied before apps install) or `post` (after - needs the apps/desktop to exist).                                                                                                                                                                                                                                                                                  |
+| **Scope**        | from PC | `System` (machine-wide) or `User` (GNOME keys, written as system-wide dconf defaults so they reach every user).                                                                                                                                                                                                                                                           |
 
 ### The CSV columns (driver inventory - `A_installed_windows_drivers.csv`)
 
@@ -362,7 +430,7 @@ Generate with `.\A_detect_installed_drivers.ps1` (no admin rights). Switches:
 | **Driver Version**        | from PC | Installed driver version.                                                                                                                                           |
 | **Driver Date**           | from PC | Driver date (`yyyy-MM-dd`).                                                                                                                                       |
 | **Driver Provider**       | from PC | Who signs/provides the driver (NVIDIA, Microsoft, …).                                                                                                              |
-| **Hardware ID**           | from PC | Bus ID (`PCI\VEN_10DE&DEV_…` / `USB\VID_…&PID_…`) - the reliable key to the silicon.                                                                        |
+| **Hardware ID**           | from PC | Bus ID (`PCI\VEN_10DE&DEV_…` / `USB\VID_…&PID_…`) - the reliable key to the silicon.                                                                         |
 | **Linux Driver Status**   | curated | Flags: In-Kernel, Generic Driver, Firmware Required, Kernel Module (DKMS), Proprietary Driver, Vendor Driver, Not Applicable, Needs Review.                         |
 | **Linux Driver / Module** | curated | The kernel module or package (`amdgpu`, `iwlwifi`, `nvidia-driver-NNN`, `r8168-dkms`, `hplip`, …).                                                       |
 | **Vendor Download**       | curated | Manufacturer's Linux driver page, filled only when a vendor download is needed.                                                                                     |
@@ -381,21 +449,21 @@ These fall into three groups:
 | Group                                                  | Examples                                                                                              | Why hardcoded                                                                                                                                                                      |
 | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Apps absent from the Windows PC**              | Telegram, Terminator, WindTerm, WinDirStat                                                            | These are useful additions that your Windows machine may not have installed. They're always included.                                                                              |
-| **Apps needing custom install logic**            | Notepad++ (Wine + native), PowerToys (10 packages), WinRAR (Wine + native), IDM (Wine + native)       | These cannot be expressed as a single `apt install` command. They require Wine, multi-package splits, or special post-install steps.                                             |
+| **Apps needing custom install logic**            | Notepad++ (Wine + native), PowerToys (10 packages), WinRAR (Wine + native), IDM (Wine + native)       | These cannot be expressed as a single`apt install` command. They require Wine, multi-package splits, or special post-install steps.                                              |
 | **Apps whose alternative IS the hardcoded path** | Adobe Acrobat Pro → Stirling PDF, Advanced IP Scanner → Angry IP Scanner, Grammarly → LanguageTool | The installer installs the ALTERNATIVE itself (not a native Linux version of the Windows app), and this alternative needs its own custom install logic (Docker, .deb, .zip, etc.). |
 
-| Column                                       | Source  | Meaning                                                                             |
-| -------------------------------------------- | ------- | ----------------------------------------------------------------------------------- |
-| **Name**                               | curated | Human-readable name of the original Windows app or hardcoded inclusion.             |
-| **Category**                           | curated | Functional category (PDF, Network, Editor, Utilities, etc.).                        |
-| **Windows App?**                       | curated | Whether this app exists/doesn't on Windows, and whether it's a hardcoded inclusion. |
-| **In B_installed_windows_software.csv?** | curated | Whether a corresponding row appears in the machine-generated CSV.                   |
-| **Linux Package(s)**                   | curated | The exact Linux package(s) installed - may be APT, Flatpak, Docker, .deb, or Wine. |
-| **Source / URL**                       | curated | The official source or download URL for the Linux package.                          |
-| **Notes**                              | curated | Why this is hardcoded, what special logic the installer applies.                    |
-| **Can be synched to Linux alternative** | curated | Whether the app's data auto-syncs into the Linux alternative by signing in (cloud): `Yes` or `No, manual transfer`. |
-| **Linux Alternative Type**             | curated | How the alternative is delivered (WebApp, Native (Flatpak/APT/Docker), Wine, etc.). |
-| **Download URL**                       | curated | The official download or web-app URL for the Linux package. |
+| Column                                         | Source  | Meaning                                                                                                                |
+| ---------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------- |
+| **Name**                                 | curated | Human-readable name of the original Windows app or hardcoded inclusion.                                                |
+| **Category**                             | curated | Functional category (PDF, Network, Editor, Utilities, etc.).                                                           |
+| **Windows App?**                         | curated | Whether this app exists/doesn't on Windows, and whether it's a hardcoded inclusion.                                    |
+| **In B_installed_windows_software.csv?** | curated | Whether a corresponding row appears in the machine-generated CSV.                                                      |
+| **Linux Package(s)**                     | curated | The exact Linux package(s) installed - may be APT, Flatpak, Docker, .deb, or Wine.                                     |
+| **Source / URL**                         | curated | The official source or download URL for the Linux package.                                                             |
+| **Notes**                                | curated | Why this is hardcoded, what special logic the installer applies.                                                       |
+| **Can be synched to Linux alternative**  | curated | Whether the app's data auto-syncs into the Linux alternative by signing in (cloud):`Yes` or `No, manual transfer`. |
+| **Linux Alternative Type**               | curated | How the alternative is delivered (WebApp, Native (Flatpak/APT/Docker), Wine, etc.).                                    |
+| **Download URL**                         | curated | The official download or web-app URL for the Linux package.                                                            |
 
 ---
 
@@ -415,7 +483,7 @@ re-rate a device or add a new chip, edit that table and re-run.
 
 ---
 
-## Update the manifest with AI
+## ==Update the ma==nifest with AI
 
 When you run `run_project.ps1`, any installed Windows app that is **not found in the
 manifest** (`documents/B_applications.json`) is printed as a yellow **warning** listing
@@ -428,7 +496,10 @@ detector, read the warning list, and fill in the missing entries (plus refresh t
 existing ones) with current data:
 
 ```text
-Make a test-run of run_project.ps1 and see the list of applications that will be given as a warning for not being found on the manifest. Add them to the manifest with the latest avaiable data from the internet in manifest entries format. Also in the end, update the already existing application list with respect to the latest available versions, best alternatives, download link, and everything else that can be updated. Strictly do not change anything else
+Make a test-run of run_project.ps1 and see the list of applications that will be given as a warning for not being found on the manifest "Migrate to Linux\documents\B_applications.json".
+Add them to the manifest with the latest avaiable data from the internet in manifest entries properties (also include "install" property) and format. 
+Also in the end, update the already existing application list of the manifest with respect to the latest available versions,
+best alternatives, download link, and everything else that can be updated. Strictly do not change anything else
 ```
 
 After the agent finishes, re-run `run_project.ps1` and use the regenerated
@@ -762,18 +833,18 @@ Some Windows apps and games have no strong native replacement. Pick a fallback b
 how much native performance and integration you need. Roughly: **PWA < Wine/Bottles
 < container < VM < GPU-passthrough VM < dual-boot**, trading convenience for fidelity.
 
-| Strategy | Best for | Performance | Ease of use | Pros | Cons |
-| --- | --- | --- | --- | --- | --- |
-| **Web app / PWA** (browser app-mode, the installer's `--webapp`) | Apps with a good web version (Teams, WhatsApp, Office.com, Excalidraw) | Good (it's the website) | ★★★★★ | No install, auto-updates, cross-platform, zero maintenance | Needs internet; limited OS integration & offline/local-file access |
-| **Wine** (raw) | Small, well-behaved Windows apps | Near-native CPU; GPU varies | ★★ | No VM overhead; runs many `.exe` directly | Fiddly per-app tweaks; many apps break; no official support |
-| **Bottles / Lutris** (Wine wrapper) | Windows apps & older games, managed prefixes | Near-native CPU | ★★★★ | Flatpak install, per-app "bottles", presets, dependency installer | Still Wine underneath - not everything works; x86-only |
-| **Proton / Steam Play** | Games (esp. on Steam) | Near-native (often 90-100%) | ★★★★ | One toggle in Steam; huge compatibility (see ProtonDB) | Some anti-cheat titles blocked; non-Steam games need effort |
-| **Cloud gaming / remote** (GeForce NOW, Xbox Cloud, Parsec, Moonlight) | AAA games, occasional Windows access | Depends on network/latency | ★★★★ | No local GPU needed; runs anything server-side | Subscription/another PC; latency; needs strong connection |
-| **Type-2 VM** (GNOME Boxes, VirtualBox, VMware Workstation) | Office/CAD/dev tools needing real Windows | Good for desktop apps; weak 3D | ★★★ | Full real Windows, snapshots, isolated, no reboot | Heavy RAM/disk; poor GPU performance; licence needed |
-| **GPU-passthrough VM** ("VMVisor": KVM/QEMU + VFIO) | GPU/3D apps & gaming at near-native speed | Excellent (≈95-99%) | ★ | Near-bare-metal Windows with a dedicated GPU | Needs 2 GPUs (or iGPU+dGPU), IOMMU, significant setup |
-| **Dual-boot** | Anything that must be 100% native (anti-cheat, pro hardware) | Native (100%) | ★★ | Full performance & compatibility | Reboot to switch; partitioning; bootloader upkeep |
-| **Container** (Docker/Podman) | Server/CLI/dev software (DBs, Stirling-PDF, LanguageTool) | Native (Linux apps) | ★★★ | Lightweight, reproducible, no GUI baggage | Linux-native only (not for Windows GUI apps); not for GUI desktop apps |
-| **Second machine / RDP** | Rare, must-have Windows-only workloads | Native on the other box | ★★★ | Keep one Windows box; access remotely (RDP/Parsec) | Cost of a second machine; remote-only |
+| Strategy                                                                     | Best for                                                               | Performance                    | Ease of use | Pros                                                              | Cons                                                                   |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------ | ----------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| **Web app / PWA** (browser app-mode, the installer's `--webapp`)     | Apps with a good web version (Teams, WhatsApp, Office.com, Excalidraw) | Good (it's the website)        | ★★★★★  | No install, auto-updates, cross-platform, zero maintenance        | Needs internet; limited OS integration & offline/local-file access     |
+| **Wine** (raw)                                                         | Small, well-behaved Windows apps                                       | Near-native CPU; GPU varies    | ★★        | No VM overhead; runs many`.exe` directly                        | Fiddly per-app tweaks; many apps break; no official support            |
+| **Bottles / Lutris** (Wine wrapper)                                    | Windows apps & older games, managed prefixes                           | Near-native CPU                | ★★★★    | Flatpak install, per-app "bottles", presets, dependency installer | Still Wine underneath - not everything works; x86-only                 |
+| **Proton / Steam Play**                                                | Games (esp. on Steam)                                                  | Near-native (often 90-100%)    | ★★★★    | One toggle in Steam; huge compatibility (see ProtonDB)            | Some anti-cheat titles blocked; non-Steam games need effort            |
+| **Cloud gaming / remote** (GeForce NOW, Xbox Cloud, Parsec, Moonlight) | AAA games, occasional Windows access                                   | Depends on network/latency     | ★★★★    | No local GPU needed; runs anything server-side                    | Subscription/another PC; latency; needs strong connection              |
+| **Type-2 VM** (GNOME Boxes, VirtualBox, VMware Workstation)            | Office/CAD/dev tools needing real Windows                              | Good for desktop apps; weak 3D | ★★★      | Full real Windows, snapshots, isolated, no reboot                 | Heavy RAM/disk; poor GPU performance; licence needed                   |
+| **GPU-passthrough VM** ("VMVisor": KVM/QEMU + VFIO)                    | GPU/3D apps & gaming at near-native speed                              | Excellent (≈95-99%)           | ★          | Near-bare-metal Windows with a dedicated GPU                      | Needs 2 GPUs (or iGPU+dGPU), IOMMU, significant setup                  |
+| **Dual-boot**                                                          | Anything that must be 100% native (anti-cheat, pro hardware)           | Native (100%)                  | ★★        | Full performance & compatibility                                  | Reboot to switch; partitioning; bootloader upkeep                      |
+| **Container** (Docker/Podman)                                          | Server/CLI/dev software (DBs, Stirling-PDF, LanguageTool)              | Native (Linux apps)            | ★★★      | Lightweight, reproducible, no GUI baggage                         | Linux-native only (not for Windows GUI apps); not for GUI desktop apps |
+| **Second machine / RDP**                                               | Rare, must-have Windows-only workloads                                 | Native on the other box        | ★★★      | Keep one Windows box; access remotely (RDP/Parsec)                | Cost of a second machine; remote-only                                  |
 
 Rule of thumb: try **native alternative → Flatpak → PWA → Bottles/Proton →
 container → VM → GPU-passthrough/dual-boot**, stopping at the first that meets your

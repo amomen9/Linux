@@ -292,6 +292,8 @@ $alias = [ordered]@{
     'gnuwin32'                  = 'GnuWin32: Grep'
     'lenovo vantage'           = 'Lenovo Vantage / Lenovo Vantage Service'
     'lenovo go central'        = 'Lenovo Vantage / Lenovo Vantage Service'
+    'nordupdater'              = 'NordVPN'
+    'windows software development kit' = 'Windows Software Development Kit'
 }
 $aliasKeys = @($alias.Keys | Sort-Object -Property Length -Descending)
 # Manifest base names, longest first (most specific wins).

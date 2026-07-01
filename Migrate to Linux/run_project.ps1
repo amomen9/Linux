@@ -96,6 +96,19 @@ param(
     [switch] $SkipDetection,
     [switch] $SkipGenerator,
 
+    # Full pipeline (detection + generation + everything), but the step-6 backup runs
+    # AUTOMATICALLY: the "Back up ... now?" question is auto-answered YES with no timeout
+    # wait, and E_'s low-disk-space confirmation is auto-answered YES too (-AssumeYes).
+    # Every OTHER prompt (e.g. the transfer password) behaves normally.
+    # Usable as -DataBackup or the literal --data-backup.
+    [switch] $DataBackup,
+
+    # Backup-ONLY mode: skip detection/generation and just create the data-backup archive in
+    # the default location (Desktop) with NO prompts at all -- not even the low-disk-space
+    # confirmation. Encrypts only if -EncPwd/--enc_pwd is supplied; otherwise unencrypted.
+    # Usable as -DataBackupOnly or the literal --data-backup-only.
+    [switch] $DataBackupOnly,
+
     # Encryption password for the exported sensitive data (WiFi/SSH/Contacts/wallpaper).
     # When supplied, the interactive transfer-password prompt is skipped. Usable as
     # -EncPwd "secret", -enc_pwd "secret", or the literal --enc_pwd / --enc_pwd=secret.
@@ -114,6 +127,17 @@ if (-not $EncPwd -and $ExtraArgs) {
         elseif ($a -eq '--enc_pwd' -and ($i + 1) -lt $ExtraArgs.Count) { $EncPwd = [string]$ExtraArgs[$i + 1]; $i++ }
     }
 }
+# Accept the literal "--data-backup" / "--data-backup-only" forms (mirror the switches).
+if ($ExtraArgs) {
+    foreach ($a in $ExtraArgs) {
+        if ([string]$a -eq '--data-backup-only') { $DataBackupOnly = $true }
+        elseif ([string]$a -eq '--data-backup')  { $DataBackup = $true }
+    }
+}
+# Backup-ONLY mode reuses the existing skip logic so detection (1-3) and generation (4) are
+# bypassed; only the step-6 backup runs (step 5 is guarded separately below). The plain
+# --data-backup runs the FULL pipeline and only auto-confirms the step-6 prompts.
+if ($DataBackupOnly) { $SkipDetection = $true; $SkipGenerator = $true }
 
 $ErrorActionPreference = 'Stop'
 
@@ -581,22 +605,24 @@ if (-not $SkipGenerator) {
 # ---------------------------------------------------------------------------
 # 5. SUPPORTED DISTRIBUTIONS  - generate dynamically from manifest
 # ---------------------------------------------------------------------------
-Write-Host "`n$('=' * 70)" -ForegroundColor Cyan
-Write-Host "  STEP: 5/6  Supported Distributions (dynamic from manifest)" -ForegroundColor Yellow
-Write-Host "  Manifest: $manifestPath" -ForegroundColor Gray
-Write-Host "$('=' * 70)" -ForegroundColor Cyan
-Write-Host ""
-
 $supportedDistPath = Join-Path $scriptDir 'Supported Distributions.txt'
 
-try {
-    Write-SupportedDistributions -ManifestPath $manifestPath -OutputPath $supportedDistPath
-    Write-Host "  >> Generated: $(Split-Path -Leaf $supportedDistPath)" -ForegroundColor Green
-}
-catch {
-    Write-Host "  >> Supported Distributions generation FAILED: $_" -ForegroundColor Red
-    if (-not $ContinueOnError) {
-        throw
+if (-not $DataBackupOnly) {
+    Write-Host "`n$('=' * 70)" -ForegroundColor Cyan
+    Write-Host "  STEP: 5/6  Supported Distributions (dynamic from manifest)" -ForegroundColor Yellow
+    Write-Host "  Manifest: $manifestPath" -ForegroundColor Gray
+    Write-Host "$('=' * 70)" -ForegroundColor Cyan
+    Write-Host ""
+
+    try {
+        Write-SupportedDistributions -ManifestPath $manifestPath -OutputPath $supportedDistPath
+        Write-Host "  >> Generated: $(Split-Path -Leaf $supportedDistPath)" -ForegroundColor Green
+    }
+    catch {
+        Write-Host "  >> Supported Distributions generation FAILED: $_" -ForegroundColor Red
+        if (-not $ContinueOnError) {
+            throw
+        }
     }
 }
 
@@ -617,7 +643,13 @@ if (-not (Test-Path $scriptBackup)) {
     Write-Host "  Note: it may take a long time and will not capture everything." -ForegroundColor DarkYellow
 
     $doBackup = $true
-    if (Get-Command Read-YNTimed -ErrorAction SilentlyContinue) {
+    if ($DataBackupOnly) {
+        Write-Host "  [--data-backup-only] Creating the backup non-interactively (backup-only mode)." -ForegroundColor Gray
+    }
+    elseif ($DataBackup) {
+        Write-Host "  [--data-backup] Auto-confirming the backup (yes, no timeout wait)." -ForegroundColor Gray
+    }
+    elseif (Get-Command Read-YNTimed -ErrorAction SilentlyContinue) {
         $doBackup = Read-YNTimed -Prompt "  Back up your important user & application data now? (y/n, default y, 15s): " -TimeoutSec 15 -Default $true
     }
 
@@ -625,6 +657,7 @@ if (-not (Test-Path $scriptBackup)) {
         try {
             $env:MIGRATE_XFER_PWD = $xferPwd
             $backupTokens = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $scriptBackup)
+            if ($DataBackup -or $DataBackupOnly) { $backupTokens += '-AssumeYes' }   # skip the low-space confirmation too
             $bproc = Start-Process -FilePath $psExe -ArgumentList (Get-ArgLine $backupTokens) -NoNewWindow -Wait -PassThru
             if ($bproc.ExitCode -ne 0) { Write-Warning "Backup step exited with code $($bproc.ExitCode)." }
             else { Write-Host "  >> Backup step completed." -ForegroundColor Green }
@@ -649,6 +682,11 @@ Write-Host "================================================================" -F
 Write-Host "  ALL DONE" -ForegroundColor Green
 Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host ""
+if ($DataBackupOnly) {
+    Write-Host "  Backup-only mode (--data-backup-only): the archive was created on your Desktop." -ForegroundColor White
+    Write-Host "================================================================" -ForegroundColor Cyan
+    return
+}
 Write-Host "  CSV output:        $OutputDir" -ForegroundColor White
 Write-Host "  Installer scripts: $installerDir" -ForegroundColor White
 Write-Host ""
