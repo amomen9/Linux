@@ -19,8 +19,8 @@
     shell-installer set (execute_all.sh, apply_settings.sh,
     install_must_have_software.sh, install_device_drivers.sh) into the
     "Execute on Linux!" folder.  The generated scripts detect the Linux distro
-    family (apt/dnf/zypper/pacman) and CPU architecture at runtime, so the same set
-    runs on every supported distribution.
+    family (apt/dnf/pacman/zypper/apk/emerge/slackpkg, most-popular-first) and CPU
+    architecture at runtime, so the same set runs on every supported distribution.
 
     Step 5 reads the manifest (B_applications.json) and dynamically generates
     Supported Distributions.txt, reflecting exactly which package-manager families
@@ -229,43 +229,85 @@ function Write-SupportedDistributions {
     Write-Host "  Scanning manifest for per-distro entries..." -ForegroundColor Gray
 
     # ---- Family metadata ----
+    # Rank = overall popularity (1 = most popular). $familyOrder below drives the render
+    # order of EVERY list in this file so the whole report is sorted most-popular-first.
     $familyDefs = @{
         'apt' = [ordered]@{
+            Rank      = 1
             Name      = 'Debian / Ubuntu'
             PM        = 'apt (apt-get)'
+            BestFor   = 'General-purpose desktops & servers (safe default)'
             Distros   = @('Linux Mint (Ubuntu)', 'Ubuntu', 'Debian', 'Zorin OS', 'Kubuntu', 'Winux 11')
             Auto      = 'Pop!_OS, elementary OS, and other Ubuntu/Debian derivatives.'
             Note      = $null
         }
         'dnf' = [ordered]@{
+            Rank      = 2
             Name      = 'RHEL / Fedora'
             PM        = 'dnf'
+            BestFor   = 'Enterprise servers & modern workstations'
             Distros   = @('Fedora', 'Rocky Linux', 'Red Hat Enterprise Linux (RHEL)', 'Oracle Linux')
             Auto      = 'AlmaLinux, CentOS Stream.'
             Note      = 'RHEL rebuilds may need EPEL enabled for a few packages.'
         }
+        'pacman' = [ordered]@{
+            Rank      = 3
+            Name      = 'Arch'
+            PM        = 'pacman'
+            BestFor   = 'Power-user desktops & gaming (rolling release)'
+            Distros   = @('Arch Linux')
+            Auto      = 'Manjaro, EndeavourOS, SteamOS.'
+            Note      = $null
+        }
         'zypper' = [ordered]@{
+            Rank      = 4
             Name      = 'openSUSE / SUSE'
             PM        = 'zypper'
+            BestFor   = 'Reliable workstations & servers (YaST, btrfs snapshots)'
             Distros   = @('openSUSE (Leap / Tumbleweed)')
             Auto      = 'SLE (SLES / SLED).'
             Note      = $null
         }
-        'pacman' = [ordered]@{
-            Name      = 'Arch'
-            PM        = 'pacman'
-            Distros   = @('Arch Linux')
-            Auto      = 'Manjaro, EndeavourOS.'
-            Note      = $null
+        'apk' = [ordered]@{
+            Rank      = 5
+            Name      = 'Alpine'
+            PM        = 'apk'
+            BestFor   = 'Containers, servers & embedded (tiny, musl-based)'
+            Distros   = @('Alpine Linux')
+            Auto      = 'postmarketOS and other apk-based systems.'
+            Note      = 'Server/container-oriented and musl-libc based (not glibc). Flatpak apps work (they bundle their own glibc runtime), but glibc-only direct .deb/.rpm downloads and Wine are unreliable here. Usable as a workstation mainly via postmarketOS.'
+            Flatpak   = $true
+        }
+        'emerge' = [ordered]@{
+            Rank      = 6
+            Name      = 'Gentoo'
+            PM        = 'emerge (portage)'
+            BestFor   = 'Source-based customization & performance tuning (advanced)'
+            Distros   = @('Gentoo', 'Funtoo')
+            Auto      = $null
+            Note      = 'Source-based, but GUI apps install Flatpak-first (no long compiles); the native fallback reuses the Debian package names. Full workstation-capable. Keep the Portage tree fresh with "emerge --sync" / emerge-webrsync.'
+            Flatpak   = $true
+        }
+        'slackpkg' = [ordered]@{
+            Rank      = 7
+            Name      = 'Slackware'
+            PM        = 'slackpkg'
+            BestFor   = 'UNIX-purist simplicity & long-term stability'
+            Distros   = @('Slackware')
+            Auto      = $null
+            Note      = 'The base tools do no automatic dependency resolution, so apps install Flatpak-first (self-contained); the native fallback reuses the Debian names and some extras may need SlackBuilds.org. Workstation-capable.'
+            Flatpak   = $true
         }
     }
+    # Render order for every list below: overall popularity, most popular first.
+    $familyOrder = @('apt', 'dnf', 'pacman', 'zypper', 'apk', 'emerge', 'slackpkg')
 
     # ---- Scan manifest ----
     $manifest = Get-Content -Raw -Path $ManifestPath | ConvertFrom-Json
     $apps = $manifest.applications
 
-    $pmCounts = @{ apt = 0; dnf = 0; zypper = 0; pacman = 0 }
-    $pmReviewCounts = @{ apt = 0; dnf = 0; zypper = 0; pacman = 0 }
+    $pmCounts = @{ apt = 0; dnf = 0; zypper = 0; pacman = 0; emerge = 0; slackpkg = 0; apk = 0 }
+    $pmReviewCounts = @{ apt = 0; dnf = 0; zypper = 0; pacman = 0; emerge = 0; slackpkg = 0; apk = 0 }
     $totalMustInclude = 0
     $flatpakCount = 0
     $hasArchConstraint = $false
@@ -334,12 +376,24 @@ function Write-SupportedDistributions {
     $lines.Add('system components.')
     $lines.Add('')
     $lines.Add('----------------------------------------------------------------------------')
+    $lines.Add('  OVERVIEW  (ranked by overall popularity, most popular first)')
+    $lines.Add('----------------------------------------------------------------------------')
+    $lines.Add('')
+    $lines.Add('  #  FAMILY (package manager)     BEST FOR')
+    $lines.Add('  -- ---------------------------- ------------------------------------------')
+    foreach ($pm in $familyOrder) {
+        $def = $familyDefs[$pm]
+        $famCol = '{0} ({1})' -f $def.Name, $pm
+        $lines.Add(('  {0,-2} {1,-28} {2}' -f $def.Rank, $famCol, $def.BestFor))
+    }
+    $lines.Add('')
+    $lines.Add('----------------------------------------------------------------------------')
     $lines.Add('  FAMILY            PACKAGE MANAGER   NATIVE APPS IN MANIFEST')
     $lines.Add('----------------------------------------------------------------------------')
     $lines.Add('')
 
     $hasAny = $false
-    foreach ($pm in @('apt', 'dnf', 'zypper', 'pacman')) {
+    foreach ($pm in $familyOrder) {
         $def = $familyDefs[$pm]
         $count = $pmCounts[$pm]
         $r = $pmReviewCounts[$pm]
@@ -350,9 +404,14 @@ function Write-SupportedDistributions {
             if ($r -gt 0) {
                 $lines.Add(('    * {0} app(s) flagged for review on this family' -f $r))
             }
+        } elseif ($def.Flatpak) {
+            # Supported via Flatpak-first even with no curated native names of its own;
+            # the native fallback reuses the Debian (apt) package names at runtime.
+            $lines.Add(('  [ {0} ] {1,-22} Flatpak-first (native fallback: Debian names)' -f $def.Name, $def.PM))
         } else {
             $lines.Add(('  [ {0} ] {1,-22} (no native entries)' -f $def.Name, $def.PM))
         }
+        $lines.Add(('    Best for: {0}' -f $def.BestFor))
         foreach ($distro in $def.Distros) {
             $lines.Add("      - $distro")
         }
@@ -402,11 +461,17 @@ function Write-SupportedDistributions {
     $lines.Add(('  Of {0:N0} "must-include" applications in the manifest:' -f $totalMustInclude))
     $lines.Add(('    - {0,4} have apt entries' -f $pmCounts['apt']))
     $lines.Add(('    - {0,4} have dnf entries' -f $pmCounts['dnf']))
-    $lines.Add(('    - {0,4} have zypper entries' -f $pmCounts['zypper']))
     $lines.Add(('    - {0,4} have pacman entries' -f $pmCounts['pacman']))
+    $lines.Add(('    - {0,4} have zypper entries' -f $pmCounts['zypper']))
     if ($flatpakCount -gt 0) {
         $lines.Add(('    - {0,4} have Flatpak IDs (distro-agnostic)' -f $flatpakCount))
     }
+    $lines.Add('')
+    $lines.Add('  Gentoo (emerge), Slackware (slackpkg) and Alpine (apk) are also supported: apps')
+    $lines.Add('  install Flatpak-first and the native fallback reuses the Debian package names.')
+    $lines.Add('  Add per-family names under install.native.{emerge,slackpkg,apk} to curate them.')
+    $lines.Add('  Alpine is musl-based and server/container-oriented (glibc direct-downloads and')
+    $lines.Add('  Wine are unreliable there); it is a workstation mainly via postmarketOS.')
     $lines.Add('')
 
     # Determine the best-covered family
@@ -484,13 +549,20 @@ function Invoke-Step {
         FilePath          = $psExe
         ArgumentList      = (Get-ArgLine $childTokens)
         NoNewWindow       = $true
-        Wait              = $true
         PassThru          = $true
         ErrorAction       = if ($ContinueOnError) { 'SilentlyContinue' } else { 'Stop' }
     }
 
     try {
+        # IMPORTANT: do NOT use Start-Process -Wait here. On Windows -Wait wraps the
+        # child in a job object and blocks until the ENTIRE descendant tree exits, not
+        # just the child script. Step 2 (B_detect) invokes docker_discovery.ps1, which
+        # starts "Docker Desktop.exe" when the engine is not already running -- a
+        # long-lived process that never exits, so -Wait would hang the whole pipeline
+        # after the step already printed "Done." We instead wait on the direct process
+        # only: caching .Handle keeps .ExitCode readable after it exits.
         $proc = Start-Process @baseArgs
+        if ($proc) { $null = $proc.Handle; $proc.WaitForExit() }
         if ($proc.ExitCode -ne 0) {
             $msg = "Step '$StepLabel' exited with code $($proc.ExitCode)."
             if ($ContinueOnError) {
@@ -589,7 +661,9 @@ if (-not $SkipGenerator) {
 
     try {
         $genTokens = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $scriptGenerator, '-OutputDir', $installerDir)
-        $genProc = Start-Process -FilePath $psExe -ArgumentList (Get-ArgLine $genTokens) -NoNewWindow -Wait -PassThru
+        # Wait on the direct process only (no -Wait job-object tree wait) -- see Invoke-Step.
+        $genProc = Start-Process -FilePath $psExe -ArgumentList (Get-ArgLine $genTokens) -NoNewWindow -PassThru
+        if ($genProc) { $null = $genProc.Handle; $genProc.WaitForExit() }
         if ($genProc.ExitCode -ne 0) {
             $msg = "Generator exited with code $($genProc.ExitCode)."
             if ($ContinueOnError) {
@@ -667,7 +741,9 @@ if (-not (Test-Path $scriptBackup)) {
             $env:MIGRATE_XFER_PWD = $xferPwd
             $backupTokens = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $scriptBackup, '-ArchiveFormat', $ArchiveFormat)
             if ($DataBackup -or $DataBackupOnly) { $backupTokens += '-AssumeYes' }   # skip the low-space confirmation too
-            $bproc = Start-Process -FilePath $psExe -ArgumentList (Get-ArgLine $backupTokens) -NoNewWindow -Wait -PassThru
+            # Wait on the direct process only (no -Wait job-object tree wait) -- see Invoke-Step.
+            $bproc = Start-Process -FilePath $psExe -ArgumentList (Get-ArgLine $backupTokens) -NoNewWindow -PassThru
+            if ($bproc) { $null = $bproc.Handle; $bproc.WaitForExit() }
             if ($bproc.ExitCode -ne 0) { Write-Warning "Backup step exited with code $($bproc.ExitCode)." }
             else { Write-Host "  >> Backup step completed." -ForegroundColor Green }
         }

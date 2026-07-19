@@ -12,8 +12,9 @@
 # -----------------------------------------------------------------------------
 #  This file is INLINED into every generated script in "Execute on Linux!/" by
 #  submodules/D_compile_and_generate_shell_script.ps1.  It is distro- and
-#  architecture-agnostic: it detects the running distro FAMILY (apt/dnf/zypper/
-#  pacman) and CPU ARCH at runtime, then dispatches installs accordingly.
+#  architecture-agnostic: it detects the running distro FAMILY (apt/dnf/pacman/
+#  zypper/apk/emerge/slackpkg -- listed most-popular-first) and CPU ARCH at runtime,
+#  then dispatches installs accordingly.
 #
 #  Design: Flatpak-first.  GUI apps come from Flathub (identical app id on every
 #  distro).  The native package manager is used only for the irreducible base
@@ -388,10 +389,13 @@ write_uninstall_script() {
   [ -s "$LEDGER" ] || return 0
   local out="${MIGRATE_UNINSTALL_SCRIPT:-$TARGET_HOME/uninstall_migrated_apps.sh}" rm_native="" m id
   case "$PM" in
-    apt)    rm_native="apt-get remove -y" ;;
-    dnf)    rm_native="dnf remove -y" ;;
-    zypper) rm_native="zypper --non-interactive remove" ;;
-    pacman) rm_native="pacman -Rns --noconfirm" ;;
+    apt)      rm_native="apt-get remove -y" ;;
+    dnf)      rm_native="dnf remove -y" ;;
+    zypper)   rm_native="zypper --non-interactive remove" ;;
+    pacman)   rm_native="pacman -Rns --noconfirm" ;;
+    emerge)   rm_native="emerge --deselect --ask=n" ;;
+    slackpkg) rm_native="removepkg" ;;
+    apk)      rm_native="apk del" ;;
   esac
   {
     printf '#!/usr/bin/env bash\n'
@@ -487,8 +491,9 @@ ask_install_addition() {  # ask_install_addition PURPOSE_LABEL "PKG [PKG...]" WH
 # =============================================================================
 #  DISTRO + ARCHITECTURE DETECTION
 # =============================================================================
-FAMILY=""      # debian | rhel | suse | arch
-PM=""          # apt | dnf | zypper | pacman
+# Families/PMs are listed most-popular-first (overall popularity) throughout the project.
+FAMILY=""      # debian | rhel | arch | suse | alpine | gentoo | slackware
+PM=""          # apt | dnf | pacman | zypper | apk | emerge | slackpkg
 DISTRO_ID=""
 DISTRO_NAME=""
 
@@ -503,15 +508,21 @@ detect_distro() {
   case "$hay" in
     *" debian "*|*" ubuntu "*|*" linuxmint "*|*" pop "*|*" zorin "*|*" elementary "*) FAMILY="debian"; PM="apt" ;;
     *" rhel "*|*" fedora "*|*" centos "*|*" rocky "*|*" almalinux "*|*" ol "*) FAMILY="rhel"; PM="dnf" ;;
-    *" suse "*|*" opensuse "*|*" sles "*|*" sled "*) FAMILY="suse"; PM="zypper" ;;
     *" arch "*|*" archlinux "*|*" manjaro "*|*" endeavouros "*) FAMILY="arch"; PM="pacman" ;;
+    *" suse "*|*" opensuse "*|*" sles "*|*" sled "*) FAMILY="suse"; PM="zypper" ;;
+    *" alpine "*|*" postmarketos "*) FAMILY="alpine"; PM="apk" ;;
+    *" gentoo "*|*" funtoo "*) FAMILY="gentoo"; PM="emerge" ;;
+    *" slackware "*) FAMILY="slackware"; PM="slackpkg" ;;
     *)
-      # Fall back to whichever package manager actually exists.
-      if   have_cmd apt-get; then FAMILY="debian"; PM="apt"
-      elif have_cmd dnf;     then FAMILY="rhel";   PM="dnf"
-      elif have_cmd zypper;  then FAMILY="suse";   PM="zypper"
-      elif have_cmd pacman;  then FAMILY="arch";   PM="pacman"
-      else err "Unsupported distribution: could not find apt/dnf/zypper/pacman."; exit 1
+      # Fall back to whichever package manager actually exists (popularity order).
+      if   have_cmd apt-get;  then FAMILY="debian";    PM="apt"
+      elif have_cmd dnf;      then FAMILY="rhel";      PM="dnf"
+      elif have_cmd pacman;   then FAMILY="arch";      PM="pacman"
+      elif have_cmd zypper;   then FAMILY="suse";      PM="zypper"
+      elif have_cmd apk;      then FAMILY="alpine";    PM="apk"
+      elif have_cmd emerge;   then FAMILY="gentoo";    PM="emerge"
+      elif have_cmd slackpkg; then FAMILY="slackware"; PM="slackpkg"
+      else err "Unsupported distribution: could not find apt/dnf/pacman/zypper/apk/emerge/slackpkg."; exit 1
       fi ;;
   esac
 }
@@ -564,6 +575,12 @@ pm_refresh() {
     dnf)    dnf -y makecache ;;
     zypper) zypper --non-interactive refresh ;;
     pacman) pacman -Sy --noconfirm ;;
+    # Gentoo: a full "emerge --sync" is heavy and hammers the rsync mirrors, so prefer
+    # the lighter compressed snapshot (emerge-webrsync). Best-effort -- a stale tree
+    # still installs, just from slightly older ebuilds -- so never fail the run here.
+    emerge)   { have_cmd emerge-webrsync && emerge-webrsync || emerge --sync --quiet; } 2>/dev/null || true ;;
+    slackpkg) slackpkg -batch=on -default_answer=yes update 2>/dev/null || true ;;
+    apk)      apk update 2>/dev/null || true ;;
   esac
   _PM_REFRESHED=1
 }
@@ -575,6 +592,11 @@ pm_install() {
     dnf)    dnf install -y "$@" ;;
     zypper) zypper --non-interactive install -y --no-recommends "$@" ;;
     pacman) pacman -S --noconfirm --needed "$@" ;;
+    # Gentoo: --noreplace makes it idempotent (skip anything already installed);
+    # emerge is non-interactive unless --ask is given.
+    emerge)   emerge --noreplace --quiet-build=y "$@" ;;
+    slackpkg) slackpkg -batch=on -default_answer=yes install "$@" ;;
+    apk)      apk add "$@" ;;
   esac
 }
 
@@ -584,6 +606,15 @@ pm_installed() {
     dnf)    rpm -q "$1" >/dev/null 2>&1 ;;
     zypper) rpm -q "$1" >/dev/null 2>&1 ;;
     pacman) pacman -Q "$1" >/dev/null 2>&1 ;;
+    # Gentoo records installed packages under /var/db/pkg/<cat>/<name>-<ver>; use the
+    # portage-utils/gentoolkit query tools when present, else fall back to that glob.
+    emerge)
+      if   have_cmd qlist;  then qlist -I -C "$1" 2>/dev/null | grep -q .
+      elif have_cmd equery; then equery -q list "$1" >/dev/null 2>&1
+      else ls -d /var/db/pkg/*/"${1##*/}"-* >/dev/null 2>&1; fi ;;
+    # Slackware records each installed package as a file in /var/log/packages/<name>-<ver>-...
+    slackpkg) ls /var/log/packages/"$1"-* >/dev/null 2>&1 ;;
+    apk)      apk info -e "$1" >/dev/null 2>&1 ;;
   esac
 }
 
@@ -622,6 +653,9 @@ ensure_snap() {
     dnf)    pm_install snapd && systemctl enable --now snapd.socket 2>/dev/null && ln -sf /var/lib/snapd/snap /snap 2>/dev/null ;;
     zypper) warn "snap on openSUSE needs the snappy repo; skipping snap fallback"; return 1 ;;
     pacman) warn "snap on Arch is via AUR; skipping snap fallback"; return 1 ;;
+    emerge)   warn "snap on Gentoo is via a GURU/overlay ebuild; skipping snap fallback (use Flatpak instead)"; return 1 ;;
+    slackpkg) warn "snap is not packaged for Slackware; skipping snap fallback (use Flatpak instead)"; return 1 ;;
+    apk)      warn "snap does not run on Alpine (musl libc); skipping snap fallback (use Flatpak instead)"; return 1 ;;
   esac
   have_cmd snap
 }
@@ -786,6 +820,17 @@ install_local_package() {  # install_local_package FILE
     dnf)    dnf install -y "$f" ;;
     zypper) zypper --non-interactive install -y --allow-unsigned-rpm "$f" ;;
     pacman) pacman -U --noconfirm "$f" ;;
+    # Alpine consumes native .apk packages; --allow-untrusted for locally downloaded ones.
+    apk)      apk add --allow-untrusted "$f" ;;
+    # Slackware installs its own .tgz/.txz/.tbz/.tlz packages with installpkg.
+    slackpkg) installpkg "$f" ;;
+    # Gentoo has no native installer for a foreign binary package file; try Portage's
+    # binary-package tool for a .tbz2/.gpkg, otherwise report it so the caller falls back.
+    emerge)
+      case "$f" in
+        *.tbz2|*.xpak|*.gpkg.tar) emerge --usepkgonly --nodeps "$f" 2>/dev/null || { LAST_ERR="Gentoo cannot install foreign package file $f"; return 1; } ;;
+        *) LAST_ERR="Gentoo installs from source via emerge, not from downloaded package files ($f)"; return 1 ;;
+      esac ;;
   esac
 }
 
@@ -801,7 +846,9 @@ install_native_version() {  # install_native_version PKG WINVER
     apt)    capture pm_install "${pkg}-${major}" || capture pm_install "${pkg}=${ver}" ;;
     dnf)    capture pm_install "${pkg}${major}" || capture pm_install "${pkg}-${major}" || capture pm_install "${pkg}-${ver}" ;;
     zypper) capture pm_install "${pkg}${major}" || capture pm_install "${pkg}-${ver}" ;;
-    pacman) return 1 ;;
+    # pacman/apk are rolling-release, Gentoo/Slackware have no simple name-based version
+    # pin; the caller falls back to installing the latest available version.
+    pacman|apk|emerge|slackpkg) return 1 ;;
   esac
 }
 
@@ -812,6 +859,9 @@ install_native_version() {  # install_native_version PKG WINVER
 #    install_app --name "VLC" --method flatpak --flatpak org.videolan.VLC \
 #                --apt vlc --dnf vlc --zypper vlc --pacman vlc \
 #                --arch "x86_64 aarch64"
+#  Optional per-family native names for the newer families: --emerge (Gentoo),
+#  --slackpkg (Slackware), --apk (Alpine). When omitted, they fall back to the --apt
+#  name (upstream names track closely; a miss just falls through to Flatpak).
 #  Methods: flatpak | native | snap | webapp | docker | wine-bottles |
 #           deb-url | github-deb | manual
 #  Custom post-install commands (manifest install.postInstall) are passed as repeated
@@ -820,7 +870,7 @@ install_native_version() {  # install_native_version PKG WINVER
 _install_app_core() {
   SKIPPED_BY_USER=0   # fresh app: clear any "skip this application" from the previous one
   local name="" alt="" method="" flatpak="" snap_pkg="" arch_list="" winver="" is_security=0 is_paid=0
-  local apt="" dnf="" zypper="" pacman="" launch=""
+  local apt="" dnf="" zypper="" pacman="" emerge="" slackpkg="" apk="" launch=""
   local url_x86="" url_arm="" url_deb="" url_rpm="" webapp_url="" docker_image="" github_repo="" note="" dlpage="" script_url=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -834,6 +884,9 @@ _install_app_core() {
       --dnf)     dnf="$2"; shift 2 ;;
       --zypper)  zypper="$2"; shift 2 ;;
       --pacman)  pacman="$2"; shift 2 ;;
+      --emerge)   emerge="$2"; shift 2 ;;
+      --slackpkg) slackpkg="$2"; shift 2 ;;
+      --apk)      apk="$2"; shift 2 ;;
       --arch)    arch_list="$2"; shift 2 ;;
       --winver)  winver="$2"; shift 2 ;;
       --url-x86) url_x86="$2"; shift 2 ;;
@@ -864,7 +917,7 @@ _install_app_core() {
   if is_dry_run; then
     if ! arch_supported "$arch_list"; then mark_skip "${alt:-$name}" "not available for $ARCH"; return 0; fi
     local dpkg="" plan=""
-    case "$PM" in apt) dpkg="$apt" ;; dnf) dpkg="$dnf" ;; zypper) dpkg="$zypper" ;; pacman) dpkg="$pacman" ;; esac
+    case "$PM" in apt) dpkg="$apt" ;; dnf) dpkg="$dnf" ;; zypper) dpkg="$zypper" ;; pacman) dpkg="$pacman" ;; emerge) dpkg="${emerge:-$apt}" ;; slackpkg) dpkg="${slackpkg:-$apt}" ;; apk) dpkg="${apk:-$apt}" ;; esac
     case "$method" in
       webapp)       plan="web-app shortcut -> $webapp_url" ;;
       docker)       plan="docker container: $docker_image" ;;
@@ -908,11 +961,15 @@ _install_app_core() {
   fi
   [ -n "$note" ] && info "$note"
 
-  # native package name for the running family
+  # native package name for the running family. The three newer families (Gentoo/
+  # Slackware/Alpine) use their own --emerge/--slackpkg/--apk name when the manifest
+  # carries one, otherwise they fall back to the Debian (apt) name -- upstream package
+  # names track closely, and a wrong guess simply fails and falls back to Flatpak.
   local native_pkg=""
   case "$PM" in
     apt) native_pkg="$apt" ;; dnf) native_pkg="$dnf" ;;
     zypper) native_pkg="$zypper" ;; pacman) native_pkg="$pacman" ;;
+    emerge) native_pkg="${emerge:-$apt}" ;; slackpkg) native_pkg="${slackpkg:-$apt}" ;; apk) native_pkg="${apk:-$apt}" ;;
   esac
   local slug; slug="$(slugify "$name")"
 
@@ -1150,6 +1207,9 @@ ensure_wine() {
     dnf)    capture pm_install wine ;;
     zypper) capture pm_install wine ;;
     pacman) capture pm_install wine ;;
+    emerge) capture pm_install app-emulation/wine-vanilla || capture pm_install wine ;;
+    apk)    capture pm_install wine ;;   # Alpine community repo (musl wine -- limited)
+    *)      capture pm_install wine ;;   # Slackware/others: best-effort (wine may live in a 3rd-party repo)
   esac
   if have_cmd wine; then _WINE_READY=1; return 0; else return 1; fi
 }
@@ -1165,6 +1225,8 @@ ensure_wine_i386() {
     dnf)    capture pm_install wine.i686 || capture pm_install wine || true ;;
     zypper) capture pm_install wine-32bit || capture pm_install wine || true ;;
     pacman) capture pm_install lib32-wine || warn "enable the [multilib] repo for 32-bit wine on Arch" ;;
+    emerge) warn "32-bit (WoW64) wine on Gentoo needs ABI_X86=\"32\" in the wine USE flags; set it and re-emerge if 32-bit Windows apps fail" ;;
+    *)      warn "32-bit (WoW64) wine support may need manual setup on this distro (Alpine/Slackware); install it via your package manager if 32-bit Windows apps fail" ;;
   esac
   _WINE_I386_READY=1
 }
@@ -1195,10 +1257,8 @@ is_32bit_pe() {  # is_32bit_pe FILE
 ensure_winetricks() {
   have_cmd winetricks && return 0
   case "$PM" in
-    apt)    capture pm_install winetricks ;;
-    dnf)    capture pm_install winetricks ;;
-    zypper) capture pm_install winetricks ;;
-    pacman) capture pm_install winetricks ;;
+    emerge) capture pm_install app-emulation/winetricks || capture pm_install winetricks ;;
+    *)      capture pm_install winetricks ;;
   esac
   have_cmd winetricks
 }
@@ -1731,12 +1791,21 @@ ensure_docker() {
   have_cmd docker && return 0
   pm_refresh
   case "$PM" in
-    apt)    pm_install docker.io ;;
-    dnf)    pm_install moby-engine || pm_install docker ;;
-    zypper) pm_install docker ;;
-    pacman) pm_install docker ;;
+    apt)      pm_install docker.io ;;
+    dnf)      pm_install moby-engine || pm_install docker ;;
+    zypper)   pm_install docker ;;
+    pacman)   pm_install docker ;;
+    emerge)   pm_install app-containers/docker || pm_install docker ;;
+    slackpkg) pm_install docker ;;
+    apk)      pm_install docker ;;
   esac
-  have_cmd docker && systemctl enable --now docker 2>/dev/null
+  # Start + enable the daemon on whichever init this distro uses: systemd (most),
+  # OpenRC (Alpine / many Gentoo), or SysV "service" -- best-effort, never fatal.
+  if have_cmd docker; then
+    systemctl enable --now docker 2>/dev/null \
+      || { rc-update add docker default 2>/dev/null; rc-service docker start 2>/dev/null; } \
+      || service docker start 2>/dev/null || true
+  fi
   have_cmd docker
 }
 
@@ -1876,7 +1945,7 @@ CFG_a11y_highcontrast="false"
 CFG_a11y_magnifier="false"
 CFG_key_repeat_delay="500"
 CFG_key_repeat_rate="33"
-CFG_numlock="true"
+CFG_numlock="false"
 CFG_timezone="Europe/Berlin"
 CFG_ntp_server="pool.ntp.org"
 CFG_color_scheme="default"
@@ -1899,24 +1968,24 @@ CFG_default_browser="edge"
 WIFI_DATA="$(cat <<'__WIFI_EOF__'
 eduroam	wpa		none
 somenet	open		none
-V.momen	wpa	U2FsdGVkX18dlbR/Zm49K7bOqFiPMKUJWQ0KV6dNcoo=	enc
+V.momen	wpa	U2FsdGVkX193A7YNgv1dH3N4njyjdvRzBfn2FYP1I5Y=	enc
 Tbilisi Loves You	open		none
 Tbilisi Airport Free	open		none
 Simorgh-WiFi	open		none
-Shatel	wpa	U2FsdGVkX193iKBlMijRcRinf3qx7otX8GTCTeSsytQ=	enc
-SHAW-48EE	wpa	U2FsdGVkX1/KpZ0fLVXzEAVCo+5gjfQCzgLZSC6BndU=	enc
-Redmi Note 10 Pro Max	wpa	U2FsdGVkX1+VlBJXsor/sZ7f/Qd8RHK0TXuCyVULfI0=	enc
-Parsway	wpa	U2FsdGVkX19UMEu1JXgvIROLalbTRlejAUc/HFQ1Mzw=	enc
-NZT9930134C	wpa	U2FsdGVkX19H9hrT5R6hL5KWRFlYBmY46GHuwgqP+Dk=	enc
+Shatel	wpa	U2FsdGVkX19QcR1xQSpL2AxTIAwOBiqxI7CbKUzGvb4=	enc
+SHAW-48EE	wpa	U2FsdGVkX19jxDUZ+0UvzcdcWMdY4QWH+e13R2DGjVg=	enc
+Redmi Note 10 Pro Max	wpa	U2FsdGVkX1/FzO8/HrYLGjwSrDLviv8fc2RCTSjN7wY=	enc
+Parsway	wpa	U2FsdGVkX18pvkkhAJQwcvGk/NoZ0/b/oWbF32JUB3Y=	enc
+NZT9930134C	wpa	U2FsdGVkX1+elLgu23uZM9f9oAksReHSLYDLGHKVC2U=	enc
 Mofid-GoHyper!	open		none
-Jobvision-WiFi	wpa	U2FsdGVkX1+5yqJeAZHSRGNeUpvBtKvTajcqQ+rQ36s=	enc
-JobVision_DLink	wpa	U2FsdGVkX19IA4+r5mHw4jSwtDqCvBN4DDusETHZZj8=	enc
-JobVision-3rd	wpa	U2FsdGVkX18SJwHWdZCpeWwyLkymgSBPEzbtU5abZaY=	enc
-JobVision	wpa	U2FsdGVkX1/1lovl33o2CRooERExJozDvLnce8YRgmE=	enc
-Galaxy A51	wpa	U2FsdGVkX19r0DtmDzjvh0utIAC0o+caKvXlvpDmGIU=	enc
-Fatemeh's Galaxy A71	wpa	U2FsdGVkX1/hNPVtIWnJFsBn8gceH9CZIWeGUww7jsc=	enc
-DivorceHousing	wpa	U2FsdGVkX19qi93mr9mrFl8DKO5uKReXnHbPmJVryxsRkByQvc7qjaaVm8Fk9NkZ	enc
-AndroidAPA50	wpa	U2FsdGVkX1+8ZS/6Ddq7Bho5uAB+7busi/l5NC7m8UI=	enc
+Jobvision-WiFi	wpa	U2FsdGVkX1/UPlucXJlkCB/ELXULvew9A13BkBqfJ5Y=	enc
+JobVision_DLink	wpa	U2FsdGVkX18wtpAMyIPVGkk+mQloTYM2+0CX44vljZA=	enc
+JobVision-3rd	wpa	U2FsdGVkX18OtixUn2xbpGwmBIu02BUbt74/GNOF0Tg=	enc
+JobVision	wpa	U2FsdGVkX1+zidUMP9f1W0WVQQCPZ0ycLznMMXpI41M=	enc
+Galaxy A51	wpa	U2FsdGVkX19Fmud9eUo8p/jgdTnRlRZvEzQeQNJUchc=	enc
+Fatemeh's Galaxy A71	wpa	U2FsdGVkX19Z2L7XNZE/Ouif70Agwj8N3A6zWBGxMaw=	enc
+AndroidAPA50	wpa	U2FsdGVkX19DXT9blsQsLvlkwKg3G2P6q0tm+0RrenQ=	enc
+DivorceHousing	wpa	U2FsdGVkX1+AV789H6ECCqTnzOxiurHtr93uzEhEB41YTNjtH/hgbcunKzhhJJ3v	enc
 __WIFI_EOF__
 )"
 
@@ -2015,14 +2084,11 @@ Cast to Device streaming server (RTCP-Streaming-In)	Inbound	Allow	True	UDP	Any	A
 Windows Media Player Network Sharing Service (UDP-Out)	Outbound	Allow	False	UDP	Any	Any	%PROGRAMFILES%\Windows Media Player\wmpnetwk.exe	
 Cast to Device streaming server (RTSP-Streaming-In)	Inbound	Allow	True	TCP	23554,23555,23556	Any	%SystemRoot%\system32\mdeserver.exe	
 Media Center Extenders - Media Streaming (UDP-Out)	Outbound	Allow	False	UDP	1900	Any	%SystemRoot%\system32\svchost.exe	Ssdpsrv
-Media Center Extenders - WMDRM-ND/RTP/RTCP (UDP-Out)	Outbound	Allow	False	UDP	Any	Any	%SystemRoot%\ehome\ehshell.exe	
-Media Center Extenders - RTSP (TCP-Out)	Outbound	Allow	False	TCP	Any	Any	%SystemRoot%\ehome\ehshell.exe	
 Cast to Device UPnP Events (TCP-In)	Inbound	Allow	True	TCP	2869	Any	System	
 Wireless Portable Devices (UPnPHost-Out)	Outbound	Allow	False	TCP	Any	2869	%SystemRoot%\system32\svchost.exe	upnphost
 Wireless Portable Devices (SSDP-Out)	Outbound	Allow	False	UDP	Any	1900	%SystemRoot%\system32\svchost.exe	Ssdpsrv
 Cast to Device streaming server (RTP-Streaming-Out)	Outbound	Allow	True	UDP	Any	Any	%SystemRoot%\system32\mdeserver.exe	
 Wireless Portable Devices (SSDP-In)	Inbound	Allow	False	UDP	1900	Any	%SystemRoot%\system32\svchost.exe	Ssdpsrv
-Media Center Extenders - Device Validation (TCP-Out)	Outbound	Allow	False	TCP	Any	Any	%SystemRoot%\ehome\mcrmgr.exe	
 Cast to Device SSDP Discovery (UDP-In)	Inbound	Allow	True	UDP	PlayToDiscovery	Any	%SystemRoot%\system32\svchost.exe	ssdpsrv
 BranchCache Hosted Cache Client (HTTP-Out)	Outbound	Allow	False	TCP	Any	80,443	SYSTEM	
 Windows Media Player Network Sharing Service (TCP-Out)	Outbound	Allow	False	TCP	Any	Any	%PROGRAMFILES%\Windows Media Player\wmpnetwk.exe	
@@ -2050,7 +2116,6 @@ Media Center Extenders - XSP (TCP-In)	Inbound	Allow	False	TCP	3390	Any	%SystemRo
 Cast to Device functionality (qWave-UDP-Out)	Outbound	Allow	True	UDP	Any	2177	%SystemRoot%\system32\svchost.exe	Qwave
 Media Center Extenders - qWave (TCP-Out)	Outbound	Allow	False	TCP	Any	2177	%SystemRoot%\system32\svchost.exe	Qwave
 Media Center Extenders - qWave (UDP-Out)	Outbound	Allow	False	UDP	Any	2177	%SystemRoot%\system32\svchost.exe	Qwave
-Media Center Extenders - RTSP (TCP-In)	Inbound	Allow	False	TCP	554,8554,8555,8556,8557,8558	Any	%SystemRoot%\ehome\ehshell.exe	
 Windows Media Player Network Sharing Service (Streaming-UDP-In)	Inbound	Allow	False	UDP	Any	Any	%PROGRAMFILES%\Windows Media Player\wmplayer.exe	
 Cloud Identity (TCP-Out)	Outbound	Allow	True	TCP	Any	443	%SystemRoot%\system32\svchost.exe	cloudidsvc
 Windows Media Player Network Sharing Service (HTTP-Streaming-Out)	Outbound	Allow	False	TCP	Any	10243	System	
@@ -2060,7 +2125,6 @@ Wireless Portable Devices (TCP-Out)	Outbound	Allow	False	TCP	Any	15740	%SystemRo
 Windows Media Player Network Sharing Service (TCP-In)	Inbound	Allow	False	TCP	Any	Any	%PROGRAMFILES%\Windows Media Player\wmpnetwk.exe	
 Windows Media Player Network Sharing Service (UDP-In)	Inbound	Allow	False	UDP	Any	Any	%PROGRAMFILES%\Windows Media Player\wmpnetwk.exe	
 Windows Media Player x86 (UDP-In)	Inbound	Allow	False	UDP	Any	Any	%ProgramFiles(x86)%\Windows Media Player\wmplayer.exe	
-Media Center Extenders - WMDRM-ND/RTP/RTCP (UDP-In)	Inbound	Allow	False	UDP	7777,7778,7779,7780,7781,5004,5005,50004,50005,50006,50007,50008,50009,50010,50011,50012,50013	Any	%SystemRoot%\ehome\ehshell.exe	
 Cast to Device streaming server (RTSP-Streaming-In)	Inbound	Allow	True	TCP	23554,23555,23556	Any	%SystemRoot%\system32\mdeserver.exe	
 Windows Media Player Network Sharing Service (qWave-TCP-In)	Inbound	Allow	False	TCP	2177	Any	%SystemRoot%\system32\svchost.exe	Qwave
 Windows Media Player Network Sharing Service (TCP-In)	Inbound	Allow	False	TCP	Any	Any	%PROGRAMFILES%\Windows Media Player\wmpnetwk.exe	
@@ -2072,7 +2136,6 @@ Windows Media Player Network Sharing Service (UPnP-In)	Inbound	Allow	False	TCP	2
 Cast to Device streaming server (RTCP-Streaming-In)	Inbound	Allow	True	UDP	Any	Any	%SystemRoot%\system32\mdeserver.exe	
 Windows Media Player Network Sharing Service (qWave-UDP-In)	Inbound	Allow	False	UDP	2177	Any	%SystemRoot%\system32\svchost.exe	Qwave
 Windows Media Player Network Sharing Service (qWave-TCP-In)	Inbound	Allow	False	TCP	2177	Any	%SystemRoot%\system32\svchost.exe	Qwave
-Media Center Extenders - Device Provisioning (TCP-Out)	Outbound	Allow	False	TCP	Any	Any	%SystemRoot%\ehome\mcx2prov.exe	
 Cast to Device streaming server (RTP-Streaming-Out)	Outbound	Allow	True	UDP	Any	Any	%SystemRoot%\system32\mdeserver.exe	
 Cast to Device streaming server (RTP-Streaming-Out)	Outbound	Allow	True	UDP	Any	Any	%SystemRoot%\system32\mdeserver.exe	
 Media Center Extenders - qWave (UDP-In)	Inbound	Allow	False	UDP	2177	Any	%SystemRoot%\system32\svchost.exe	Qwave
@@ -2095,7 +2158,6 @@ Windows Remote Management - Compatibility Mode (HTTP-In)	Inbound	Allow	False	TCP
 Core Networking Diagnostics - ICMP Echo Request (ICMPv4-In)	Inbound	Allow	False	ICMPv4	RPC	Any	System	
 Network Discovery (UPnPHost-Out)	Outbound	Allow	True	TCP	Any	2869	%SystemRoot%\system32\svchost.exe	upnphost
 Remote Assistance (TCP-In)	Inbound	Allow	True	TCP	Any	Any	%SystemRoot%\system32\msra.exe	
-Windows Peer to Peer Collaboration Foundation (TCP-In)	Inbound	Allow	False	TCP	Any	Any	%SystemRoot%\system32\p2phost.exe	
 mDNS (UDP-In)	Inbound	Allow	True	UDP	5353	Any	%SystemRoot%\system32\svchost.exe	dnscache
 Core Networking - Time Exceeded (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC	Any	System	
 Netlogon Service Authz (RPC)	Inbound	Allow	False	TCP	RPC	Any	%SystemRoot%\System32\lsass.exe	
@@ -2210,7 +2272,6 @@ Core Networking - DNS (UDP-Out)	Outbound	Allow	True	UDP	Any	53	%SystemRoot%\syst
 Core Networking - Parameter Problem (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC	Any	System	
 Network Discovery (NB-Name-In)	Inbound	Allow	True	UDP	137	Any	System	
 iSCSI Service (TCP-In)	Inbound	Allow	False	TCP	Any	Any	%SystemRoot%\system32\svchost.exe	Msiscsi
-Windows Peer to Peer Collaboration Foundation (WSD-Out)	Outbound	Allow	False	UDP	Any	3702	%SystemRoot%\system32\p2phost.exe	
 Network Discovery (WSD-In)	Inbound	Allow	False	UDP	3702	Any	%SystemRoot%\system32\dashost.exe	
 Windows Remote Management - Compatibility Mode (HTTP-In)	Inbound	Allow	False	TCP	80	Any	System	
 Core Networking - Internet Group Management Protocol (IGMP-Out)	Outbound	Allow	True	2	Any	Any	System	
@@ -2221,7 +2282,6 @@ Microsoft Media Foundation Network Source IN [TCP 554]	Inbound	Allow	True	TCP	55
 Core Networking - IPHTTPS (TCP-Out)	Outbound	Allow	True	TCP	Any	IPHTTPSOut	%SystemRoot%\system32\svchost.exe	iphlpsvc
 Core Networking - Neighbor Discovery Advertisement (ICMPv6-In)	Inbound	Allow	True	ICMPv6	RPC	Any	System	
 Network Discovery (WSD EventsSecure-In)	Inbound	Allow	False	TCP	5358	Any	System	
-Windows Peer to Peer Collaboration Foundation (TCP-Out)	Outbound	Allow	False	TCP	Any	Any	%SystemRoot%\system32\p2phost.exe	
 Core Networking - Router Advertisement (ICMPv6-Out)	Outbound	Allow	True	ICMPv6	RPC	Any	System	
 Remote Assistance (RA Server TCP-Out)	Outbound	Allow	True	TCP	Any	Any	%SystemRoot%\system32\raserver.exe	
 Wireless Display (UDP-Out)	Outbound	Allow	True	UDP	Any	Any	%systemroot%\system32\WUDFHost.exe	
@@ -2313,7 +2373,6 @@ Network Discovery (LLMNR-UDP-In)	Inbound	Allow	False	UDP	5355	Any	%SystemRoot%\s
 Connected Devices Platform - Wi-Fi Direct Transport (TCP-Out)	Outbound	Allow	True	TCP	Any	Any	%SystemRoot%\system32\svchost.exe	CDPSvc
 Core Networking - IPv6 (IPv6-In)	Inbound	Allow	True	41	Any	Any	System	
 Remote Event Log Management (RPC)	Inbound	Allow	False	TCP	RPC	Any	%SystemRoot%\system32\svchost.exe	Eventlog
-Windows Peer to Peer Collaboration Foundation (WSD-In)	Inbound	Allow	False	UDP	3702	Any	%SystemRoot%\system32\p2phost.exe	
 Network Discovery (NB-Datagram-Out)	Outbound	Allow	False	UDP	Any	138	System	
 Network Discovery (NB-Name-Out)	Outbound	Allow	False	UDP	Any	137	System	
 Windows Collaboration Computer Name Registration Service (PNRP-In)	Inbound	Allow	False	UDP	3540	Any	%SystemRoot%\system32\svchost.exe	PNRPSvc
@@ -2338,20 +2397,53 @@ Microsoft Edge	Inbound	Allow	True	TCP	Any	Any	C:\program files (x86)\microsoft\e
 Microsoft Edge	Inbound	Allow	True	UDP	Any	Any	C:\program files (x86)\microsoft\edge\application\msedge.exe	
 Bitvise SSH Client	Inbound	Allow	True	TCP	Any	Any	C:\program files (x86)\bitvise ssh client\bvssh.exe	
 Bitvise SSH Client	Inbound	Allow	True	UDP	Any	Any	C:\program files (x86)\bitvise ssh client\bvssh.exe	
-Microsoft 365 Copilot	Inbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsApps\Microsoft.MicrosoftOfficeHub_19.2606.55071.0_x64__8wekyb3d8bbwe\M365Copilot.exe	
-Microsoft 365 Copilot	Inbound	Allow	True	UDP	Any	Any	C:\Program Files\WindowsApps\Microsoft.MicrosoftOfficeHub_19.2606.55071.0_x64__8wekyb3d8bbwe\M365Copilot.exe	
-Microsoft 365 Copilot	Outbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsApps\Microsoft.MicrosoftOfficeHub_19.2606.55071.0_x64__8wekyb3d8bbwe\M365Copilot.exe	
-Microsoft 365 Copilot	Outbound	Allow	True	UDP	Any	Any	C:\Program Files\WindowsApps\Microsoft.MicrosoftOfficeHub_19.2606.55071.0_x64__8wekyb3d8bbwe\M365Copilot.exe	
-Microsoft 365 Copilot	Outbound	Allow	True	Any	Any	Any		
-Microsoft 365 Copilot	Inbound	Allow	True	Any	Any	Any		
 Google Chrome (mDNS-In)	Inbound	Allow	True	UDP	5353	Any	C:\Program Files\Google\Chrome\Application\chrome.exe	
-Claude	Inbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsApps\Claude_1.17377.1.0_x64__pzs8sxrjxfjjc\app\Claude.exe	
-Claude	Outbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsApps\Claude_1.17377.1.0_x64__pzs8sxrjxfjjc\app\Claude.exe	
-Claude	Inbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsApps\Claude_1.17377.1.0_x64__pzs8sxrjxfjjc\app\resources\cowork-svc.exe	
-Claude	Outbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsApps\Claude_1.17377.1.0_x64__pzs8sxrjxfjjc\app\resources\cowork-svc.exe	
-Claude	Outbound	Allow	True	Any	Any	Any		
 Visual Studio Code	Inbound	Allow	True	TCP	Any	Any	C:\users\ali\appdata\local\programs\microsoft vs code\code.exe	
 Visual Studio Code	Inbound	Allow	True	UDP	Any	Any	C:\users\ali\appdata\local\programs\microsoft vs code\code.exe	
+Samsung account	Outbound	Allow	True	Any	Any	Any		
+Samsung account	Inbound	Allow	True	Any	Any	Any		
+Store Experience Host	Outbound	Allow	True	Any	Any	Any		
+Store Experience Host	Inbound	Allow	True	Any	Any	Any		
+Windows Camera	Outbound	Allow	True	Any	Any	Any		
+Windows Camera	Inbound	Allow	True	Any	Any	Any		
+Windows Calculator	Outbound	Allow	True	Any	Any	Any		
+Windows Sound Recorder	Outbound	Allow	True	Any	Any	Any		
+MSN Weather	Outbound	Allow	True	Any	Any	Any		
+MSN Weather	Inbound	Allow	True	Any	Any	Any		
+HNS Container Networking - ICS DNS (TCP-In) - C08CB7B8-9B3C-408E-8E30-5E16A3AEB445 - 0	Inbound	Allow	True	TCP	53	Any	%SystemRoot%\system32\svchost.exe	sharedaccess
+HNS Container Networking - DNS (UDP-In) - C08CB7B8-9B3C-408E-8E30-5E16A3AEB445 - 0	Inbound	Allow	True	UDP	53	Any		
+App Installer	Outbound	Allow	True	Any	Any	Any		
+App Installer	Inbound	Allow	True	Any	Any	Any		
+Claude	Inbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsApps\Claude_1.18286.0.0_x64__pzs8sxrjxfjjc\app\Claude.exe	
+Claude	Outbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsApps\Claude_1.18286.0.0_x64__pzs8sxrjxfjjc\app\Claude.exe	
+Claude	Inbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsApps\Claude_1.18286.0.0_x64__pzs8sxrjxfjjc\app\resources\cowork-svc.exe	
+Claude	Outbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsApps\Claude_1.18286.0.0_x64__pzs8sxrjxfjjc\app\resources\cowork-svc.exe	
+Claude	Outbound	Allow	True	Any	Any	Any		
+Windows Subsystem for Linux	Outbound	Allow	True	Any	Any	Any		
+Microsoft.Office.ActionsServer	Outbound	Allow	True	Any	Any	Any		
+OfficePushNotificationsUtility	Outbound	Allow	True	Any	Any	Any		
+Microsoft Office Outlook	Inbound	Allow	True	UDP	6004	Any	C:\Program Files\Microsoft Office\root\Office16\outlook.exe	
+Microsoft Lync	Inbound	Allow	True	UDP	Any	Any	C:\Program Files\Microsoft Office\root\Office16\Lync.exe	
+Microsoft Lync	Inbound	Allow	True	TCP	Any	Any	C:\Program Files\Microsoft Office\root\Office16\Lync.exe	
+Microsoft Lync UcMapi	Inbound	Allow	True	UDP	Any	Any	C:\Program Files\Microsoft Office\root\Office16\UcMapi.exe	
+Microsoft Lync UcMapi	Inbound	Allow	True	TCP	Any	Any	C:\Program Files\Microsoft Office\root\Office16\UcMapi.exe	
+xwin_mobax.exe	Inbound	Allow	True	TCP	Any	Any	C:\users\ali\appdata\roaming\mobaxterm\slash\bin\xwin_mobax.exe	
+xwin_mobax.exe	Inbound	Allow	True	UDP	Any	Any	C:\users\ali\appdata\roaming\mobaxterm\slash\bin\xwin_mobax.exe	
+Windows Clock	Outbound	Allow	True	Any	Any	Any		
+Windows Clock	Inbound	Allow	True	Any	Any	Any		
+Firefox (C:\Program Files\Mozilla Firefox)	Inbound	Allow	True	TCP	Any	Any	C:\Program Files\Mozilla Firefox\firefox.exe	
+Firefox (C:\Program Files\Mozilla Firefox)	Inbound	Allow	True	UDP	Any	Any	C:\Program Files\Mozilla Firefox\firefox.exe	
+Microsoft 365 Copilot	Inbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsApps\Microsoft.MicrosoftOfficeHub_19.2606.60031.0_x64__8wekyb3d8bbwe\M365Copilot.exe	
+Microsoft 365 Copilot	Inbound	Allow	True	UDP	Any	Any	C:\Program Files\WindowsApps\Microsoft.MicrosoftOfficeHub_19.2606.60031.0_x64__8wekyb3d8bbwe\M365Copilot.exe	
+Microsoft 365 Copilot	Outbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsApps\Microsoft.MicrosoftOfficeHub_19.2606.60031.0_x64__8wekyb3d8bbwe\M365Copilot.exe	
+Microsoft 365 Copilot	Outbound	Allow	True	UDP	Any	Any	C:\Program Files\WindowsApps\Microsoft.MicrosoftOfficeHub_19.2606.60031.0_x64__8wekyb3d8bbwe\M365Copilot.exe	
+Microsoft 365 Copilot	Outbound	Allow	True	Any	Any	Any		
+Microsoft 365 Copilot	Inbound	Allow	True	Any	Any	Any		
+HNS Container Networking - ICS DNS (TCP-In) - 790E58B4-7939-4434-9358-89AE7DDBE87F - 0	Inbound	Allow	True	TCP	53	Any	%SystemRoot%\system32\svchost.exe	sharedaccess
+HNS Container Networking - DNS (UDP-In) - 790E58B4-7939-4434-9358-89AE7DDBE87F - 0	Inbound	Allow	True	UDP	53	Any		
+Docker Desktop Backend	Inbound	Allow	True	TCP	Any	Any	C:\program files\docker\docker\resources\com.docker.backend.exe	
+Docker Desktop Backend	Inbound	Allow	True	UDP	Any	Any	C:\program files\docker\docker\resources\com.docker.backend.exe	
+Microsoft Edge (mDNS-In)	Inbound	Allow	True	UDP	5353	Any	C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe	
 __FW_EOF__
 )"
 
@@ -2426,10 +2518,15 @@ CMigrationService	CMigrationService
 DropboxUpdater InternalService 123.0.6299.144 (DropboxUpdaterInternalService123.0.6299.144)	DropboxUpdaterInternalService123.0.6299.144
 DropboxUpdater Service 123.0.6299.144 (DropboxUpdaterService123.0.6299.144)	DropboxUpdaterService123.0.6299.144
 Microsoft Edge Update Service (edgeupdate)	edgeupdate
-Google Updater Internal Service (GoogleUpdaterInternalService150.0.7863.0)	GoogleUpdaterInternalService150.0.7863.0
-Google Updater Service (GoogleUpdaterService150.0.7863.0)	GoogleUpdaterService150.0.7863.0
+Google Updater Internal Service (GoogleUpdaterInternalService151.0.7910.0)	GoogleUpdaterInternalService151.0.7910.0
+Google Updater Service (GoogleUpdaterService151.0.7910.0)	GoogleUpdaterService151.0.7910.0
+Hotspot Shield Service 12.16.0	hshld_12.16.0
+Intel® Graphics Software	IntelGraphicsSoftwareService
 Critical Service for Lenovo Vantage	LenovoVantageService
 Microsoft Defender Core Service	MDCoreSvc
+nordsec-threatprotection-service	nordsec-threatprotection-service
+NordSec Update Service	NordUpdaterService
+nordvpn-service	nordvpn-service
 PaperCut Print Deploy Client	pc-print-deploy-client
 PaperCut Direct Print Monitor	PCPrintProvider
 SamsungMagicianSVC	SamsungMagicianSVC
@@ -2437,15 +2534,9 @@ SynTPEnh Caller Service	SynTPEnhService
 VMware Authorization Service	VMAuthdService
 VMware USB Arbitration Service	VMUSBArbService
 Microsoft Defender Antivirus Service	WinDefend
+Claude	CoworkVMService
 Windows Subsystem for Linux	WslInstaller
 WSL Service	WSLService
-Samsung account	SamsungAccountService
-Hotspot Shield Service 12.16.0	hshld_12.16.0
-NordSec Update Service	NordUpdaterService
-nordvpn-service	nordvpn-service
-nordsec-threatprotection-service	nordsec-threatprotection-service
-Intel® Graphics Software	IntelGraphicsSoftwareService
-Claude	CoworkVMService
 __SV_EOF__
 )"
 
@@ -2455,19 +2546,20 @@ SCHEDTASKS_DATA="$(cat <<'__TK_EOF__'
 ASC_PerformanceMonitor	User	onlogon	Monitor
 ASC_SkipUac_Ali	User	unsupported	ASC
 CreateExplorerShellUnelevatedTask	User	unsupported	explorer
-OneDrive Per-Machine Standalone Update Task	System	daily,23,00	OneDriveStandaloneUpdater
-OneDrive Reporting Task-S-1-5-21-134476807-1998891258-1216728456-1001	User	daily,00,52	OneDriveStandaloneUpdater
+OneDrive Per-Machine Standalone Update Task	System	daily,11,00	OneDriveStandaloneUpdater
+OneDrive Reporting Task-S-1-5-21-134476807-1998891258-1216728456-1001	User	daily,12,07	OneDriveStandaloneUpdater
 OneDrive Startup Task-S-1-5-21-134476807-1998891258-1216728456-1001	User	onlogon	OneDriveLauncher
 RPCServiceHealthCheck	User	daily,00,45	RPCDownloader
 update-S-1-5-21-134476807-1998891258-1216728456-1001	User	daily,15,45	Updater
 Quick Share Relaunch	User	daily,22,10	nearby_share_launcher
+RunPlatformExperienceHelperOnUnlock	User	unsupported	platform_experience_helper
 RunPlatformExperienceHelper_Daily	User	daily,10,44	platform_experience_helper
-RunPlatformExperienceHelper_Metrics	User	daily,10,46	platform_experience_helper
+RunPlatformExperienceHelper_Metrics	User	daily,11,34	platform_experience_helper
 Lenovo Professional Ultraslim Wireless Combo Gen2 OSD task	User	onlogon	UltraslimOSD
 Firefox Default Browser Agent 308046B0AF4A39CB	User	daily,13,49	default-browser-agent
 Autorun for Ali	User	onlogon	PowerToys
 SoftLandingCreativeManagementTask	User	unsupported	
-SoftLandingDeferralTask-{3713667f-ba05-4456-bb97-5f57ecb3dfd8}	User	daily,12,32	
+SoftLandingDeferralTask-{dc7733d4-ca5f-4af7-bca5-a24548af1b72}	User	daily,12,32	
 __TK_EOF__
 )"
 
@@ -2535,11 +2627,12 @@ __PR_EOF__
 
 # Static IP / DNS (reported as a manual note), one per line:  iface<TAB>ip<TAB>gw<TAB>dns
 NETCFG_DATA="$(cat <<'__NE_EOF__'
+vEthernet (Default Switch)	172.24.48.1		
 VMware Network Adapter VMnet1	192.168.88.1		
 VMware Network Adapter VMnet11	192.168.171.1		
 VMware Network Adapter VMnet12	172.23.124.1		
-vEthernet (Default Switch)	172.26.0.1		
 vEthernet (WSL (Hyper-V firewall))	172.18.80.1		
+NordLynx	10.5.0.2		
 Wi-Fi 2		10.112.63.254 1.1.1.1	10.112.10.254,10.112.11.254
 __NE_EOF__
 )"
@@ -2698,7 +2791,7 @@ apply_resolution() {
   fi
   if ! have_cmd xrandr; then
     local pkg=""
-    case "$PM" in apt) pkg="x11-xserver-utils" ;; dnf|zypper) pkg="xorg-x11-server-utils" ;; pacman) pkg="xorg-xrandr" ;; esac
+    case "$PM" in apt) pkg="x11-xserver-utils" ;; dnf|zypper) pkg="xorg-x11-server-utils" ;; pacman) pkg="xorg-xrandr" ;; emerge) pkg="x11-apps/xrandr" ;; apk|slackpkg) pkg="xrandr" ;; esac
     ask_install_addition "display resolution" "$pkg" "set the screen resolution with xrandr" \
       || { mark_manual "display resolution" "set ${CFG_resolution} in Settings > Displays"; return 0; }
   fi

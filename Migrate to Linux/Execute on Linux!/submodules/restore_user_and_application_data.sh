@@ -21,8 +21,9 @@
 # -----------------------------------------------------------------------------
 #  This file is INLINED into every generated script in "Execute on Linux!/" by
 #  submodules/D_compile_and_generate_shell_script.ps1.  It is distro- and
-#  architecture-agnostic: it detects the running distro FAMILY (apt/dnf/zypper/
-#  pacman) and CPU ARCH at runtime, then dispatches installs accordingly.
+#  architecture-agnostic: it detects the running distro FAMILY (apt/dnf/pacman/
+#  zypper/apk/emerge/slackpkg -- listed most-popular-first) and CPU ARCH at runtime,
+#  then dispatches installs accordingly.
 #
 #  Design: Flatpak-first.  GUI apps come from Flathub (identical app id on every
 #  distro).  The native package manager is used only for the irreducible base
@@ -397,10 +398,13 @@ write_uninstall_script() {
   [ -s "$LEDGER" ] || return 0
   local out="${MIGRATE_UNINSTALL_SCRIPT:-$TARGET_HOME/uninstall_migrated_apps.sh}" rm_native="" m id
   case "$PM" in
-    apt)    rm_native="apt-get remove -y" ;;
-    dnf)    rm_native="dnf remove -y" ;;
-    zypper) rm_native="zypper --non-interactive remove" ;;
-    pacman) rm_native="pacman -Rns --noconfirm" ;;
+    apt)      rm_native="apt-get remove -y" ;;
+    dnf)      rm_native="dnf remove -y" ;;
+    zypper)   rm_native="zypper --non-interactive remove" ;;
+    pacman)   rm_native="pacman -Rns --noconfirm" ;;
+    emerge)   rm_native="emerge --deselect --ask=n" ;;
+    slackpkg) rm_native="removepkg" ;;
+    apk)      rm_native="apk del" ;;
   esac
   {
     printf '#!/usr/bin/env bash\n'
@@ -496,8 +500,9 @@ ask_install_addition() {  # ask_install_addition PURPOSE_LABEL "PKG [PKG...]" WH
 # =============================================================================
 #  DISTRO + ARCHITECTURE DETECTION
 # =============================================================================
-FAMILY=""      # debian | rhel | suse | arch
-PM=""          # apt | dnf | zypper | pacman
+# Families/PMs are listed most-popular-first (overall popularity) throughout the project.
+FAMILY=""      # debian | rhel | arch | suse | alpine | gentoo | slackware
+PM=""          # apt | dnf | pacman | zypper | apk | emerge | slackpkg
 DISTRO_ID=""
 DISTRO_NAME=""
 
@@ -512,15 +517,21 @@ detect_distro() {
   case "$hay" in
     *" debian "*|*" ubuntu "*|*" linuxmint "*|*" pop "*|*" zorin "*|*" elementary "*) FAMILY="debian"; PM="apt" ;;
     *" rhel "*|*" fedora "*|*" centos "*|*" rocky "*|*" almalinux "*|*" ol "*) FAMILY="rhel"; PM="dnf" ;;
-    *" suse "*|*" opensuse "*|*" sles "*|*" sled "*) FAMILY="suse"; PM="zypper" ;;
     *" arch "*|*" archlinux "*|*" manjaro "*|*" endeavouros "*) FAMILY="arch"; PM="pacman" ;;
+    *" suse "*|*" opensuse "*|*" sles "*|*" sled "*) FAMILY="suse"; PM="zypper" ;;
+    *" alpine "*|*" postmarketos "*) FAMILY="alpine"; PM="apk" ;;
+    *" gentoo "*|*" funtoo "*) FAMILY="gentoo"; PM="emerge" ;;
+    *" slackware "*) FAMILY="slackware"; PM="slackpkg" ;;
     *)
-      # Fall back to whichever package manager actually exists.
-      if   have_cmd apt-get; then FAMILY="debian"; PM="apt"
-      elif have_cmd dnf;     then FAMILY="rhel";   PM="dnf"
-      elif have_cmd zypper;  then FAMILY="suse";   PM="zypper"
-      elif have_cmd pacman;  then FAMILY="arch";   PM="pacman"
-      else err "Unsupported distribution: could not find apt/dnf/zypper/pacman."; exit 1
+      # Fall back to whichever package manager actually exists (popularity order).
+      if   have_cmd apt-get;  then FAMILY="debian";    PM="apt"
+      elif have_cmd dnf;      then FAMILY="rhel";      PM="dnf"
+      elif have_cmd pacman;   then FAMILY="arch";      PM="pacman"
+      elif have_cmd zypper;   then FAMILY="suse";      PM="zypper"
+      elif have_cmd apk;      then FAMILY="alpine";    PM="apk"
+      elif have_cmd emerge;   then FAMILY="gentoo";    PM="emerge"
+      elif have_cmd slackpkg; then FAMILY="slackware"; PM="slackpkg"
+      else err "Unsupported distribution: could not find apt/dnf/pacman/zypper/apk/emerge/slackpkg."; exit 1
       fi ;;
   esac
 }
@@ -573,6 +584,12 @@ pm_refresh() {
     dnf)    dnf -y makecache ;;
     zypper) zypper --non-interactive refresh ;;
     pacman) pacman -Sy --noconfirm ;;
+    # Gentoo: a full "emerge --sync" is heavy and hammers the rsync mirrors, so prefer
+    # the lighter compressed snapshot (emerge-webrsync). Best-effort -- a stale tree
+    # still installs, just from slightly older ebuilds -- so never fail the run here.
+    emerge)   { have_cmd emerge-webrsync && emerge-webrsync || emerge --sync --quiet; } 2>/dev/null || true ;;
+    slackpkg) slackpkg -batch=on -default_answer=yes update 2>/dev/null || true ;;
+    apk)      apk update 2>/dev/null || true ;;
   esac
   _PM_REFRESHED=1
 }
@@ -584,6 +601,11 @@ pm_install() {
     dnf)    dnf install -y "$@" ;;
     zypper) zypper --non-interactive install -y --no-recommends "$@" ;;
     pacman) pacman -S --noconfirm --needed "$@" ;;
+    # Gentoo: --noreplace makes it idempotent (skip anything already installed);
+    # emerge is non-interactive unless --ask is given.
+    emerge)   emerge --noreplace --quiet-build=y "$@" ;;
+    slackpkg) slackpkg -batch=on -default_answer=yes install "$@" ;;
+    apk)      apk add "$@" ;;
   esac
 }
 
@@ -593,6 +615,15 @@ pm_installed() {
     dnf)    rpm -q "$1" >/dev/null 2>&1 ;;
     zypper) rpm -q "$1" >/dev/null 2>&1 ;;
     pacman) pacman -Q "$1" >/dev/null 2>&1 ;;
+    # Gentoo records installed packages under /var/db/pkg/<cat>/<name>-<ver>; use the
+    # portage-utils/gentoolkit query tools when present, else fall back to that glob.
+    emerge)
+      if   have_cmd qlist;  then qlist -I -C "$1" 2>/dev/null | grep -q .
+      elif have_cmd equery; then equery -q list "$1" >/dev/null 2>&1
+      else ls -d /var/db/pkg/*/"${1##*/}"-* >/dev/null 2>&1; fi ;;
+    # Slackware records each installed package as a file in /var/log/packages/<name>-<ver>-...
+    slackpkg) ls /var/log/packages/"$1"-* >/dev/null 2>&1 ;;
+    apk)      apk info -e "$1" >/dev/null 2>&1 ;;
   esac
 }
 
@@ -631,6 +662,9 @@ ensure_snap() {
     dnf)    pm_install snapd && systemctl enable --now snapd.socket 2>/dev/null && ln -sf /var/lib/snapd/snap /snap 2>/dev/null ;;
     zypper) warn "snap on openSUSE needs the snappy repo; skipping snap fallback"; return 1 ;;
     pacman) warn "snap on Arch is via AUR; skipping snap fallback"; return 1 ;;
+    emerge)   warn "snap on Gentoo is via a GURU/overlay ebuild; skipping snap fallback (use Flatpak instead)"; return 1 ;;
+    slackpkg) warn "snap is not packaged for Slackware; skipping snap fallback (use Flatpak instead)"; return 1 ;;
+    apk)      warn "snap does not run on Alpine (musl libc); skipping snap fallback (use Flatpak instead)"; return 1 ;;
   esac
   have_cmd snap
 }
@@ -795,6 +829,17 @@ install_local_package() {  # install_local_package FILE
     dnf)    dnf install -y "$f" ;;
     zypper) zypper --non-interactive install -y --allow-unsigned-rpm "$f" ;;
     pacman) pacman -U --noconfirm "$f" ;;
+    # Alpine consumes native .apk packages; --allow-untrusted for locally downloaded ones.
+    apk)      apk add --allow-untrusted "$f" ;;
+    # Slackware installs its own .tgz/.txz/.tbz/.tlz packages with installpkg.
+    slackpkg) installpkg "$f" ;;
+    # Gentoo has no native installer for a foreign binary package file; try Portage's
+    # binary-package tool for a .tbz2/.gpkg, otherwise report it so the caller falls back.
+    emerge)
+      case "$f" in
+        *.tbz2|*.xpak|*.gpkg.tar) emerge --usepkgonly --nodeps "$f" 2>/dev/null || { LAST_ERR="Gentoo cannot install foreign package file $f"; return 1; } ;;
+        *) LAST_ERR="Gentoo installs from source via emerge, not from downloaded package files ($f)"; return 1 ;;
+      esac ;;
   esac
 }
 
@@ -810,7 +855,9 @@ install_native_version() {  # install_native_version PKG WINVER
     apt)    capture pm_install "${pkg}-${major}" || capture pm_install "${pkg}=${ver}" ;;
     dnf)    capture pm_install "${pkg}${major}" || capture pm_install "${pkg}-${major}" || capture pm_install "${pkg}-${ver}" ;;
     zypper) capture pm_install "${pkg}${major}" || capture pm_install "${pkg}-${ver}" ;;
-    pacman) return 1 ;;
+    # pacman/apk are rolling-release, Gentoo/Slackware have no simple name-based version
+    # pin; the caller falls back to installing the latest available version.
+    pacman|apk|emerge|slackpkg) return 1 ;;
   esac
 }
 
@@ -821,6 +868,9 @@ install_native_version() {  # install_native_version PKG WINVER
 #    install_app --name "VLC" --method flatpak --flatpak org.videolan.VLC \
 #                --apt vlc --dnf vlc --zypper vlc --pacman vlc \
 #                --arch "x86_64 aarch64"
+#  Optional per-family native names for the newer families: --emerge (Gentoo),
+#  --slackpkg (Slackware), --apk (Alpine). When omitted, they fall back to the --apt
+#  name (upstream names track closely; a miss just falls through to Flatpak).
 #  Methods: flatpak | native | snap | webapp | docker | wine-bottles |
 #           deb-url | github-deb | manual
 #  Custom post-install commands (manifest install.postInstall) are passed as repeated
@@ -829,7 +879,7 @@ install_native_version() {  # install_native_version PKG WINVER
 _install_app_core() {
   SKIPPED_BY_USER=0   # fresh app: clear any "skip this application" from the previous one
   local name="" alt="" method="" flatpak="" snap_pkg="" arch_list="" winver="" is_security=0 is_paid=0
-  local apt="" dnf="" zypper="" pacman="" launch=""
+  local apt="" dnf="" zypper="" pacman="" emerge="" slackpkg="" apk="" launch=""
   local url_x86="" url_arm="" url_deb="" url_rpm="" webapp_url="" docker_image="" github_repo="" note="" dlpage="" script_url=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -843,6 +893,9 @@ _install_app_core() {
       --dnf)     dnf="$2"; shift 2 ;;
       --zypper)  zypper="$2"; shift 2 ;;
       --pacman)  pacman="$2"; shift 2 ;;
+      --emerge)   emerge="$2"; shift 2 ;;
+      --slackpkg) slackpkg="$2"; shift 2 ;;
+      --apk)      apk="$2"; shift 2 ;;
       --arch)    arch_list="$2"; shift 2 ;;
       --winver)  winver="$2"; shift 2 ;;
       --url-x86) url_x86="$2"; shift 2 ;;
@@ -873,7 +926,7 @@ _install_app_core() {
   if is_dry_run; then
     if ! arch_supported "$arch_list"; then mark_skip "${alt:-$name}" "not available for $ARCH"; return 0; fi
     local dpkg="" plan=""
-    case "$PM" in apt) dpkg="$apt" ;; dnf) dpkg="$dnf" ;; zypper) dpkg="$zypper" ;; pacman) dpkg="$pacman" ;; esac
+    case "$PM" in apt) dpkg="$apt" ;; dnf) dpkg="$dnf" ;; zypper) dpkg="$zypper" ;; pacman) dpkg="$pacman" ;; emerge) dpkg="${emerge:-$apt}" ;; slackpkg) dpkg="${slackpkg:-$apt}" ;; apk) dpkg="${apk:-$apt}" ;; esac
     case "$method" in
       webapp)       plan="web-app shortcut -> $webapp_url" ;;
       docker)       plan="docker container: $docker_image" ;;
@@ -917,11 +970,15 @@ _install_app_core() {
   fi
   [ -n "$note" ] && info "$note"
 
-  # native package name for the running family
+  # native package name for the running family. The three newer families (Gentoo/
+  # Slackware/Alpine) use their own --emerge/--slackpkg/--apk name when the manifest
+  # carries one, otherwise they fall back to the Debian (apt) name -- upstream package
+  # names track closely, and a wrong guess simply fails and falls back to Flatpak.
   local native_pkg=""
   case "$PM" in
     apt) native_pkg="$apt" ;; dnf) native_pkg="$dnf" ;;
     zypper) native_pkg="$zypper" ;; pacman) native_pkg="$pacman" ;;
+    emerge) native_pkg="${emerge:-$apt}" ;; slackpkg) native_pkg="${slackpkg:-$apt}" ;; apk) native_pkg="${apk:-$apt}" ;;
   esac
   local slug; slug="$(slugify "$name")"
 
@@ -1159,6 +1216,9 @@ ensure_wine() {
     dnf)    capture pm_install wine ;;
     zypper) capture pm_install wine ;;
     pacman) capture pm_install wine ;;
+    emerge) capture pm_install app-emulation/wine-vanilla || capture pm_install wine ;;
+    apk)    capture pm_install wine ;;   # Alpine community repo (musl wine -- limited)
+    *)      capture pm_install wine ;;   # Slackware/others: best-effort (wine may live in a 3rd-party repo)
   esac
   if have_cmd wine; then _WINE_READY=1; return 0; else return 1; fi
 }
@@ -1174,6 +1234,8 @@ ensure_wine_i386() {
     dnf)    capture pm_install wine.i686 || capture pm_install wine || true ;;
     zypper) capture pm_install wine-32bit || capture pm_install wine || true ;;
     pacman) capture pm_install lib32-wine || warn "enable the [multilib] repo for 32-bit wine on Arch" ;;
+    emerge) warn "32-bit (WoW64) wine on Gentoo needs ABI_X86=\"32\" in the wine USE flags; set it and re-emerge if 32-bit Windows apps fail" ;;
+    *)      warn "32-bit (WoW64) wine support may need manual setup on this distro (Alpine/Slackware); install it via your package manager if 32-bit Windows apps fail" ;;
   esac
   _WINE_I386_READY=1
 }
@@ -1204,10 +1266,8 @@ is_32bit_pe() {  # is_32bit_pe FILE
 ensure_winetricks() {
   have_cmd winetricks && return 0
   case "$PM" in
-    apt)    capture pm_install winetricks ;;
-    dnf)    capture pm_install winetricks ;;
-    zypper) capture pm_install winetricks ;;
-    pacman) capture pm_install winetricks ;;
+    emerge) capture pm_install app-emulation/winetricks || capture pm_install winetricks ;;
+    *)      capture pm_install winetricks ;;
   esac
   have_cmd winetricks
 }
@@ -1740,12 +1800,21 @@ ensure_docker() {
   have_cmd docker && return 0
   pm_refresh
   case "$PM" in
-    apt)    pm_install docker.io ;;
-    dnf)    pm_install moby-engine || pm_install docker ;;
-    zypper) pm_install docker ;;
-    pacman) pm_install docker ;;
+    apt)      pm_install docker.io ;;
+    dnf)      pm_install moby-engine || pm_install docker ;;
+    zypper)   pm_install docker ;;
+    pacman)   pm_install docker ;;
+    emerge)   pm_install app-containers/docker || pm_install docker ;;
+    slackpkg) pm_install docker ;;
+    apk)      pm_install docker ;;
   esac
-  have_cmd docker && systemctl enable --now docker 2>/dev/null
+  # Start + enable the daemon on whichever init this distro uses: systemd (most),
+  # OpenRC (Alpine / many Gentoo), or SysV "service" -- best-effort, never fatal.
+  if have_cmd docker; then
+    systemctl enable --now docker 2>/dev/null \
+      || { rc-update add docker default 2>/dev/null; rc-service docker start 2>/dev/null; } \
+      || service docker start 2>/dev/null || true
+  fi
   have_cmd docker
 }
 
@@ -1937,11 +2006,14 @@ ensure_7z() {
   local b pkg=""
   for b in 7z 7zz 7za; do have_cmd "$b" && { printf '%s' "$b"; return 0; }; done
   case "$FAMILY" in
-    debian) pkg="p7zip-full" ;;
-    rhel)   pkg="p7zip" ;;
-    suse)   pkg="7zip" ;;
-    arch)   pkg="p7zip" ;;
-    *)      pkg="p7zip" ;;
+    debian)    pkg="p7zip-full" ;;
+    rhel)      pkg="p7zip" ;;
+    suse)      pkg="7zip" ;;
+    arch)      pkg="p7zip" ;;
+    gentoo)    pkg="app-arch/p7zip" ;;
+    alpine)    pkg="7zip" ;;
+    slackware) pkg="p7zip" ;;
+    *)         pkg="p7zip" ;;
   esac
   log "Installing 7-Zip ($pkg) to extract the backup archive ..."
   pm_refresh >/dev/null 2>&1 || true

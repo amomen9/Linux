@@ -6,14 +6,15 @@
 #  Device drivers on Linux are mostly in-kernel.  This script enables firmware,
 #  installs GPU drivers (proprietary NVIDIA on demand), printer/scanner support,
 #  and lists the Windows devices detected on the source machine for reference.
-#  Best-effort and family-aware (apt/dnf/zypper/pacman).
+#  Best-effort and family-aware (apt/dnf/pacman/zypper/apk/emerge/slackpkg).
 # =============================================================================
 ### __COMMON__ ###
 
 install_firmware() {
   log "Linux firmware"
   local pkg=linux-firmware
-  [ "$PM" = "zypper" ] && pkg=kernel-firmware
+  # openSUSE and Slackware ship the firmware blobs as "kernel-firmware".
+  case "$FAMILY" in suse|slackware) pkg=kernel-firmware ;; esac
   if capture pm_install "$pkg"; then ok "firmware package installed"
   else mark_fail "firmware ($pkg)" "${LAST_ERR:-could not install firmware package}"; fi
 }
@@ -34,6 +35,10 @@ install_gpu() {
       pacman)
         if capture pm_install nvidia nvidia-utils; then mark_ok "NVIDIA driver"
         else mark_fail "NVIDIA driver" "${LAST_ERR:-pacman: nvidia / nvidia-lts}"; fi ;;
+      emerge)   mark_manual "NVIDIA driver" "set VIDEO_CARDS=\"nvidia\" in /etc/portage/make.conf, then: emerge x11-drivers/nvidia-drivers" ;;
+      slackpkg) mark_manual "NVIDIA driver" "install nvidia-driver + nvidia-kernel from SlackBuilds.org (sbopkg)" ;;
+      apk)      mark_manual "NVIDIA driver" "Alpine (musl) has no official NVIDIA proprietary driver; use the open-source nouveau driver (in-kernel)" ;;
+      *)        mark_manual "NVIDIA driver" "install the proprietary NVIDIA driver from your distribution's repositories" ;;
     esac
   elif printf '%s' "$gpu" | grep -qiE 'amd|radeon|ati'; then
     info "AMD GPU -> open-source amdgpu/radeon driver is in the kernel (Mesa)."
@@ -47,12 +52,19 @@ install_printing() {
   log "Printer / scanner support"
   local rc=0
   case "$PM" in
-    apt)    capture pm_install cups system-config-printer sane-utils || rc=1 ;;
-    dnf)    capture pm_install cups system-config-printer sane-backends || rc=1 ;;
-    zypper) capture pm_install cups sane-backends || rc=1 ;;
-    pacman) capture pm_install cups sane || rc=1 ;;
+    apt)      capture pm_install cups system-config-printer sane-utils || rc=1 ;;
+    dnf)      capture pm_install cups system-config-printer sane-backends || rc=1 ;;
+    zypper)   capture pm_install cups sane-backends || rc=1 ;;
+    pacman)   capture pm_install cups sane || rc=1 ;;
+    emerge)   capture pm_install net-print/cups media-gfx/sane-backends || rc=1 ;;
+    slackpkg) capture pm_install cups sane || rc=1 ;;
+    apk)      capture pm_install cups sane || rc=1 ;;
   esac
-  if [ "$rc" -eq 0 ]; then systemctl enable --now cups 2>/dev/null; mark_ok "printing/scanning (CUPS+SANE)"
+  # Enable the CUPS daemon on systemd, OpenRC (Alpine / Gentoo) or SysV -- best-effort.
+  if [ "$rc" -eq 0 ]; then
+    systemctl enable --now cups 2>/dev/null \
+      || { rc-update add cupsd 2>/dev/null; rc-service cupsd start 2>/dev/null; } || true
+    mark_ok "printing/scanning (CUPS+SANE)"
   else mark_fail "printing/scanning" "${LAST_ERR:-could not install cups + sane}"; fi
 }
 

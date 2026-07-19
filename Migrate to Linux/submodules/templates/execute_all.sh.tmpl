@@ -343,6 +343,15 @@ main() {
   info "Distribution : ${DISTRO_NAME}"
   info "Family / pm  : ${FAMILY} / ${PM}"
   info "Architecture : ${ARCH}"
+  info ""
+  info "Order of operations (only the stages you enable below actually run):"
+  info "  1. Device-driver installation"
+  info "  2. Config settings migration (pre-phase)"
+  info "  3. Application migration"
+  info "  4. Manual application downloads"
+  info "  5. Config settings migration (post-phase: shortcuts/favourites, ~/.ssh, Contacts)"
+  info "  6. User & application data restore"
+  info "  7. Docker component migration"
 
   show_unmatched_warning
 

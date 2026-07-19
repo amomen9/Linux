@@ -224,7 +224,7 @@ apply_resolution() {
   fi
   if ! have_cmd xrandr; then
     local pkg=""
-    case "$PM" in apt) pkg="x11-xserver-utils" ;; dnf|zypper) pkg="xorg-x11-server-utils" ;; pacman) pkg="xorg-xrandr" ;; esac
+    case "$PM" in apt) pkg="x11-xserver-utils" ;; dnf|zypper) pkg="xorg-x11-server-utils" ;; pacman) pkg="xorg-xrandr" ;; emerge) pkg="x11-apps/xrandr" ;; apk|slackpkg) pkg="xrandr" ;; esac
     ask_install_addition "display resolution" "$pkg" "set the screen resolution with xrandr" \
       || { mark_manual "display resolution" "set ${CFG_resolution} in Settings > Displays"; return 0; }
   fi

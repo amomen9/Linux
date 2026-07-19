@@ -6,8 +6,8 @@
 .DESCRIPTION
     Reads the install data and inlines the runtime engine (submodules/templates/
     _common.sh) into four templates, producing four STANDALONE shell scripts that
-    detect the Linux distribution family (apt/dnf/zypper/pacman) and CPU arch at
-    runtime and install everything Flatpak-first with native fallbacks:
+    detect the Linux distribution family (apt/dnf/pacman/zypper/apk/emerge/slackpkg,
+    most-popular-first) and CPU arch at runtime, installing Flatpak-first with fallbacks:
 
       execute_all.sh                 - orchestrator
       install_device_drivers.sh      - firmware / GPU / printing + device report
@@ -108,7 +108,10 @@ function New-InstallCall {
 
     $native = Get-Prop $Install 'native'
     if ($native) {
-        foreach ($fam in 'apt','dnf','zypper','pacman') {
+        # apt/dnf/zypper/pacman are the curated families; emerge/slackpkg/apk are
+        # optional per-family native names for Gentoo/Slackware/Alpine (the engine
+        # falls back to the apt name when they are absent).
+        foreach ($fam in 'apt','dnf','zypper','pacman','emerge','slackpkg','apk') {
             Add-Flag $parts ('--' + $fam) (Get-Prop $native $fam)
         }
     }
@@ -200,7 +203,7 @@ function New-RepoFunc {
     $lines = New-Object System.Collections.Generic.List[string]
     $lines.Add($fn + '() {')
     $lines.Add('  case "$PM" in')
-    foreach ($fam in 'apt','dnf','zypper','pacman') {
+    foreach ($fam in 'apt','dnf','zypper','pacman','emerge','slackpkg','apk') {
         $sh = [string](Get-Prop $Repo $fam)
         if ($sh) {
             $lines.Add('    ' + $fam + ')')

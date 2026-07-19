@@ -89,11 +89,14 @@ ensure_7z() {
   local b pkg=""
   for b in 7z 7zz 7za; do have_cmd "$b" && { printf '%s' "$b"; return 0; }; done
   case "$FAMILY" in
-    debian) pkg="p7zip-full" ;;
-    rhel)   pkg="p7zip" ;;
-    suse)   pkg="7zip" ;;
-    arch)   pkg="p7zip" ;;
-    *)      pkg="p7zip" ;;
+    debian)    pkg="p7zip-full" ;;
+    rhel)      pkg="p7zip" ;;
+    suse)      pkg="7zip" ;;
+    arch)      pkg="p7zip" ;;
+    gentoo)    pkg="app-arch/p7zip" ;;
+    alpine)    pkg="7zip" ;;
+    slackware) pkg="p7zip" ;;
+    *)         pkg="p7zip" ;;
   esac
   log "Installing 7-Zip ($pkg) to extract the backup archive ..."
   pm_refresh >/dev/null 2>&1 || true

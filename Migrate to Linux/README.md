@@ -36,7 +36,7 @@ Several tools touch the same problem from different angles. Here is how this kit
 
 **What makes this project different**
 
-- **Cross-distro by design** - it detects apt/dnf/zypper/pacman at runtime and runs unchanged on Debian/Ubuntu, Fedora, openSUSE and Arch. Operese is Kubuntu-only; WinApps targets Ubuntu/Fedora.
+- **Cross-distro by design** - it detects apt/dnf/pacman/zypper/apk/emerge/slackpkg at runtime and runs unchanged on Debian/Ubuntu, Fedora/RHEL, Arch, openSUSE, Alpine, Gentoo and Slackware (listed most-popular-first). Operese is Kubuntu-only; WinApps targets Ubuntu/Fedora.
 - **Alternatives-first and curated** - a JSON manifest rates every Windows app and offers **multiple ranked Linux alternatives, each with a competency score**, preferring native Linux apps (Flatpak-first) rather than running the Windows binaries (WinApps) or doing only best-guess app migration (Operese).
 - **Detect-on-Windows → generate self-contained scripts → run on Linux** - a clean offline split; the generated installer is unattended, idempotent, reports per app, and includes a manual-download workflow. No other tool here uses this generate-then-run model.
 - **Breadth beyond apps** - it also migrates settings, installs device drivers, can rebuild Docker components, and offers an **opt-in Wine path** for Windows-only apps (auto-download where a trusted URL exists, otherwise it prompts for the installer) - a hybrid between Operese (migrate) and WinApps (emulate).
@@ -207,7 +207,7 @@ Dry-run needs no root, makes no changes and writes nothing - it just prints the 
 | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`run_project.ps1`](run_project.ps1)                                                                   | **Windows orchestrator** - runs the three detection scripts (steps 1-3), the generator (step 4), Supported Distributions (5) and the optional user/app data backup (6). Forwards parameters to the sub-scripts. `--data-backup` auto-confirms step 6; `--data-backup-only` runs only step 6.        |
 | [`submodules/`](submodules/)                                                                           | Detection scripts (A/B/C), the generator`D_compile_and_generate_shell_script.ps1`, the universal `templates/` (`_common.sh` + `*.sh.tmpl`), and `docker_discovery.sh` / `docker_discovery.ps1`.                                              |
-| [`Supported Distributions.txt`](Supported%20Distributions.txt)                                         | Distro-family groupings (apt/dnf/zypper/pacman) and supported CPU architectures (x86_64/aarch64).                                                                                                                                                        |
+| [`Supported Distributions.txt`](Supported%20Distributions.txt)                                         | Distro-family groupings ranked by popularity with a "best for" note (apt/dnf/pacman/zypper/apk/emerge/slackpkg) and supported CPU architectures (x86_64/aarch64).                                                                                                                                                        |
 | [`Additional_Manual_Linux_Software_Requirments.csv`](Additional_Manual_Linux_Software_Requirments.csv) | **Hand-curated** list of hardcoded applications included regardless of the Windows CSV - apps absent from the Windows PC and apps whose install logic goes beyond the CSV (Wine installs, multi-package splits like PowerToys, web-app shortcuts). |
 | [`documents/B_applications.json`](documents/B_applications.json)                                       | The manifest: every app's Linux alternatives plus the per-distro`install{}` descriptor (method, flatpakId, native names per family, arch) the generator reads.                                                                                         |
 | [`documents/B_installed_windows_software.csv`](documents/B_installed_windows_software.csv)             | Generated software report (one row per app).                                                                                                                                                                                                             |
@@ -218,9 +218,9 @@ Dry-run needs no root, makes no changes and writes nothing - it just prints the 
 ### Linux-side (run on the target machine, in `Execute on Linux!/`)
 
 These four scripts are **generated** and **universal** - one set runs on every
-supported distribution. They detect the distro family (apt/dnf/zypper/pacman) and
-CPU architecture (x86_64/aarch64) at runtime and install everything **Flatpak-first**
-with native fallbacks. See [`Supported Distributions.txt`](Supported%20Distributions.txt).
+supported distribution. They detect the distro family (apt/dnf/pacman/zypper/apk/emerge/
+slackpkg) and CPU architecture (x86_64/aarch64) at runtime and install everything
+**Flatpak-first** with native fallbacks. See [`Supported Distributions.txt`](Supported%20Distributions.txt).
 
 | File                                                | What it is                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -282,7 +282,7 @@ the data backup, non-interactively, in the default location.
 Migrate to Linux/
 ├─ run_project.ps1                         # Windows: orchestrator (detection 1-3 + generator 4)
 ├─ Additional_Manual_Linux_Software_Requirments.csv  # hand-curated hardcoded apps beyond the CSV
-├─ Supported Distributions.txt             # distro-family groupings + supported CPU architectures
+├─ Supported Distributions.txt             # distro-family groupings ranked by popularity (+ "best for") + CPU architectures
 ├─ README.md
 ├─ README_fa.md                            # Persian translation of this file
 │
@@ -579,7 +579,7 @@ decrypted as each network is recreated with `nmcli`.
 ## Installing on Linux - Software
 
 ```bash
-# On any supported distro (Debian/Ubuntu, Fedora, openSUSE, Arch):
+# On any supported distro (Debian/Ubuntu, Fedora/RHEL, Arch, openSUSE, Alpine, Gentoo, Slackware):
 sudo ./"Execute on Linux!/install_must_have_software.sh"
 ```
 
@@ -717,7 +717,7 @@ This is the **only** part of the project that benefits from an AI agent - everyd
 
 ## Continuous integration (CI)
 
-A GitHub Actions workflow ([`.github/workflows/distro-dry-run.yml`](../.github/workflows/distro-dry-run.yml)) guards the "one script set runs unchanged on every distro" promise automatically: on each change it regenerates the installer scripts, then in a clean container for **each** package-manager family (apt / dnf / zypper / pacman) it syntax-checks every script and runs the installer in `--dry-run`. Per-distro regressions surface in CI instead of on a user's machine.
+A GitHub Actions workflow ([`.github/workflows/distro-dry-run.yml`](../.github/workflows/distro-dry-run.yml)) guards the "one script set runs unchanged on every distro" promise automatically: on each change it regenerates the installer scripts, then in a clean container for **each** package-manager family it syntax-checks every script and runs the installer in `--dry-run`. The glibc families (apt / dnf / pacman / zypper) run as GitHub `container:` jobs; a second `dry-run-extra` job does the same for Alpine (`apk`), Gentoo (`emerge`) and Slackware (`slackpkg`) via `docker run` on the glibc host (Alpine's musl libc breaks the Node-based setup actions inside a `container:` job, so the actions run on the host and only the scripts run in the target image). Per-distro regressions surface in CI instead of on a user's machine.
 
 ---
 
@@ -746,8 +746,10 @@ A GitHub Actions workflow ([`.github/workflows/distro-dry-run.yml`](../.github/w
 
 **Linux (installers + settings apply):**
 
-- Any supported distribution - Debian/Ubuntu (`apt`), Fedora/RHEL (`dnf`),
-  openSUSE (`zypper`) or Arch (`pacman`); run as **root**
+- Any supported distribution (most popular first) - Debian/Ubuntu (`apt`),
+  Fedora/RHEL (`dnf`), Arch (`pacman`), openSUSE (`zypper`),
+  Alpine (`apk`, server-oriented/musl), Gentoo (`emerge`) or Slackware (`slackpkg`);
+  run as **root**
 - Internet access for Flatpak/repo/vendor/firmware downloads
 - For settings: `gsettings`, `localectl`, `systemctl` (all standard)
 - The installer bootstraps Flatpak + Flathub itself and pulls any extra tools it

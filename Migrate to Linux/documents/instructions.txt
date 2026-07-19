@@ -20,7 +20,7 @@ Layout:
   Migrate to Linux/
     run_project.ps1
     Additional_Manual_Linux_Software_Requirments.csv   (hand-curated hardcoded apps)
-    Supported Distributions.txt                        (distro families + CPU arches)
+    Supported Distributions.txt                        (distro families ranked by popularity + "best for" note + CPU arches)
     README.md / README_fa.md
     submodules/      A_/B_/C_ detection, D_ generator, docker_discovery.sh/.ps1,
                      templates/ (_common.sh engine + 4 *.sh.tmpl)
@@ -29,9 +29,11 @@ Layout:
 
 Universal installer model:
   - The generated *.sh detect the distro FAMILY at runtime via /etc/os-release
-    (ID_LIKE -> debian=apt, rhel/fedora=dnf, suse=zypper, arch=pacman) and the CPU
-    ARCH via `uname -m` (x86_64 / aarch64 / armhf). One set runs on EVERY supported
-    distro - there are NO per-distro folders anymore.
+    (ID_LIKE, in overall-popularity order -> debian=apt, rhel/fedora=dnf, arch=pacman,
+    suse=zypper, alpine=apk, gentoo=emerge, slackware=slackpkg) and the CPU ARCH via
+    `uname -m` (x86_64 / aarch64 / armhf). One set runs on EVERY supported distro -
+    there are NO per-distro folders anymore. Alpine is musl-based / server-oriented
+    (Flatpak apps still work; glibc direct-downloads and Wine are unreliable there).
   - FLATPAK-FIRST: GUI apps install from Flathub (identical app id everywhere) with
     a per-family native fallback. The native package manager is used only for the
     base layer (installing Flatpak itself + Flathub, CLI/dev tools, drivers).
@@ -43,9 +45,12 @@ Universal installer model:
 
 Manifest schema (documents/B_applications.json):
   Each installed alternative carries an "install" object the generator reads:
-    install: { method, flatpakId, snap, native:{apt,dnf,zypper,pacman}, arch:[...],
-               downloadUrl:{x86_64,aarch64}, webappUrl, dockerImage, githubRepo,
-               scriptUrl, repo:{apt,dnf,zypper,pacman}, postInstall:[...], note, review }
+    install: { method, flatpakId, snap, native:{apt,dnf,pacman,zypper[,apk,emerge,slackpkg]},
+               arch:[...], downloadUrl:{x86_64,aarch64}, webappUrl, dockerImage, githubRepo,
+               scriptUrl, repo:{apt,dnf,pacman,zypper[,apk,emerge,slackpkg]}, postInstall:[...], note, review }
+    native.{emerge,slackpkg,apk} (Gentoo/Slackware/Alpine) are OPTIONAL; when omitted the
+    engine falls back to the apt name (upstream package names track closely, and a miss
+    just falls through to Flatpak).
   method in: flatpak | native | snap | webapp | docker | wine-bottles |
              deb-url | github-deb | script | manual.  "review:true" flags non-apt names
              that still need verification on a real system of that family.
@@ -1452,7 +1457,10 @@ PART E2 - LINUX DRIVER INSTALLER  (<Target OS>/install_device_drivers.sh)
       DEB_ARCH and KARCH are all auto-detected on the target and used everywhere.
   [ ] Validate: PowerShell parses (AST), every bash script passes `bash -n`. The
       .github/workflows/distro-dry-run.yml CI regenerates the scripts and dry-runs them
-      in an apt/dnf/zypper/pacman container matrix on every change.
+      on every change: glibc families (apt/dnf/pacman/zypper) as GitHub container: jobs,
+      and a second dry-run-extra job runs alpine=apk, gentoo=emerge, slackware=slackpkg
+      inside their own image via `docker run` on the glibc host (Alpine's musl breaks the
+      Node-based setup actions in a container: job, so only the scripts run in-image).
   [ ] Confirm SpotPlayer remains MANUAL only with explicit user warning about
       unverified source.
 ===============================================================================
