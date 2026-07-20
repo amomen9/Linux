@@ -2626,7 +2626,7 @@ sudo apt update
 apt install -y xterm
 touch ~/.Xauthority
 sudo apt install -y xauth xorg openbox
-test purposes:
+#test purposes:
 ###
 echo $DISPLAY
 sudo apt install x11-apps
@@ -2639,17 +2639,21 @@ xauth list
 cat ~/.ssh/config  # Ensure no settings are disabling X11
 chmod 777 /root
 chmod 666 /root/.Xauthority
-su - alimomen
+sudo -iu alim
 export DISPLAY=:0  # Or whatever value root has (check with 'echo $DISPLAY' as root)
 export XAUTHORITY=/root/.Xauthority  # Might need to copy this file or adjust permissions
 
-###
+### Now finally MS-Edge on a sudoer
 
-sudo wget -qO- https://packages.microsoft.com/keys/microsoft.asc | sudo gpg --dearmor > /etc/apt/trusted.gpg.d/microsoft.gpg
-sudo sh -c 'echo "deb [arch=amd64] https://packages.microsoft.com/repos/edge stable main" > /etc/apt/sources.list.d/microsoft-edge-dev.list'
+sudo sh -c '
+wget -qO- https://packages.microsoft.com/keys/microsoft.asc \
+  | gpg --dearmor > /usr/share/keyrings/microsoft-edge.gpg
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-edge.gpg] https://packages.microsoft.com/repos/edge stable main" \
+  > /etc/apt/sources.list.d/microsoft-edge.list
 apt update
-sudo apt install microsoft-edge-stable -y
-microsoft-edge 2> /dev/null &
+apt install microsoft-edge-stable -y
+'
+microsoft-edge-stable 2>/dev/null &
 
 ##rhel
 sudo wget https://packages.microsoft.com/config/rhel/8/packages-microsoft-prod.rpm
