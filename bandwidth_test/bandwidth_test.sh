@@ -193,7 +193,7 @@ probe() {  # $1=url -> "206|" (ranges work) | "200|" (no ranges) | "FAILED|reaso
 
 dl_speed() {  # $1=label $2=url -> "MiB/s|" or "FAILED|reason"
   local label="$1" url="$2" p mode nconn chunk total i start end
-  local rc=0 w sum=0 b s_us e_us el
+  local rc=0 w sum=0 b s_us e_us el code code0=000
 
   # Clear before probing, so a probe failure cannot leave the previous region's
   # connection logs lying around for the debug dump to pick up.
@@ -212,12 +212,16 @@ dl_speed() {  # $1=label $2=url -> "MiB/s|" or "FAILED|reason"
   set_now; s_us="$T_US"
   for ((i = 0; i < nconn; i++)); do
     start=$(( i * chunk )); end=$(( start + chunk - 1 ))
+    # --fail makes curl abort with exit 22 on any 4xx/5xx instead of streaming
+    # the error page: a 503 "Service Unavailable" body would otherwise be counted
+    # as download bytes and reported as a spurious near-zero speed. %{http_code}
+    # is captured alongside the byte count so the failure reason can name the code.
     if [ "$mode" = "206" ]; then
-      curl -sS --location --range "$start-$end" -o /dev/null -w '%{size_download}' \
+      curl -sS --fail --location --range "$start-$end" -o /dev/null -w '%{http_code} %{size_download}' \
            --connect-timeout 15 --max-time "$DL_TIMEOUT" \
            "$url" >"$SCRATCH/c$i.out" 2>"$SCRATCH/c$i.err" &
     else
-      curl -sS --location -o /dev/null -w '%{size_download}' \
+      curl -sS --fail --location -o /dev/null -w '%{http_code} %{size_download}' \
            --connect-timeout 15 --max-time "$DL_TIMEOUT" \
            "$url" >"$SCRATCH/c$i.out" 2>"$SCRATCH/c$i.err" &
     fi
@@ -233,14 +237,20 @@ dl_speed() {  # $1=label $2=url -> "MiB/s|" or "FAILED|reason"
   bar_clear
 
   for ((i = 0; i < nconn; i++)); do
-    b=0; read -r b <"$SCRATCH/c$i.out" 2>/dev/null
+    code=000 b=0; read -r code b <"$SCRATCH/c$i.out" 2>/dev/null
+    [ "$i" -eq 0 ] && code0="${code:-000}"
     b="${b%%.*}"; [ -n "$b" ] || b=0
     sum=$(( sum + b ))
   done
 
-  # A timeout that still moved bytes is a valid measurement, not a failure.
+  # A timeout that still moved bytes is a valid measurement, not a failure. With
+  # --fail a positive sum can only be real payload now, never a counted error page.
   if [ "$sum" -le 0 ]; then
-    echo "FAILED|$(curl_reason "$rc" "$SCRATCH/c0.err")"
+    if [ "${code0:-000}" -ge 400 ] 2>/dev/null; then
+      echo "FAILED|server returned HTTP $code0"
+    else
+      echo "FAILED|$(curl_reason "$rc" "$SCRATCH/c0.err")"
+    fi
     return
   fi
   el=$(( e_us - s_us )); [ "$el" -le 0 ] && el=1
@@ -314,16 +324,24 @@ ul_raw=$(ul_speed); ul="${ul_raw%%|*}"; ul_reason="${ul_raw#*|}"
 rm -f "$UPFILE"
 
 # ---------- Summary ----------
-cell() {  # $1=value $2=width -> right-aligned, red when it is a failure
-  local padded; padded=$(printf "%$2s" "$1")
-  case "$1" in FAILED) printf '%s' "${RED}${padded}${RST}" ;; *) printf '%s' "$padded" ;; esac
+# One measurement column: a failed region shows its reason where the number would
+# have been, so the table stays two columns wide.
+DLW=30
+DASH=$(printf '%*s' "$DLW" ''); DASH="${DASH// /-}"
+
+cell() {  # $1=text $2=1 when this is a failure -> right-aligned in DLW, red if failed
+  local padded; printf -v padded "%${DLW}.${DLW}s" "$1"
+  if [ "$2" = "1" ]; then printf '%s' "${RED}${padded}${RST}"; else printf '%s' "$padded"; fi
 }
 
-printf '%-30s %16s  %s\n' "Region" "Download (MiB/s)" "Failure reason"
-printf '%-30s %16s  %s\n' "------------------------------" "----------------" "--------------------------"
+printf "%-30s %${DLW}s\n" "Region" "Download (MiB/s)"
+printf '%-30s %s\n' "------------------------------" "$DASH"
 for i in "${!R_LABEL[@]}"; do
-  printf '%-30s %s  %s\n' "${R_LABEL[i]}" "$(cell "${R_VAL[i]}" 16)" \
-         "${R_REASON[i]:+${RED}${R_REASON[i]}${RST}}"
+  if [ "${R_VAL[i]}" = "FAILED" ]; then
+    printf '%-30s %s\n' "${R_LABEL[i]}" "$(cell "${R_REASON[i]}" 1)"
+  else
+    printf '%-30s %s\n' "${R_LABEL[i]}" "$(cell "${R_VAL[i]}" 0)"
+  fi
   if [ "$BW_DEBUG" = "1" ] && [ "${R_VAL[i]}" = "FAILED" ] && [ -s "$SCRATCH/row$i.err" ]; then
     sed -e 's/^/    /' "$SCRATCH/row$i.err"
   fi
@@ -331,7 +349,7 @@ done
 
 echo
 if [ "$ul" = "FAILED" ]; then
-  printf 'Upload (%s MiB to nearest Cloudflare edge): %sFAILED -- %s%s\n' \
+  printf 'Upload (%s MiB to nearest Cloudflare edge): %s%s%s\n' \
          "$UL_MB" "$RED" "$ul_reason" "$RST"
   [ "$BW_DEBUG" = "1" ] && [ -s "$SCRATCH/ul.err" ] && head -n 4 "$SCRATCH/ul.err" | sed -e 's/^/    /'
 else

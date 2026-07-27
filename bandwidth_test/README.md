@@ -82,23 +82,25 @@ While it works, one line updates in place:
 When everything has finished, that line is cleared and the summary is printed:
 
 ```text
-Region                         Download (MiB/s)  Failure reason
------------------------------- ----------------  --------------------------
-North America (Ashburn US)               112.40
-Europe (Falkenstein DE)                   98.75
-Asia (Singapore)                          41.02
-Japan (Tokyo)                             FAILED  file missing on server (404)
+Region                                       Download (MiB/s)
+------------------------------ ------------------------------
+North America (Ashburn US)                             112.40
+Europe (Falkenstein DE)                                 98.75
+Asia (Singapore)                                        41.02
+Japan (Tokyo)                    file missing on server (404)
+Oceania (Melbourne AU)                      could not connect
 
 Upload (500 MiB to nearest Cloudflare edge): 47.66 MiB/s
 ```
 
+- **The table is two columns.** A region that failed shows its reason **in red,
+  where the number would have been** — there is no separate failure column. The
+  reason comes from the HTTP status or `curl`'s exit code and error text, so a
+  failure tells you *why* rather than just *that*.
 - **The table is downloads only.** Upload is a single measurement against the
   nearest Cloudflare edge, so it belongs to the machine rather than to any region —
   it is reported on its own line under the table instead of being repeated across
   eight rows.
-- **`FAILED` and its reason are printed in red.** The reason comes from the HTTP
-  status or `curl`'s exit code and error text, so a failure tells you *why* rather
-  than just *that*.
 - **A connection that times out with bytes already received still counts.** Speed is
   measured as bytes actually transferred over wall-clock time, so a slow region
   yields a real number rather than a `FAILED`.
