@@ -2,13 +2,50 @@
 set -uo pipefail
 
 # ---------- Settings ----------
-CONN=16                                          # parallel connections per region
+CONN=8                                           # parallel connections per region (default; override with -c/--connections)
 CHUNK_MB=16                                      # MiB per connection => CONN x CHUNK_MB fetched per region
 UL_MB=500                                        # upload payload size in MiB
 DL_TIMEOUT=90                                    # seconds cap per download connection
 TMPBASE="/dev/shm"                               # scratch for the upload payload; falls back to /tmp
 UPLOAD_URL="https://speed.cloudflare.com/__up"   # only reliable public upload sink (NEAREST edge, not per-region)
 BW_DEBUG="${BW_DEBUG:-0}"                        # BW_DEBUG=1 prints the raw curl errors under each failed row
+
+# ---------- Command-line arguments ----------
+usage() {
+  cat >&2 <<EOF
+Usage: ${0##*/} [-c N] [-h]
+
+  -c, --connections N   parallel connections per region (default: $CONN, max: 64)
+  -h, --help            show this help and exit
+
+Environment:
+  BW_DEBUG=1            print the raw curl errors under each failed row
+EOF
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -c|--connections)
+      [ "$#" -ge 2 ] || { echo "Error: $1 needs a value." >&2; usage; exit 2; }
+      CONN="$2"; shift 2 ;;
+    -c=*|--connections=*)
+      CONN="${1#*=}"; shift ;;
+    -h|--help)
+      usage; exit 0 ;;
+    --)
+      shift; break ;;
+    *)
+      echo "Error: unexpected argument '$1'." >&2; usage; exit 2 ;;
+  esac
+done
+
+# Each connection pulls CHUNK_MB, so CONN x CHUNK_MB must fit inside the smallest
+# test file (1 GiB). 64 x 16 MiB fills exactly that, which is the hard ceiling.
+case "$CONN" in
+  ''|*[!0-9]*) echo "Error: --connections must be a positive integer (got '$CONN')." >&2; exit 2 ;;
+esac
+[ "$CONN" -ge 1 ]  || { echo "Error: --connections must be at least 1 (got '$CONN')." >&2; exit 2; }
+[ "$CONN" -le 64 ] || { echo "Error: --connections capped at 64 (got '$CONN'); each pulls ${CHUNK_MB} MiB." >&2; exit 2; }
 
 # Downloads are streamed to /dev/null, so they need no scratch space at all.
 # Only the upload payload is written to disk, and it is the sole size requirement.
@@ -19,8 +56,8 @@ TARGETS=(
   "North America (Ashburn US)|https://ash-speed.hetzner.com/1GB.bin"
   "Europe (Falkenstein DE)|https://fsn1-speed.hetzner.com/1GB.bin"
   "Asia (Singapore)|https://sin-speed.hetzner.com/1GB.bin"
-  "Japan (Tokyo)|https://hnd-jp-ping.vultr.com/vultr.com.1000MB.bin"
-  "India (Mumbai)|https://bom-in-ping.vultr.com/vultr.com.1000MB.bin"
+  "Japan (Tokyo)|https://speedtest.tokyo2.linode.com/1GB-tokyo2.bin"
+  "India (Mumbai)|https://speedtest.mumbai1.linode.com/1GB-mumbai1.bin"
   "Middle East (Fujairah AE)|https://fjr.download.datapacket.com/1000mb.bin"
   "Oceania (Melbourne AU)|https://mel.download.datapacket.com/1000mb.bin"
   "Iran (Asiatech, best-effort)|http://at.tadserver.com/1GB.bin"
@@ -247,7 +284,7 @@ dl_speed() {  # $1=label $2=url -> "MiB/s|" or "FAILED|reason"
   # --fail a positive sum can only be real payload now, never a counted error page.
   if [ "$sum" -le 0 ]; then
     if [ "${code0:-000}" -ge 400 ] 2>/dev/null; then
-      echo "FAILED|server returned HTTP $code0"
+      echo "FAILED|server error ($code0)"
     else
       echo "FAILED|$(curl_reason "$rc" "$SCRATCH/c0.err")"
     fi

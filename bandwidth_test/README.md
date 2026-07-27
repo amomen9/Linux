@@ -12,8 +12,9 @@ speed-test server?"*
 
 ## What it does
 
-- For each region, opens **16 parallel connections**, each fetching a different byte
-  range of a large test file with `curl`, and reports the aggregate as MiB/s.
+- For each region, opens **8 parallel connections** by default (set with `-c`), each
+  fetching a different byte range of a large test file with `curl`, and reports the
+  aggregate as MiB/s.
   Multiple connections matter here: a single TCP stream to Melbourne or Mumbai is
   limited by latency and window size long before it is limited by your actual link.
 - **Streams every download to `/dev/null`.** Nothing is written to disk, so the test
@@ -59,15 +60,22 @@ chmod +x bandwidth_test.sh
 ./bandwidth_test.sh
 ```
 
+Set the number of parallel connections per region with `-c` / `--connections`
+(default `8`, max `64`):
+
+```bash
+./bandwidth_test.sh -c 16
+```
+
 To print the raw `curl` errors underneath each failed row:
 
 ```bash
 BW_DEBUG=1 ./bandwidth_test.sh
 ```
 
-By default the run transfers `CONN x CHUNK_MB` = 256 MiB per region (~2 GiB in
-total) plus one `UL_MB` upload, so watch out for metered links or a monthly traffic
-quota. Lower `CHUNK_MB` for a lighter run.
+By default the run transfers `CONN x CHUNK_MB` = 128 MiB per region (~1 GiB across
+the eight regions) plus one `UL_MB` upload, so watch out for metered links or a
+monthly traffic quota. Lower `-c` or `CHUNK_MB` for a lighter run.
 
 ---
 
@@ -130,7 +138,7 @@ Everything tunable sits at the top of the script:
 
 | Variable     | Default                     | Meaning                                             |
 | ------------ | --------------------------- | --------------------------------------------------- |
-| `CONN`       | `16`                        | parallel connections per region                     |
+| `CONN`       | `8`                         | parallel connections per region (or `-c N` on the CLI) |
 | `CHUNK_MB`   | `16`                        | MiB per connection, so `CONN x CHUNK_MB` per region |
 | `UL_MB`      | `500`                       | upload payload size in MiB                          |
 | `DL_TIMEOUT` | `90`                        | seconds cap per download connection                 |
@@ -139,12 +147,12 @@ Everything tunable sits at the top of the script:
 | `TARGETS`    | eight `Region\|URL` pairs   | add, remove or re-point regions here                |
 
 Test-file URLs go stale. If a row reports a 404, check the provider's speed-test page
-(Hetzner, Vultr and DataPacket all publish them) and edit the matching line in
+(Hetzner, Linode and DataPacket all publish them) and edit the matching line in
 `TARGETS`.
 
 Targets that ignore `Range` and return the whole file are detected by the probe and
-measured with a single time-boxed stream instead of 16 partial ones, so the number
-stays honest rather than being inflated by 16 copies of the same bytes.
+measured with a single time-boxed stream instead of many partial ones, so the number
+stays honest rather than being inflated by identical copies of the same bytes.
 
 ---
 
