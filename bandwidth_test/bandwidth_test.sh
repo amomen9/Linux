@@ -153,21 +153,33 @@ bar_spin() {    # used when /proc/<pid>/io is not readable, so bytes are unknown
 
 bar_clear() { [ "$BAR" -eq 1 ] && printf '\r\033[K' >&2; return 0; }
 
-watch_pids() {  # $1=label $2=expected bytes $3=io field $4..=pids
-  local label="$1" total="$2" field="$3"; shift 3
-  local pids=("$@") n=$# i alive sum io_ok s_us el
+watch_pids() {  # $1=label $2=expected bytes $3=io field $4=out prefix ("" disables) $5..=pids
+  local label="$1" total="$2" field="$3" outpre="$4"; shift 4
+  local pids=("$@") n=$# i alive sum io_ok s_us el fb b
   local -a last
   for ((i = 0; i < n; i++)); do last[i]=0; done
   set_now; s_us="$T_US"
   while :; do
     alive=0; sum=0; io_ok=0
     for ((i = 0; i < n; i++)); do
-      proc_alive "${pids[i]}" && alive=1
-      # /proc/<pid>/io vanishes when the process exits, so hold the last reading
-      # per connection -- otherwise the bar would count backwards as they finish.
-      if read_io "${pids[i]}" "$field"; then
-        io_ok=1
-        [ "$IO_VAL" -gt "${last[i]}" ] && last[i]="$IO_VAL"
+      if proc_alive "${pids[i]}"; then
+        alive=1
+        # While the connection is live, /proc/<pid>/io gives smooth progress.
+        # Hold the max per connection so the bar cannot count backwards.
+        if read_io "${pids[i]}" "$field"; then
+          io_ok=1
+          [ "$IO_VAL" -gt "${last[i]}" ] && last[i]="$IO_VAL"
+        fi
+      elif [ -n "$outpre" ]; then
+        # The process has exited: /proc/<pid>/io is gone and its last live reading
+        # was only a partial, setup-era count. curl wrote the authoritative byte
+        # total (field 2 of its -w output) on exit, so read that instead -- without
+        # it, a transfer that finishes inside one 0.2s poll freezes the bar near 1%.
+        # curl's -w output has no trailing newline, so read exits non-zero while
+        # still assigning the fields: never gate the assignment on its exit status.
+        b=0; read -r _ b <"$outpre$i.out" 2>/dev/null
+        fb="${b%%.*}"; [ -n "$fb" ] || fb=0
+        [ "$fb" -gt "${last[i]}" ] && last[i]="$fb"
       fi
       sum=$(( sum + last[i] ))
     done
@@ -265,7 +277,7 @@ dl_speed() {  # $1=label $2=url -> "MiB/s|" or "FAILED|reason"
     pids+=("$!")
   done
 
-  watch_pids "$label" "$total" rchar "${pids[@]}"
+  watch_pids "$label" "$total" rchar "$SCRATCH/c" "${pids[@]}"
   for ((i = 0; i < nconn; i++)); do
     wait "${pids[i]}"; w=$?
     [ "$w" -ne 0 ] && [ "$rc" -eq 0 ] && rc="$w"
@@ -304,7 +316,7 @@ ul_speed() {  # -> "MiB/s|" or "FAILED|reason", to the nearest Cloudflare edge
        --header 'Content-Type: application/octet-stream' \
        --upload-file "$UPFILE" "$UPLOAD_URL" >"$out" 2>"$err" &
   pid=$!
-  watch_pids "upload to nearest edge" $(( UL_MB * 1048576 )) wchar "$pid"
+  watch_pids "upload to nearest edge" $(( UL_MB * 1048576 )) wchar "" "$pid"
   wait "$pid"; rc=$?
   bar_clear
 
@@ -315,7 +327,7 @@ ul_speed() {  # -> "MiB/s|" or "FAILED|reason", to the nearest Cloudflare edge
          --connect-timeout 20 --max-time 900 \
          --data-binary @"$UPFILE" "$UPLOAD_URL" >"$out" 2>"$err" &
     pid=$!
-    watch_pids "upload to nearest edge (retry)" $(( UL_MB * 1048576 )) wchar "$pid"
+    watch_pids "upload to nearest edge (retry)" $(( UL_MB * 1048576 )) wchar "" "$pid"
     wait "$pid"; rc=$?
     bar_clear
     code=""; bps=""; read -r code bps <"$out" 2>/dev/null
