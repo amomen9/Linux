@@ -12,12 +12,15 @@ speed-test server?"*
 
 ## What it does
 
-- For each region, opens **8 parallel connections** by default (set with `-c`), each
-  fetching a different byte range of a large test file with `curl`, and reports the
-  aggregate as MiB/s. Each region is measured for **up to 10 seconds** by default
-  (`--time-box`); pass `--file-size` to cap by bytes downloaded instead.
+- For each region, opens **8 parallel connections** by default (set with `-c`),
+  spread round-robin across **several distinct-host mirrors** near that region, and
+  reports the aggregate as MiB/s. Each region is measured for **up to 10 seconds** by
+  default (`--time-box`); pass `--file-size` to cap by bytes downloaded instead.
   Multiple connections matter here: a single TCP stream to Melbourne or Mumbai is
   limited by latency and window size long before it is limited by your actual link.
+  Multiple *hosts* matter too: some providers (e.g. Hetzner) cap concurrent
+  downloads per IP, so spreading a region across mirrors keeps one host's limit from
+  throttling the whole measurement.
 - **Streams every download to `/dev/null`.** Nothing is written to disk, so the test
   cannot fail for want of scratch space no matter how small `/tmp` or `/dev/shm` is.
 - **Probes each target with a 1 KB range request first**, so a dead URL, a bad
@@ -163,11 +166,17 @@ Everything tunable sits at the top of the script:
 | `DL_TIMEOUT` | `90`                        | hard per-connection cap in size mode (time mode uses the time-box) |
 | `TMPBASE`    | `/dev/shm`                  | preferred scratch location for the upload payload                 |
 | `UPLOAD_URL` | `speed.cloudflare.com/__up` | upload sink                                                        |
-| `TARGETS`    | eight `Region\|URL` pairs   | add, remove or re-point regions here                              |
+| `TARGETS`    | eight `Region\|url1\|url2\|...` rows | each region lists several distinct-host mirrors        |
 
-Test-file URLs go stale. If a row reports a 404, check the provider's speed-test page
-(Hetzner, Linode and DataPacket all publish them) and edit the matching line in
-`TARGETS`.
+Each `TARGETS` row is `Region|url1|url2|...`: the region label followed by one or
+more mirror URLs on **distinct hosts** near that region. The connections are spread
+round-robin across whichever mirrors respond, so a region keeps working even if one
+mirror is down, and no single host's per-IP concurrency cap throttles it. Regions
+with fewer good public mirrors (Middle East, Iran) simply list fewer.
+
+Test-file URLs go stale. If a mirror reports a 404, check the provider's speed-test
+page (Hetzner, Linode, DataPacket and OVH all publish them) and edit or drop that
+URL in `TARGETS`.
 
 Targets that ignore `Range` and return the whole file are detected by the probe and
 measured with a single time-boxed stream instead of many partial ones, so the number

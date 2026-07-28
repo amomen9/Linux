@@ -101,15 +101,19 @@ esac
 # Only the upload payload is written to disk, and it is the sole size requirement.
 NEED_KB=$(( UL_MB * 1024 + 16384 ))
 
-# ---------- Targets: "Region|download URL" ----------
+# ---------- Targets: "Region|url1|url2|..." ----------
+# Each region lists several distinct-host mirrors near it; the connections are
+# spread round-robin across them, so a single host's concurrency cap (e.g. Hetzner
+# serves 2 connections per IP) no longer throttles the whole region. Hosts on the
+# same provider but in different cities are separate servers with separate limits.
 TARGETS=(
-  "North America (Ashburn US)|https://ash-speed.hetzner.com/1GB.bin"
-  "Europe (Falkenstein DE)|https://fsn1-speed.hetzner.com/1GB.bin"
-  "Asia (Singapore)|https://sin-speed.hetzner.com/1GB.bin"
-  "Japan (Tokyo)|https://speedtest.tokyo2.linode.com/1GB-tokyo2.bin"
-  "India (Mumbai)|https://speedtest.mumbai1.linode.com/1GB-mumbai1.bin"
-  "Middle East (Fujairah AE)|https://fjr.download.datapacket.com/1000mb.bin"
-  "Oceania (Melbourne AU)|https://mel.download.datapacket.com/1000mb.bin"
+  "North America (US East)|https://ash-speed.hetzner.com/1GB.bin|https://speedtest.newark.linode.com/1GB-newark.bin|https://nyc.download.datapacket.com/1000mb.bin|https://speedtest.atlanta.linode.com/1GB-atlanta.bin"
+  "Europe (Germany/central)|https://fsn1-speed.hetzner.com/1GB.bin|https://speedtest.frankfurt.linode.com/1GB-frankfurt.bin|https://fra.download.datapacket.com/1000mb.bin|https://proof.ovh.net/files/1Gb.dat"
+  "Asia (Singapore)|https://sin-speed.hetzner.com/1GB.bin|https://speedtest.singapore.linode.com/1GB-singapore.bin|https://sin.download.datapacket.com/1000mb.bin|https://speedtest.jakarta.linode.com/1GB-jakarta.bin"
+  "Japan (Tokyo/Osaka)|https://speedtest.tokyo2.linode.com/1GB-tokyo2.bin|https://speedtest.osaka.linode.com/1GB-osaka.bin|https://tyo.download.datapacket.com/1000mb.bin"
+  "India (Mumbai/Chennai)|https://speedtest.mumbai1.linode.com/1GB-mumbai1.bin|https://speedtest.chennai.linode.com/1GB-chennai.bin|https://blr-in-ping.vultr.com/vultr.com.1000MB.bin|https://del-in-ping.vultr.com/vultr.com.1000MB.bin"
+  "Middle East (Fujairah/Tel Aviv)|https://fjr.download.datapacket.com/1000mb.bin|https://tlv.download.datapacket.com/1000mb.bin"
+  "Oceania (AU/NZ)|https://mel.download.datapacket.com/1000mb.bin|https://syd.download.datapacket.com/1000mb.bin|https://speedtest.sydney.linode.com/1GB-sydney.bin|https://akl.download.datapacket.com/1000mb.bin"
   "Iran (Asiatech, best-effort)|http://at.tadserver.com/1GB.bin"
 )
 # ------------------------------
@@ -316,63 +320,80 @@ probe() {  # $1=url -> "206|SIZE" (ranges work) | "200|SIZE" (no ranges) | "FAIL
   esac
 }
 
-dl_speed() {  # $1=label $2=url -> "MiB/s|" or "FAILED|reason"
-  local label="$1" url="$2" p mode fsize nconn i start end
-  local rc=0 w sum=0 b s_us e_us el code code0=000
-  local basis btotal ttotal maxt span per rem
+dl_speed() {  # $1=label $2..=one or more distinct target URLs -> "MiB/s|" or "FAILED|reason"
+  local label="$1"; shift
+  local -a urls=("$@")
+  local rc=0 w sum=0 b s_us e_us el code code0=000 i u slot Su Cu seg start end range
+  local basis btotal ttotal maxt per_conn nconn totsize p m sz first_reason=""
 
   # Clear before probing, so a probe failure cannot leave the previous region's
   # connection logs lying around for the debug dump to pick up.
   rm -f "$SCRATCH"/c*.out "$SCRATCH"/c*.err
-  p=$(probe "$url"); mode="${p%%|*}"
-  [ "$mode" = "FAILED" ] && { echo "$p"; return; }
-  fsize="${p#*|}"; case "$fsize" in ''|*[!0-9]*) fsize=0 ;; esac
 
+  # Probe every target; keep the ones that answer, with their size and range mode.
+  # Spreading a region across several distinct hosts is what defeats a per-host
+  # concurrency cap (e.g. Hetzner serves only 2 connections per IP): the other
+  # hosts carry the rest instead of the region collapsing to two connections.
+  local -a uurl=() umode=() usize=()
+  for u in "${urls[@]}"; do
+    p=$(probe "$u"); m="${p%%|*}"
+    if [ "$m" = "FAILED" ]; then
+      [ -z "$first_reason" ] && first_reason="${p#*|}"
+      continue
+    fi
+    sz="${p#*|}"; case "$sz" in ''|*[!0-9]*) sz=0 ;; esac
+    uurl+=("$u"); umode+=("$m"); usize+=("$sz")
+  done
+  local nurls=${#uurl[@]}
+  if [ "$nurls" -eq 0 ]; then
+    echo "FAILED|${first_reason:-no usable target}"
+    return
+  fi
+
+  # Round-robin the connections over the usable hosts, and count how many land on
+  # each so their byte ranges can be staggered within that host's file.
   nconn="$CONN"
-  # A server that ignores Range would hand every connection the same bytes from
-  # offset 0, so fall back to a single stream instead of many overlapping ones.
-  [ "$mode" = "200" ] && nconn=1
+  local -a ccount=()
+  for ((i = 0; i < nurls; i++)); do ccount[i]=0; done
+  for ((i = 0; i < nconn; i++)); do u=$(( i % nurls )); ccount[u]=$(( ${ccount[u]} + 1 )); done
 
-  # Time mode caps each connection at the time-box and spreads the whole file
-  # across them (the clock, not the file, is the limiter). Size mode caps by the
-  # hard timeout and spreads exactly --file-size across them.
+  # Bar totals: time mode fills by the clock toward the time-box or by bytes toward
+  # the whole downloadable set (the usable files summed); size mode fills by bytes
+  # toward the --file-size cap. Per-connection byte budget in size mode is the cap
+  # split evenly across all connections.
+  totsize=0
+  for ((i = 0; i < nurls; i++)); do totsize=$(( totsize + ${usize[i]} )); done
   if [ "$MODE" = "time" ]; then
-    # btotal carries the whole-file size so the bar can also fill by bytes/file and
-    # jump ahead when a fast link empties the file before the time-box expires.
-    basis=time; ttotal=$(( TIMEBOX_S * 1000000 )); btotal="$fsize"; maxt="$TIMEBOX_S"; span="$fsize"
+    basis=time; ttotal=$(( TIMEBOX_S * 1000000 )); btotal="$totsize"; maxt="$TIMEBOX_S"
   else
     basis=bytes; ttotal=0; maxt="$DL_TIMEOUT"; btotal="$SIZE_BYTES"
-    [ "$fsize" -gt 0 ] && [ "$btotal" -gt "$fsize" ] && btotal="$fsize"
-    span="$btotal"
   fi
-
-  per=0; rem=0
-  if [ "$nconn" -gt 0 ] && [ "$span" -gt 0 ]; then
-    per=$(( span / nconn )); rem=$(( span - per * nconn ))
-  fi
+  per_conn=0; [ "$MODE" = "size" ] && [ "$nconn" -gt 0 ] && per_conn=$(( SIZE_BYTES / nconn ))
 
   local -a pids=()
   set_now; s_us="$T_US"
   for ((i = 0; i < nconn; i++)); do
+    u=$(( i % nurls )); slot=$(( i / nurls ))   # which host, and this connection's slot on it
+    Su="${usize[u]}"; Cu="${ccount[u]}"
     # --fail makes curl abort with exit 22 on any 4xx/5xx instead of streaming the
-    # error page: a 503 "Service Unavailable" body would otherwise be counted as
-    # download bytes. %{http_code} is captured with the byte count so a failure
-    # reason can name the code.
-    if [ "$mode" = "206" ] && [ "$per" -gt 0 ]; then
-      start=$(( i * per )); end=$(( start + per - 1 ))
-      [ "$i" -eq $(( nconn - 1 )) ] && end=$(( end + rem ))   # last connection takes the remainder
-      curl -sS --fail --location --range "$start-$end" -o /dev/null -w '%{http_code} %{size_download}' \
+    # error page: a 503 body would otherwise be counted as download bytes.
+    # %{http_code} is captured with the byte count so a failure reason can name it.
+    if [ "${umode[u]}" = "206" ] && [ "$Su" -gt 0 ]; then
+      if [ "$MODE" = "size" ]; then
+        start=$(( slot * per_conn )); end=$(( start + per_conn - 1 ))
+        [ "$start" -ge "$Su" ] && start=0                      # never seek past EOF
+        [ "$end" -ge "$Su" ] && end=$(( Su - 1 ))
+        range="$start-$end"
+      else
+        seg=$(( Su / Cu )); range="$(( slot * seg ))-"          # open-ended; time-box is the limiter
+      fi
+      curl -sS --fail --location --range "$range" -o /dev/null -w '%{http_code} %{size_download}' \
            --connect-timeout 15 --max-time "$maxt" \
-           "$url" >"$SCRATCH/c$i.out" 2>"$SCRATCH/c$i.err" &
-    elif [ "$mode" = "206" ]; then
-      # File size unknown: each connection streams from the start, capped by maxt.
-      curl -sS --fail --location --range 0- -o /dev/null -w '%{http_code} %{size_download}' \
-           --connect-timeout 15 --max-time "$maxt" \
-           "$url" >"$SCRATCH/c$i.out" 2>"$SCRATCH/c$i.err" &
+           "${uurl[u]}" >"$SCRATCH/c$i.out" 2>"$SCRATCH/c$i.err" &
     else
       curl -sS --fail --location -o /dev/null -w '%{http_code} %{size_download}' \
            --connect-timeout 15 --max-time "$maxt" \
-           "$url" >"$SCRATCH/c$i.out" 2>"$SCRATCH/c$i.err" &
+           "${uurl[u]}" >"$SCRATCH/c$i.out" 2>"$SCRATCH/c$i.err" &
     fi
     pids+=("$!")
   done
@@ -470,9 +491,10 @@ declare -a R_LABEL=() R_VAL=() R_REASON=()
 failures=0
 
 for entry in "${TARGETS[@]}"; do
-  label="${entry%%|*}"; url="${entry##*|}"
+  IFS='|' read -r -a parts <<< "$entry"
+  label="${parts[0]}"; urls=("${parts[@]:1}")
   idx=${#R_LABEL[@]}
-  raw=$(dl_speed "$label" "$url")
+  raw=$(dl_speed "$label" "${urls[@]}")
   R_LABEL+=("$label"); R_VAL+=("${raw%%|*}"); R_REASON+=("${raw#*|}")
   [ "${raw%%|*}" = "FAILED" ] && failures=$(( failures + 1 ))
   # Keep this region's errors: the shared c*.err files are reused by the next one.
@@ -518,11 +540,12 @@ fi
 
 echo
 if [ "$MODE" = "time" ]; then
-  echo "Each region was measured for up to ${TIMEBOX_S}s over ${CONN} connections (a fast link may"
-  echo "finish the file sooner). Downloads are streamed to /dev/null, so nothing is written"
+  echo "Each region was measured for up to ${TIMEBOX_S}s over ${CONN} connections spread across"
+  echo "several distinct-host mirrors (a fast link may finish sooner). Downloads are streamed"
+  echo "to /dev/null, so nothing is written"
 else
-  echo "Each region downloaded up to $(( SIZE_BYTES / 1048576 )) MiB over ${CONN} connections. Downloads are"
-  echo "streamed to /dev/null, so nothing is written"
+  echo "Each region downloaded up to $(( SIZE_BYTES / 1048576 )) MiB over ${CONN} connections spread across several"
+  echo "distinct-host mirrors. Downloads are streamed to /dev/null, so nothing is written"
 fi
 echo "to disk. Upload is measured once, against the nearest Cloudflare edge rather than"
 echo "against each region: it describes your server's uplink, not the path to any row."
