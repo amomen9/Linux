@@ -3,24 +3,69 @@ set -uo pipefail
 
 # ---------- Settings ----------
 CONN=8                                           # parallel connections per region (default; override with -c/--connections)
-CHUNK_MB=16                                      # MiB per connection => CONN x CHUNK_MB fetched per region
+DEF_TIMEBOX_S=10                                 # default --time-box, in seconds
+DEF_SIZE_BYTES=$(( 512 * 1048576 ))              # default --file-size, in bytes (512 MiB)
 UL_MB=500                                        # upload payload size in MiB
-DL_TIMEOUT=90                                    # seconds cap per download connection
+DL_TIMEOUT=90                                    # hard per-connection cap in size mode (time mode uses --time-box)
 TMPBASE="/dev/shm"                               # scratch for the upload payload; falls back to /tmp
 UPLOAD_URL="https://speed.cloudflare.com/__up"   # only reliable public upload sink (NEAREST edge, not per-region)
 BW_DEBUG="${BW_DEBUG:-0}"                        # BW_DEBUG=1 prints the raw curl errors under each failed row
 
+# Measurement mode: "time" (download for up to TIMEBOX_S) or "size" (download up
+# to SIZE_BYTES). Time is the default; a --file-size / --time-box flag switches it.
+MODE=time
+TIMEBOX_S="$DEF_TIMEBOX_S"
+SIZE_BYTES="$DEF_SIZE_BYTES"
+
 # ---------- Command-line arguments ----------
 usage() {
   cat >&2 <<EOF
-Usage: ${0##*/} [-c N] [-h]
+Usage: ${0##*/} [options]
 
   -c, --connections N   parallel connections per region (default: $CONN, max: 64)
+      --time-box[=DUR]  measure each region for up to DUR (default: ${DEF_TIMEBOX_S}s); the
+                        default mode. Its bar fills to 100% over DUR.
+      --file-size[=SZ]  instead, download up to SZ per region (default: 512MiB). Its
+                        bar fills to 100% at SZ. Units: KiB/MiB/GiB or KB/MB/GB; a
+                        bare number is MiB.
   -h, --help            show this help and exit
+
+Both limits are caps: a region may finish sooner (a fast link empties the file),
+and its bar still completes to 100% -- the file's own size does not matter. Pass a
+value with '=' (--time-box=30s, --file-size=1GiB); the bare flag uses its default.
+The last of --time-box / --file-size on the command line wins.
 
 Environment:
   BW_DEBUG=1            print the raw curl errors under each failed row
 EOF
+}
+
+parse_size() {  # $1 human size (512MiB, 1G, 256) -> bytes on stdout; error+return 1 on bad input
+  local s="$1" num unit mult
+  num="${s%%[!0-9]*}"; unit="${s:${#num}}"; unit="${unit,,}"
+  [ -n "$num" ] || { echo "Error: --file-size needs a number (got '$s')." >&2; return 1; }
+  case "$unit" in
+    ''|mib|m) mult=1048576 ;;
+    b)        mult=1 ;;
+    kib|k)    mult=1024 ;;
+    kb)       mult=1000 ;;
+    mb)       mult=1000000 ;;
+    gib|g)    mult=1073741824 ;;
+    gb)       mult=1000000000 ;;
+    *) echo "Error: unknown size unit in '$s' (use B, KiB, MiB, GiB, KB, MB, GB)." >&2; return 1 ;;
+  esac
+  echo $(( num * mult ))
+}
+
+parse_time() {  # $1 like 10s, 10, 2m -> seconds on stdout; error+return 1 on bad input
+  local s="$1" num unit
+  num="${s%%[!0-9]*}"; unit="${s:${#num}}"; unit="${unit,,}"
+  [ -n "$num" ] || { echo "Error: --time-box needs a number (got '$s')." >&2; return 1; }
+  case "$unit" in
+    ''|s|sec) echo "$num" ;;
+    m|min)    echo $(( num * 60 )) ;;
+    *) echo "Error: unknown time unit in '$s' (use s or m)." >&2; return 1 ;;
+  esac
 }
 
 while [ "$#" -gt 0 ]; do
@@ -30,6 +75,10 @@ while [ "$#" -gt 0 ]; do
       CONN="$2"; shift 2 ;;
     -c=*|--connections=*)
       CONN="${1#*=}"; shift ;;
+    --time-box)    MODE=time; shift ;;
+    --time-box=*)  MODE=time; TIMEBOX_S=$(parse_time "${1#*=}") || exit 2; shift ;;
+    --file-size)   MODE=size; shift ;;
+    --file-size=*) MODE=size; SIZE_BYTES=$(parse_size "${1#*=}") || exit 2; shift ;;
     -h|--help)
       usage; exit 0 ;;
     --)
@@ -39,13 +88,14 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-# Each connection pulls CHUNK_MB, so CONN x CHUNK_MB must fit inside the smallest
-# test file (1 GiB). 64 x 16 MiB fills exactly that, which is the hard ceiling.
+# Each connection is a separate curl process; 64 keeps a run from forking a swarm.
 case "$CONN" in
   ''|*[!0-9]*) echo "Error: --connections must be a positive integer (got '$CONN')." >&2; exit 2 ;;
 esac
 [ "$CONN" -ge 1 ]  || { echo "Error: --connections must be at least 1 (got '$CONN')." >&2; exit 2; }
-[ "$CONN" -le 64 ] || { echo "Error: --connections capped at 64 (got '$CONN'); each pulls ${CHUNK_MB} MiB." >&2; exit 2; }
+[ "$CONN" -le 64 ] || { echo "Error: --connections capped at 64 (got '$CONN')." >&2; exit 2; }
+[ "$SIZE_BYTES" -ge 1048576 ] || { echo "Error: --file-size must be at least 1 MiB." >&2; exit 2; }
+[ "$TIMEBOX_S" -ge 1 ]        || { echo "Error: --time-box must be at least 1 second." >&2; exit 2; }
 
 # Downloads are streamed to /dev/null, so they need no scratch space at all.
 # Only the upload payload is written to disk, and it is the sole size requirement.
@@ -130,18 +180,24 @@ proc_alive() {  # $1=pid -> 0 while running. A reaped-but-unwaited child is a
 }
 
 SPIN='|/-\'
-bar_render() {  # $1=label $2=bytes $3=total $4=elapsed us
+bar_render() {  # $1=label $2=pct $3=bytes $4=elapsed us
   [ "$BAR" -eq 1 ] || return 0
-  local pct=0 filled i bar='' sp100=0
-  [ "$3" -gt 0 ] && pct=$(( $2 * 100 / $3 ))
+  local pct="$2" filled i bar='' sp100=0
   [ "$pct" -gt 100 ] && pct=100
+  [ "$pct" -lt 0 ] && pct=0
   filled=$(( pct * 24 / 100 ))
   for ((i = 0; i < 24; i++)); do
     if [ "$i" -lt "$filled" ]; then bar+='#'; else bar+='.'; fi
   done
-  [ "$4" -gt 0 ] && sp100=$(( $2 * 100000000 / 1048576 / $4 ))
+  [ "$4" -gt 0 ] && sp100=$(( $3 * 100000000 / 1048576 / $4 ))
   printf '\r  %-28.28s [%s] %3d%%  %5d MiB  %d.%02d MiB/s\033[K' \
-         "$1" "$bar" "$pct" "$(( $2 / 1048576 ))" "$(( sp100 / 100 ))" "$(( sp100 % 100 ))" >&2
+         "$1" "$bar" "$pct" "$(( $3 / 1048576 ))" "$(( sp100 / 100 ))" "$(( sp100 % 100 ))" >&2
+}
+
+bar_finish() {  # $1=label $2=bytes $3=elapsed us -> draw a full 100% bar and keep the line
+  [ "$BAR" -eq 1 ] || return 0
+  bar_render "$1" 100 "$2" "$3"
+  printf '\n' >&2
 }
 
 bar_spin() {    # used when /proc/<pid>/io is not readable, so bytes are unknown
@@ -153,9 +209,9 @@ bar_spin() {    # used when /proc/<pid>/io is not readable, so bytes are unknown
 
 bar_clear() { [ "$BAR" -eq 1 ] && printf '\r\033[K' >&2; return 0; }
 
-watch_pids() {  # $1=label $2=expected bytes $3=io field $4=out prefix ("" disables) $5..=pids
-  local label="$1" total="$2" field="$3" outpre="$4"; shift 4
-  local pids=("$@") n=$# i alive sum io_ok s_us el fb b
+watch_pids() {  # $1=label $2=byte total $3=time total us $4=basis(bytes|time) $5=io field $6=out prefix ("" disables) $7..=pids
+  local label="$1" btotal="$2" ttotal="$3" basis="$4" field="$5" outpre="$6"; shift 6
+  local pids=("$@") n=$# i alive sum io_ok s_us el fb b pct spct
   local -a last
   for ((i = 0; i < n; i++)); do last[i]=0; done
   set_now; s_us="$T_US"
@@ -184,14 +240,28 @@ watch_pids() {  # $1=label $2=expected bytes $3=io field $4=out prefix ("" disab
       sum=$(( sum + last[i] ))
     done
     set_now; el=$(( T_US - s_us ))
-    if [ "$io_ok" -eq 1 ] || [ "$sum" -gt 0 ]; then
-      bar_render "$label" "$sum" "$total" "$el"
+    # The bar estimates progress toward whenever the download actually ends. In
+    # size mode that is bytes toward the cap. In time mode it is whichever finishes
+    # first: the clock reaching the time-box (1/timebox per second), or the bytes
+    # reaching the whole file (a fast link empties it early) -- so take the larger
+    # of the two. dl_speed then snaps it to a full 100% on success.
+    if [ "$basis" = "time" ]; then
+      pct=0; [ "$ttotal" -gt 0 ] && pct=$(( el * 100 / ttotal ))
+      if [ "$btotal" -gt 0 ]; then
+        spct=$(( sum * 100 / btotal ))
+        [ "$spct" -gt "$pct" ] && pct="$spct"
+      fi
+    else
+      pct=0; [ "$btotal" -gt 0 ] && pct=$(( sum * 100 / btotal ))
+    fi
+    if [ "$basis" = "time" ] || [ "$io_ok" -eq 1 ] || [ "$sum" -gt 0 ]; then
+      bar_render "$label" "$pct" "$sum" "$el"
     else
       bar_spin "$label" "$el"
     fi
     [ "$alive" -eq 1 ] || break
     # Never outlive the connections themselves, whatever /proc reports.
-    [ "$el" -gt $(( (DL_TIMEOUT + 60) * 1000000 )) ] && break
+    [ "$el" -gt $(( (DL_TIMEOUT + TIMEBOX_S + 60) * 1000000 )) ] && break
     sleep 0.2
   done
 }
@@ -223,15 +293,21 @@ curl_reason() {  # $1=exit code [$2=stderr file] -> short human reason
 }
 
 # ---------- Measurement ----------
-probe() {  # $1=url -> "206|" (ranges work) | "200|" (no ranges) | "FAILED|reason"
-  local code rc err="$SCRATCH/probe.err"
-  code=$(curl -sS --location --range 0-1023 -o /dev/null -w '%{http_code}' \
+probe() {  # $1=url -> "206|SIZE" (ranges work) | "200|SIZE" (no ranges) | "FAILED|reason"
+  local code rc size='' hdr="$SCRATCH/probe.hdr" err="$SCRATCH/probe.err"
+  code=$(curl -sS --location --range 0-1023 -D "$hdr" -o /dev/null -w '%{http_code}' \
               --connect-timeout 15 --max-time 30 "$1" 2>"$err")
   rc=$?
   [ "$rc" -ne 0 ] && { echo "FAILED|$(curl_reason "$rc" "$err")"; return; }
+  # File size: prefer the total after the slash in a 206 Content-Range header
+  # (bytes 0-1023/TOTAL); fall back to Content-Length. Take the last match so a
+  # redirect's final hop wins, and match case-insensitively without gawk's
+  # IGNORECASE (mawk, the Debian/Ubuntu default, lacks it).
+  size=$(awk 'tolower($0) ~ /^content-range:/ { n=split($0,a,"/"); if(n>=2){s=a[n]; gsub(/[^0-9]/,"",s); if(s!="") v=s} } END{ if(v!="") print v }' "$hdr")
+  [ -n "$size" ] || size=$(awk 'tolower($0) ~ /^content-length:/ { s=$2; gsub(/[^0-9]/,"",s); if(s!="") v=s } END{ if(v!="") print v }' "$hdr")
   case "$code" in
-    206)     echo "206|" ;;
-    200)     echo "200|" ;;
+    206)     echo "206|$size" ;;
+    200)     echo "200|$size" ;;
     404|410) echo "FAILED|file missing on server ($code)" ;;
     401|403) echo "FAILED|server refused request ($code)" ;;
     5??)     echo "FAILED|server error ($code)" ;;
@@ -241,49 +317,72 @@ probe() {  # $1=url -> "206|" (ranges work) | "200|" (no ranges) | "FAILED|reaso
 }
 
 dl_speed() {  # $1=label $2=url -> "MiB/s|" or "FAILED|reason"
-  local label="$1" url="$2" p mode nconn chunk total i start end
+  local label="$1" url="$2" p mode fsize nconn i start end
   local rc=0 w sum=0 b s_us e_us el code code0=000
+  local basis btotal ttotal maxt span per rem
 
   # Clear before probing, so a probe failure cannot leave the previous region's
   # connection logs lying around for the debug dump to pick up.
   rm -f "$SCRATCH"/c*.out "$SCRATCH"/c*.err
   p=$(probe "$url"); mode="${p%%|*}"
   [ "$mode" = "FAILED" ] && { echo "$p"; return; }
+  fsize="${p#*|}"; case "$fsize" in ''|*[!0-9]*) fsize=0 ;; esac
 
-  chunk=$(( CHUNK_MB * 1048576 ))
   nconn="$CONN"
   # A server that ignores Range would hand every connection the same bytes from
-  # offset 0, so fall back to a single time-boxed stream instead.
+  # offset 0, so fall back to a single stream instead of many overlapping ones.
   [ "$mode" = "200" ] && nconn=1
-  total=$(( chunk * nconn ))
+
+  # Time mode caps each connection at the time-box and spreads the whole file
+  # across them (the clock, not the file, is the limiter). Size mode caps by the
+  # hard timeout and spreads exactly --file-size across them.
+  if [ "$MODE" = "time" ]; then
+    # btotal carries the whole-file size so the bar can also fill by bytes/file and
+    # jump ahead when a fast link empties the file before the time-box expires.
+    basis=time; ttotal=$(( TIMEBOX_S * 1000000 )); btotal="$fsize"; maxt="$TIMEBOX_S"; span="$fsize"
+  else
+    basis=bytes; ttotal=0; maxt="$DL_TIMEOUT"; btotal="$SIZE_BYTES"
+    [ "$fsize" -gt 0 ] && [ "$btotal" -gt "$fsize" ] && btotal="$fsize"
+    span="$btotal"
+  fi
+
+  per=0; rem=0
+  if [ "$nconn" -gt 0 ] && [ "$span" -gt 0 ]; then
+    per=$(( span / nconn )); rem=$(( span - per * nconn ))
+  fi
 
   local -a pids=()
   set_now; s_us="$T_US"
   for ((i = 0; i < nconn; i++)); do
-    start=$(( i * chunk )); end=$(( start + chunk - 1 ))
-    # --fail makes curl abort with exit 22 on any 4xx/5xx instead of streaming
-    # the error page: a 503 "Service Unavailable" body would otherwise be counted
-    # as download bytes and reported as a spurious near-zero speed. %{http_code}
-    # is captured alongside the byte count so the failure reason can name the code.
-    if [ "$mode" = "206" ]; then
+    # --fail makes curl abort with exit 22 on any 4xx/5xx instead of streaming the
+    # error page: a 503 "Service Unavailable" body would otherwise be counted as
+    # download bytes. %{http_code} is captured with the byte count so a failure
+    # reason can name the code.
+    if [ "$mode" = "206" ] && [ "$per" -gt 0 ]; then
+      start=$(( i * per )); end=$(( start + per - 1 ))
+      [ "$i" -eq $(( nconn - 1 )) ] && end=$(( end + rem ))   # last connection takes the remainder
       curl -sS --fail --location --range "$start-$end" -o /dev/null -w '%{http_code} %{size_download}' \
-           --connect-timeout 15 --max-time "$DL_TIMEOUT" \
+           --connect-timeout 15 --max-time "$maxt" \
+           "$url" >"$SCRATCH/c$i.out" 2>"$SCRATCH/c$i.err" &
+    elif [ "$mode" = "206" ]; then
+      # File size unknown: each connection streams from the start, capped by maxt.
+      curl -sS --fail --location --range 0- -o /dev/null -w '%{http_code} %{size_download}' \
+           --connect-timeout 15 --max-time "$maxt" \
            "$url" >"$SCRATCH/c$i.out" 2>"$SCRATCH/c$i.err" &
     else
       curl -sS --fail --location -o /dev/null -w '%{http_code} %{size_download}' \
-           --connect-timeout 15 --max-time "$DL_TIMEOUT" \
+           --connect-timeout 15 --max-time "$maxt" \
            "$url" >"$SCRATCH/c$i.out" 2>"$SCRATCH/c$i.err" &
     fi
     pids+=("$!")
   done
 
-  watch_pids "$label" "$total" rchar "$SCRATCH/c" "${pids[@]}"
+  watch_pids "$label" "$btotal" "$ttotal" "$basis" rchar "$SCRATCH/c" "${pids[@]}"
   for ((i = 0; i < nconn; i++)); do
     wait "${pids[i]}"; w=$?
     [ "$w" -ne 0 ] && [ "$rc" -eq 0 ] && rc="$w"
   done
   set_now; e_us="$T_US"
-  bar_clear
 
   for ((i = 0; i < nconn; i++)); do
     code=000 b=0; read -r code b <"$SCRATCH/c$i.out" 2>/dev/null
@@ -295,6 +394,7 @@ dl_speed() {  # $1=label $2=url -> "MiB/s|" or "FAILED|reason"
   # A timeout that still moved bytes is a valid measurement, not a failure. With
   # --fail a positive sum can only be real payload now, never a counted error page.
   if [ "$sum" -le 0 ]; then
+    bar_clear
     if [ "${code0:-000}" -ge 400 ] 2>/dev/null; then
       echo "FAILED|server error ($code0)"
     else
@@ -303,22 +403,26 @@ dl_speed() {  # $1=label $2=url -> "MiB/s|" or "FAILED|reason"
     return
   fi
   el=$(( e_us - s_us )); [ "$el" -le 0 ] && el=1
+  # Snap the bar to a full 100% on success -- an early finish (cap not reached)
+  # still shows a completed bar, on its own line.
+  bar_finish "$label" "$sum" "$el"
   awk -v b="$sum" -v us="$el" 'BEGIN{ printf "%.2f|", b / (us / 1000000) / 1048576 }'
 }
 
 ul_speed() {  # -> "MiB/s|" or "FAILED|reason", to the nearest Cloudflare edge
-  local pid rc code bps out="$SCRATCH/ul.out" err="$SCRATCH/ul.err"
+  local pid rc code bps s_us e_us el out="$SCRATCH/ul.out" err="$SCRATCH/ul.err"
+  local payload=$(( UL_MB * 1048576 ))
 
   # --upload-file streams from disk; --data-binary would slurp the whole payload
   # into RAM first, which is exactly what a small box cannot afford.
+  set_now; s_us="$T_US"
   curl -sS -X POST -o /dev/null -w '%{http_code} %{speed_upload}' \
        --connect-timeout 20 --max-time 900 \
        --header 'Content-Type: application/octet-stream' \
        --upload-file "$UPFILE" "$UPLOAD_URL" >"$out" 2>"$err" &
   pid=$!
-  watch_pids "upload to nearest edge" $(( UL_MB * 1048576 )) wchar "" "$pid"
+  watch_pids "upload to nearest edge" "$payload" 0 bytes wchar "" "$pid"
   wait "$pid"; rc=$?
-  bar_clear
 
   code=""; bps=""; read -r code bps <"$out" 2>/dev/null
   # Some endpoints only accept a plain POST body; retry that way before giving up.
@@ -327,19 +431,21 @@ ul_speed() {  # -> "MiB/s|" or "FAILED|reason", to the nearest Cloudflare edge
          --connect-timeout 20 --max-time 900 \
          --data-binary @"$UPFILE" "$UPLOAD_URL" >"$out" 2>"$err" &
     pid=$!
-    watch_pids "upload to nearest edge (retry)" $(( UL_MB * 1048576 )) wchar "" "$pid"
+    watch_pids "upload to nearest edge (retry)" "$payload" 0 bytes wchar "" "$pid"
     wait "$pid"; rc=$?
-    bar_clear
     code=""; bps=""; read -r code bps <"$out" 2>/dev/null
   fi
+  set_now; e_us="$T_US"
 
   if [ "$rc" -ne 0 ]; then
-    echo "FAILED|$(curl_reason "$rc" "$err")"
+    bar_clear; echo "FAILED|$(curl_reason "$rc" "$err")"
   elif [ "${code:-0}" -ge 400 ] 2>/dev/null; then
-    echo "FAILED|upload rejected (HTTP $code)"
+    bar_clear; echo "FAILED|upload rejected (HTTP $code)"
   elif [ -z "${bps:-}" ] || [ "${bps%%.*}" -le 0 ] 2>/dev/null; then
-    echo "FAILED|no bytes accepted"
+    bar_clear; echo "FAILED|no bytes accepted"
   else
+    el=$(( e_us - s_us )); [ "$el" -le 0 ] && el=1
+    bar_finish "upload to nearest edge" "$payload" "$el"
     awk -v b="$bps" 'BEGIN{ printf "%.2f|", b / 1048576 }'
   fi
 }
@@ -352,8 +458,13 @@ if ! dd if=/dev/zero of="$UPFILE" bs=1M count="$UL_MB" status=none 2>"$SCRATCH/d
   exit 1
 fi
 
-[ "$TTY" -eq 1 ] && printf '%sMeasuring %d regions (%d x %d MiB each), then one %d MiB upload...%s\n\n' \
-  "$DIM" "${#TARGETS[@]}" "$CONN" "$CHUNK_MB" "$UL_MB" "$RST"
+if [ "$MODE" = "time" ]; then
+  MODE_DESC="up to ${TIMEBOX_S}s each"
+else
+  MODE_DESC="up to $(( SIZE_BYTES / 1048576 )) MiB each"
+fi
+[ "$TTY" -eq 1 ] && printf '%sMeasuring %d regions (%s over %d connections), then one %d MiB upload...%s\n\n' \
+  "$DIM" "${#TARGETS[@]}" "$MODE_DESC" "$CONN" "$UL_MB" "$RST"
 
 declare -a R_LABEL=() R_VAL=() R_REASON=()
 failures=0
@@ -406,7 +517,13 @@ else
 fi
 
 echo
-echo "Downloads are streamed to /dev/null over ${CONN} connections, so nothing is written"
+if [ "$MODE" = "time" ]; then
+  echo "Each region was measured for up to ${TIMEBOX_S}s over ${CONN} connections (a fast link may"
+  echo "finish the file sooner). Downloads are streamed to /dev/null, so nothing is written"
+else
+  echo "Each region downloaded up to $(( SIZE_BYTES / 1048576 )) MiB over ${CONN} connections. Downloads are"
+  echo "streamed to /dev/null, so nothing is written"
+fi
 echo "to disk. Upload is measured once, against the nearest Cloudflare edge rather than"
 echo "against each region: it describes your server's uplink, not the path to any row."
 if [ "$failures" -gt 0 ] && [ "$BW_DEBUG" != "1" ]; then

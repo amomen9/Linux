@@ -14,7 +14,8 @@ speed-test server?"*
 
 - For each region, opens **8 parallel connections** by default (set with `-c`), each
   fetching a different byte range of a large test file with `curl`, and reports the
-  aggregate as MiB/s.
+  aggregate as MiB/s. Each region is measured for **up to 10 seconds** by default
+  (`--time-box`); pass `--file-size` to cap by bytes downloaded instead.
   Multiple connections matter here: a single TCP stream to Melbourne or Mumbai is
   limited by latency and window size long before it is limited by your actual link.
 - **Streams every download to `/dev/null`.** Nothing is written to disk, so the test
@@ -23,8 +24,8 @@ speed-test server?"*
   certificate or a DNS failure is reported in a second instead of after a long stall.
 - Uploads a payload to `speed.cloudflare.com` **once**, and reports it separately
   from the regional table.
-- Draws a **progress bar per action** while it runs, then clears it and prints the
-  summary table.
+- Draws a **progress bar per action** while it runs; each successful bar fills to
+  100% on its own line, then the summary table is printed below.
 - Prints a short **failure reason in red** for anything that did not complete.
 
 ---
@@ -60,6 +61,18 @@ chmod +x bandwidth_test.sh
 ./bandwidth_test.sh
 ```
 
+By default each region is measured for **up to 10 seconds** and its progress bar
+fills toward that time-box — unless a fast link empties the whole file first, in
+which case the bar races ahead and completes early. Change the cap with
+`--time-box`, or switch to a byte cap with `--file-size`:
+
+```bash
+./bandwidth_test.sh                    # default: time-box, 10s per region
+./bandwidth_test.sh --time-box=30s     # measure each region for up to 30s
+./bandwidth_test.sh --file-size=1GiB   # download up to 1 GiB per region instead
+./bandwidth_test.sh --file-size        # a bare flag uses its default (512 MiB)
+```
+
 Set the number of parallel connections per region with `-c` / `--connections`
 (default `8`, max `64`):
 
@@ -73,9 +86,12 @@ To print the raw `curl` errors underneath each failed row:
 BW_DEBUG=1 ./bandwidth_test.sh
 ```
 
-By default the run transfers `CONN x CHUNK_MB` = 128 MiB per region (~1 GiB across
-the eight regions) plus one `UL_MB` upload, so watch out for metered links or a
-monthly traffic quota. Lower `-c` or `CHUNK_MB` for a lighter run.
+Both `--time-box` and `--file-size` are **caps**: a region stops as soon as its
+limit is reached (a fast link may finish sooner), and its bar still completes to
+100%. Mind the traffic — a full 10 s time-box on a fast link can pull most of a
+~1 GiB file per region (up to ~8 GiB across all eight regions), and `--file-size`
+downloads its cap on purpose; lower the cap on metered links. The units for
+`--file-size` are `KiB`/`MiB`/`GiB` or `KB`/`MB`/`GB`, and a bare number is MiB.
 
 ---
 
@@ -87,7 +103,8 @@ While it works, one line updates in place:
   Asia (Singapore)             [##############..........]  58%    149 MiB   62.41 MiB/s
 ```
 
-When everything has finished, that line is cleared and the summary is printed:
+When everything has finished, each bar is left filled at 100% and the summary is
+printed below:
 
 ```text
 Region                                       Download (MiB/s)
@@ -138,13 +155,15 @@ Everything tunable sits at the top of the script:
 
 | Variable     | Default                     | Meaning                                             |
 | ------------ | --------------------------- | --------------------------------------------------- |
-| `CONN`       | `8`                         | parallel connections per region (or `-c N` on the CLI) |
-| `CHUNK_MB`   | `16`                        | MiB per connection, so `CONN x CHUNK_MB` per region |
-| `UL_MB`      | `500`                       | upload payload size in MiB                          |
-| `DL_TIMEOUT` | `90`                        | seconds cap per download connection                 |
-| `TMPBASE`    | `/dev/shm`                  | preferred scratch location for the upload payload   |
-| `UPLOAD_URL` | `speed.cloudflare.com/__up` | upload sink                                         |
-| `TARGETS`    | eight `Region\|URL` pairs   | add, remove or re-point regions here                |
+| `CONN`       | `8`                         | parallel connections per region (or `-c N` on the CLI)             |
+| `MODE`       | `time`                      | `time` or `size`; set on the CLI by `--time-box` / `--file-size`   |
+| `TIMEBOX_S`  | `10`                        | time-box seconds (or `--time-box=DUR`)                             |
+| `SIZE_BYTES` | `512 MiB`                   | size-mode byte cap (or `--file-size=SZ`)                           |
+| `UL_MB`      | `500`                       | upload payload size in MiB                                         |
+| `DL_TIMEOUT` | `90`                        | hard per-connection cap in size mode (time mode uses the time-box) |
+| `TMPBASE`    | `/dev/shm`                  | preferred scratch location for the upload payload                 |
+| `UPLOAD_URL` | `speed.cloudflare.com/__up` | upload sink                                                        |
+| `TARGETS`    | eight `Region\|URL` pairs   | add, remove or re-point regions here                              |
 
 Test-file URLs go stale. If a row reports a 404, check the provider's speed-test page
 (Hetzner, Linode and DataPacket all publish them) and edit the matching line in
