@@ -16,6 +16,10 @@
 #   PART 2 - detects the DISTRIBUTION'S OWN DEFAULT desktop session (GNOME on
 #       Ubuntu/Fedora, Cinnamon on Mint, Plasma on Kubuntu, MATE on a MATE spin,
 #       etc.) and points the VNC session at it. Nothing is hardcoded.
+#       EXCEPTION: GNOME Shell and KDE Plasma are OpenGL compositors that
+#       black-screen under Xvnc (no GPU). When one of those is the default, the
+#       script installs XFCE - a lightweight, VNC-friendly desktop - and runs
+#       that instead. Control this with --session auto|xfce|native (see --help).
 #
 # Usage:   sudo ./setup-vnc-combined.sh
 #          VNC_USER=bob VNC_PASSWORD='secret' sudo -E ./setup-vnc-combined.sh   (non-interactive)
@@ -38,6 +42,7 @@ VNC_PORT=63512
 VNC_DISPLAY=":1"
 GEOMETRY="1920x1080"
 DEPTH=24
+SESSION_CHOICE="auto"   # auto | xfce | native  (see --session in --help)
 XSESS_DIR="/usr/share/xsessions"
 # VNC_USER and SERVICE_NAME are resolved after prompting (see below).
 # -----------------------------------------------------------------------------
@@ -64,6 +69,11 @@ Options:
   --vnc-display DISPLAY  X display number, e.g. :1        (default: ${VNC_DISPLAY})
   --geometry WxH         Screen resolution                (default: ${GEOMETRY})
   --depth BITS           Colour depth                     (default: ${DEPTH})
+  --session MODE         Which desktop to run under VNC   (default: ${SESSION_CHOICE})
+                           auto   - use the distro default, but swap GNOME/KDE
+                                    (which black-screen over VNC) for XFCE
+                           xfce   - always install and use XFCE
+                           native - always use the detected default desktop
   -h, --help             Show this help and exit
 EOF
 }
@@ -83,10 +93,16 @@ while [[ $# -gt 0 ]]; do
         --geometry=*)    GEOMETRY="${1#*=}";                     shift ;;
         --depth)         need_val "$@"; DEPTH="$2";              shift 2 ;;
         --depth=*)       DEPTH="${1#*=}";                        shift ;;
+        --session)       need_val "$@"; SESSION_CHOICE="$2";     shift 2 ;;
+        --session=*)     SESSION_CHOICE="${1#*=}";               shift ;;
         -h|--help)       usage; exit 0 ;;
         *)               die "Unknown argument: '$1' (try --help)." ;;
     esac
 done
+case "$SESSION_CHOICE" in
+    auto|xfce|native) ;;
+    *) die "Invalid --session '${SESSION_CHOICE}' (use auto, xfce, or native)." ;;
+esac
 
 [[ $EUID -eq 0 ]] || die "This script must be run as root (use sudo)."
 
@@ -133,6 +149,22 @@ pm_install() {
         yum)    yum install -y "$@" ;;
         zypper) zypper --non-interactive install --no-recommends "$@" ;;
         pacman) pacman -Sy --needed --noconfirm "$@" ;;
+    esac
+}
+# Install a minimal-but-usable XFCE desktop (VNC-friendly). --no-install-recommends
+# on apt keeps a display manager from being dragged in and switched as default.
+install_xfce() {
+    case "$PM" in
+        apt)    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+                    xfce4 xfce4-session xfce4-terminal ;;
+        dnf)    dnf install -y @xfce-desktop-environment \
+                    || dnf group install -y "Xfce Desktop" \
+                    || pm_install xfce4-session xfdesktop xfwm4 xfce4-panel xfce4-settings xfce4-terminal ;;
+        yum)    yum groupinstall -y "Xfce" \
+                    || pm_install xfce4-session xfdesktop xfwm4 xfce4-panel xfce4-settings xfce4-terminal ;;
+        zypper) zypper --non-interactive install -t pattern xfce \
+                    || pm_install xfce4-session xfdesktop xfwm4 xfce4-panel xfce4-settings xfce4-terminal ;;
+        pacman) pm_install xfce4 ;;
     esac
 }
 
@@ -265,17 +297,40 @@ log "Distro default session : ${name}"
 log "Launch command         : ${EXEC_CMD}"
 [[ -n "$DESKTOP_NAMES" ]] && log "Desktop names          : ${DESKTOP_NAMES}"
 
-# --- decide whether this desktop needs software GL ---------------------------
+# --- choose which desktop the VNC session runs -------------------------------
 # GNOME Shell and KDE Plasma are OpenGL compositors. Under Xvnc there is no GPU,
-# so they render a BLACK SCREEN unless GL is forced onto Mesa's software
-# rasteriser. Lightweight desktops (XFCE, MATE, Cinnamon, LXQt, ...) don't need
-# this and run faster without it, so we only enable it for the heavy ones.
+# so they typically render a BLACK SCREEN even with software GL forced. XFCE is a
+# lightweight, XRender-based desktop that runs reliably over VNC. So by default
+# (--session auto) we install XFCE and run it whenever the machine's own default
+# desktop is one of those GL-heavy compositors.
 gl_heavy=0
 case " ${DESKTOP_NAMES,,} ${name,,} " in
     *gnome*|*kde*|*plasma*) gl_heavy=1 ;;
 esac
+
+use_xfce=0
+case "$SESSION_CHOICE" in
+    xfce)   use_xfce=1 ;;
+    auto)   (( gl_heavy )) && use_xfce=1 ;;
+    native) use_xfce=0 ;;
+esac
+
+if (( use_xfce )); then
+    (( gl_heavy )) && log "Default desktop '${name}' is a GL compositor - black screen under Xvnc."
+    log "Installing XFCE for the VNC session (lightweight, VNC-friendly)..."
+    install_xfce
+    if   command -v startxfce4    >/dev/null 2>&1; then EXEC_CMD="$(command -v startxfce4)"
+    elif command -v xfce4-session >/dev/null 2>&1; then EXEC_CMD="$(command -v xfce4-session)"
+    else die "XFCE install did not provide startxfce4/xfce4-session; try '--session native'."; fi
+    name="xfce"
+    DESKTOP_NAMES="XFCE"
+    gl_heavy=0     # XFCE renders fine over VNC without software GL
+    log "VNC session desktop    : XFCE (${EXEC_CMD})"
+fi
+
+# Decide software-GL: only GL-heavy desktops kept as 'native' still need it.
 if (( gl_heavy )); then
-    log "GL-heavy desktop (${name}) detected -> enabling software GL in xstartup."
+    log "GL-heavy desktop (${name}) kept as-is -> enabling software GL in xstartup."
     GL_HINT="Software GL is pre-enabled for this desktop (GNOME/KDE need it under Xvnc)."
 else
     GL_HINT="Black screen? uncomment the software-GL lines in ${VNC_DIR}/xstartup and restart."

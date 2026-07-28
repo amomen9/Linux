@@ -26,6 +26,11 @@ The script runs in two parts:
   on Mint, Plasma on Kubuntu, MATE on a MATE spin, etc.) and points VNC at it.
 - **Nothing is hardcoded** — it reads AccountsService / `.dmrc` / LightDM config, falls back
   to the only installed session, and finally to a sensible per-distro guess.
+- **GNOME / KDE exception:** GNOME Shell and KDE Plasma are OpenGL compositors that
+  **black-screen under `Xvnc`** (there's no GPU). When one of them is the default, the
+  script installs **XFCE** — a lightweight, VNC-friendly desktop — and runs that for the VNC
+  session instead. Override with `--session native` (force the detected desktop) or
+  `--session xfce` (always use XFCE).
 
 Then it writes a `systemd` unit, opens the firewall port, and starts the service.
 
@@ -101,7 +106,16 @@ matching command-line option (variable name lowercased, `_` → `-`):
 | `VNC_DISPLAY` | `--vnc-display`  | `:1`               | X display number                 |
 | `GEOMETRY`    | `--geometry`     | `1920x1080`        | Screen resolution                |
 | `DEPTH`       | `--depth`        | `24`               | Colour depth (bits)              |
+| `SESSION_CHOICE` | `--session`   | `auto`             | `auto` (swap GNOME/KDE→XFCE), `xfce`, or `native` |
 | `XSESS_DIR`   | *(edit script)*  | `/usr/share/xsessions` | Where X11 session files are read from |
+
+**`--session` modes:**
+
+- **`auto`** *(default)* — use the distro's own default desktop, **except** GNOME/KDE/Plasma
+  (which black-screen over VNC): those are swapped for a freshly-installed XFCE.
+- **`xfce`** — always install and use XFCE, regardless of the machine's default desktop.
+- **`native`** — always use the detected default desktop as-is. For GNOME/KDE this enables
+  software GL as a best-effort, but a black screen is still likely — see Troubleshooting.
 
 ---
 
@@ -155,10 +169,12 @@ The per-session log is at `~/.vnc/<hostname>:1.log`.
 ## Troubleshooting
 
 **Black screen after connecting.**
-GNOME Shell and KDE Plasma are OpenGL compositors; under `Xvnc` there is no GPU, so
-they render black unless GL is forced onto Mesa's software rasteriser. The script
-**auto-enables this for GNOME/KDE** — you'll find these lines already active near the top
-of `~/.vnc/xstartup`:
+This is the classic **GNOME Shell / KDE Plasma over VNC** failure: they're OpenGL
+compositors and `Xvnc` has no GPU, so they render black. By default (`--session auto`) the
+script **avoids this entirely by running XFCE instead** — so a fresh run shouldn't hit it.
+
+If you deliberately used `--session native` to keep GNOME/KDE, the script enables software
+GL as a best-effort — you'll find these lines already active near the top of `~/.vnc/xstartup`:
 
 ```sh
 export __GLX_VENDOR_LIBRARY_NAME=mesa   # force the Mesa GLX vendor...
@@ -167,13 +183,10 @@ export LIBGL_ALWAYS_SOFTWARE=1          # ...then its software rasteriser
 
 The **`__GLX_VENDOR_LIBRARY_NAME=mesa` line matters**: if a proprietary GLVND driver
 (e.g. NVIDIA) is installed, its GLX ignores `LIBGL_ALWAYS_SOFTWARE` and the screen stays
-black — forcing the Mesa vendor first fixes that. On a lightweight desktop these lines are
-present but commented; uncomment both and restart if you ever see a black screen. After any
-change: `systemctl restart vncserver-<user>.service`.
-
-Still black with software GL on? GNOME Shell over VNC is genuinely fragile — check the
-session log (`~/.vnc/<hostname>:1.log`) for the real error, or install a lightweight desktop
-(XFCE/MATE) and let the script target that instead.
+black — forcing the Mesa vendor first fixes that. Even so, GNOME Shell over VNC is genuinely
+fragile and may stay black regardless. **The reliable fix is to switch to XFCE:** re-run with
+`--session xfce` (or `--session auto`). Check the session log (`~/.vnc/<hostname>:1.log`) for
+the underlying error. After any change: `systemctl restart vncserver-<user>.service`.
 
 **Connection refused on Fedora / RHEL / openSUSE (SELinux `Enforcing`).**
 The custom port may need labelling for VNC:
