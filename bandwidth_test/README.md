@@ -112,11 +112,11 @@ printed below:
 ```text
 Region                                       Download (MiB/s)
 ------------------------------ ------------------------------
-North America (Ashburn US)                             112.40
-Europe (Falkenstein DE)                                 98.75
+North America (US East)                                112.40
+Europe (Germany/central)                                98.75
 Asia (Singapore)                                        41.02
-Japan (Tokyo)                    file missing on server (404)
-Oceania (Melbourne AU)                      could not connect
+Japan (Tokyo/Osaka)                                     63.17
+Oceania (AU/NZ)                             could not connect
 
 Upload (500 MiB to nearest Cloudflare edge): 47.66 MiB/s
 ```
@@ -178,9 +178,10 @@ Test-file URLs go stale. If a mirror reports a 404, check the provider's speed-t
 page (Hetzner, Linode, DataPacket and OVH all publish them) and edit or drop that
 URL in `TARGETS`.
 
-Targets that ignore `Range` and return the whole file are detected by the probe and
-measured with a single time-boxed stream instead of many partial ones, so the number
-stays honest rather than being inflated by identical copies of the same bytes.
+A mirror's size and whether it honours `Range` are read from the probe. Connections
+that share a range-capable host are given staggered byte offsets so they don't fetch
+the same bytes; a host that ignores `Range` is requested without one (its connections
+can't seek), so prefer range-capable mirrors when editing `TARGETS`.
 
 ---
 
