@@ -265,6 +265,22 @@ log "Distro default session : ${name}"
 log "Launch command         : ${EXEC_CMD}"
 [[ -n "$DESKTOP_NAMES" ]] && log "Desktop names          : ${DESKTOP_NAMES}"
 
+# --- decide whether this desktop needs software GL ---------------------------
+# GNOME Shell and KDE Plasma are OpenGL compositors. Under Xvnc there is no GPU,
+# so they render a BLACK SCREEN unless GL is forced onto Mesa's software
+# rasteriser. Lightweight desktops (XFCE, MATE, Cinnamon, LXQt, ...) don't need
+# this and run faster without it, so we only enable it for the heavy ones.
+gl_heavy=0
+case " ${DESKTOP_NAMES,,} ${name,,} " in
+    *gnome*|*kde*|*plasma*) gl_heavy=1 ;;
+esac
+if (( gl_heavy )); then
+    log "GL-heavy desktop (${name}) detected -> enabling software GL in xstartup."
+    GL_HINT="Software GL is pre-enabled for this desktop (GNOME/KDE need it under Xvnc)."
+else
+    GL_HINT="Black screen? uncomment the software-GL lines in ${VNC_DIR}/xstartup and restart."
+fi
+
 # --- write xstartup that launches the detected session under Xorg ------------
 {
     echo '#!/bin/sh'
@@ -272,8 +288,18 @@ log "Launch command         : ${EXEC_CMD}"
     echo 'unset DBUS_SESSION_BUS_ADDRESS'
     echo 'export XDG_SESSION_TYPE=x11'
     [[ -n "$DESKTOP_NAMES" ]] && echo "export XDG_CURRENT_DESKTOP=${DESKTOP_NAMES}"
-    echo '# If you get a black screen, uncomment the next line (forces software GL):'
-    echo '# export LIBGL_ALWAYS_SOFTWARE=1'
+    if (( gl_heavy )); then
+        echo '# GNOME/KDE are GL compositors; under Xvnc (no GPU) they need software GL.'
+        echo '# __GLX_VENDOR_LIBRARY_NAME=mesa is set FIRST so this still works when a'
+        echo '# proprietary GLVND driver (e.g. NVIDIA) is installed - that GLX would'
+        echo '# otherwise ignore LIBGL_ALWAYS_SOFTWARE and keep the screen black.'
+        echo 'export __GLX_VENDOR_LIBRARY_NAME=mesa'
+        echo 'export LIBGL_ALWAYS_SOFTWARE=1'
+    else
+        echo '# If you get a black screen, uncomment the next two lines (forces software GL):'
+        echo '# export __GLX_VENDOR_LIBRARY_NAME=mesa'
+        echo '# export LIBGL_ALWAYS_SOFTWARE=1'
+    fi
     echo "exec dbus-run-session -- ${EXEC_CMD}"
 } > "${VNC_DIR}/xstartup"
 chmod +x "${VNC_DIR}/xstartup"
@@ -383,6 +409,6 @@ cat <<EOF
    systemctl restart ${SERVICE_NAME}
    journalctl -u ${SERVICE_NAME} -e
    Session log: ${VNC_DIR}/$(hostname):${VNC_DISPLAY#:}.log
-   Black screen? uncomment LIBGL_ALWAYS_SOFTWARE=1 in ${VNC_DIR}/xstartup and restart.
+   ${GL_HINT}
 =============================================================================
 EOF

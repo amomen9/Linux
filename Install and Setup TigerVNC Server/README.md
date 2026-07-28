@@ -155,11 +155,25 @@ The per-session log is at `~/.vnc/<hostname>:1.log`.
 ## Troubleshooting
 
 **Black screen after connecting.**
-Uncomment the software-GL line in `~/.vnc/xstartup` and restart the service:
+GNOME Shell and KDE Plasma are OpenGL compositors; under `Xvnc` there is no GPU, so
+they render black unless GL is forced onto Mesa's software rasteriser. The script
+**auto-enables this for GNOME/KDE** — you'll find these lines already active near the top
+of `~/.vnc/xstartup`:
 
 ```sh
-export LIBGL_ALWAYS_SOFTWARE=1
+export __GLX_VENDOR_LIBRARY_NAME=mesa   # force the Mesa GLX vendor...
+export LIBGL_ALWAYS_SOFTWARE=1          # ...then its software rasteriser
 ```
+
+The **`__GLX_VENDOR_LIBRARY_NAME=mesa` line matters**: if a proprietary GLVND driver
+(e.g. NVIDIA) is installed, its GLX ignores `LIBGL_ALWAYS_SOFTWARE` and the screen stays
+black — forcing the Mesa vendor first fixes that. On a lightweight desktop these lines are
+present but commented; uncomment both and restart if you ever see a black screen. After any
+change: `systemctl restart vncserver-<user>.service`.
+
+Still black with software GL on? GNOME Shell over VNC is genuinely fragile — check the
+session log (`~/.vnc/<hostname>:1.log`) for the real error, or install a lightweight desktop
+(XFCE/MATE) and let the script target that instead.
 
 **Connection refused on Fedora / RHEL / openSUSE (SELinux `Enforcing`).**
 The custom port may need labelling for VNC:
