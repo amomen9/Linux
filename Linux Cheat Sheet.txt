@@ -2623,7 +2623,7 @@ There are other settings in this file that NetworkManager automatically adds, yo
 ##ubuntu:
 
 sudo apt update
-apt install -y xterm
+sudo apt install -y xterm
 touch ~/.Xauthority
 sudo apt install -y xauth xorg openbox
 #test purposes:
@@ -2632,7 +2632,7 @@ echo $DISPLAY
 sudo apt install x11-apps
 xeyes
 # Check if X11 forwarding is enabled in current session
-ss -tlnp | grep 6010  # Should show SSH listening on X11 port
+sudo ss -tlnp | grep 6010  # Should show SSH listening on X11 port
 # Check Xauth entries
 xauth list
 # Check SSH client configuration on your local machine

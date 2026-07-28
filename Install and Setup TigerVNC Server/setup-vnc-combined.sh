@@ -19,8 +19,11 @@
 #
 # Usage:   sudo ./setup-vnc-combined.sh
 #          VNC_USER=bob VNC_PASSWORD='secret' sudo -E ./setup-vnc-combined.sh   (non-interactive)
+#          sudo ./setup-vnc-combined.sh --vnc-user bob --vnc-port 63512 \
+#              --vnc-display :1 --geometry 1920x1080 --depth 24                  (command-line)
 #
-# The script prompts for the target username (or reads $VNC_USER). That account
+# Settings can be supplied on the command line (see --help). If --vnc-user is
+# omitted, the script prompts for the target username (or reads $VNC_USER). That account
 # MUST already exist on the system; if it does not, the script errors out and
 # does nothing else.
 #
@@ -42,6 +45,48 @@ XSESS_DIR="/usr/share/xsessions"
 log()  { printf '\033[1;32m[+]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[!]\033[0m %s\n' "$*"; }
 die()  { printf '\033[1;31m[x]\033[0m %s\n' "$*" >&2; exit 1; }
+
+# --------------------------- command-line arguments --------------------------
+# Every setting above can be overridden here. Long options mirror the variable
+# names, lowercased with underscores turned into hyphens:
+#   --vnc-user, --vnc-port, --vnc-display, --geometry, --depth
+# VNC_USER may also come from the environment; if it is set by neither, the
+# script prompts for it during execution (as before). The VNC password is never
+# accepted on the command line (so it can't leak into shell history) - it still
+# comes from $VNC_PASSWORD or an interactive prompt.
+usage() {
+    cat <<EOF
+Usage: $0 [options]
+
+Options:
+  --vnc-user USER        Existing account to grant VNC access to (else prompted)
+  --vnc-port PORT        TCP port to listen on            (default: ${VNC_PORT})
+  --vnc-display DISPLAY  X display number, e.g. :1        (default: ${VNC_DISPLAY})
+  --geometry WxH         Screen resolution                (default: ${GEOMETRY})
+  --depth BITS           Colour depth                     (default: ${DEPTH})
+  -h, --help             Show this help and exit
+EOF
+}
+
+need_val() { [[ $# -ge 2 && "${2:0:2}" != "--" ]] || die "Option '$1' requires a value."; }
+
+VNC_USER="${VNC_USER:-}"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --vnc-user)      need_val "$@"; VNC_USER="$2";           shift 2 ;;
+        --vnc-user=*)    VNC_USER="${1#*=}";                     shift ;;
+        --vnc-port)      need_val "$@"; VNC_PORT="$2";           shift 2 ;;
+        --vnc-port=*)    VNC_PORT="${1#*=}";                     shift ;;
+        --vnc-display)   need_val "$@"; VNC_DISPLAY="$2";        shift 2 ;;
+        --vnc-display=*) VNC_DISPLAY="${1#*=}";                  shift ;;
+        --geometry)      need_val "$@"; GEOMETRY="$2";           shift 2 ;;
+        --geometry=*)    GEOMETRY="${1#*=}";                     shift ;;
+        --depth)         need_val "$@"; DEPTH="$2";              shift 2 ;;
+        --depth=*)       DEPTH="${1#*=}";                        shift ;;
+        -h|--help)       usage; exit 0 ;;
+        *)               die "Unknown argument: '$1' (try --help)." ;;
+    esac
+done
 
 [[ $EUID -eq 0 ]] || die "This script must be run as root (use sudo)."
 

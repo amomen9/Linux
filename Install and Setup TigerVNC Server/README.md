@@ -71,6 +71,17 @@ Non-interactive (pass the account and password via the environment — note `sud
 VNC_USER=bob VNC_PASSWORD='secret' sudo -E ./setup-vnc-combined.sh
 ```
 
+Command-line options (each mirrors a config variable — lowercased, with `_` → `-`):
+
+```bash
+sudo ./setup-vnc-combined.sh --vnc-user user --vnc-port 63512 --vnc-display :1 --geometry 1920x1080 --depth 24
+```
+
+If `--vnc-user` (or `$VNC_USER`) is omitted, the script prompts for the username as usual.
+The VNC **password is never taken on the command line** — it still comes from `$VNC_PASSWORD`
+or an interactive prompt, so it can't leak into your shell history. Run with `--help` to see
+all options and their defaults.
+
 > **Note:** TigerVNC only uses the **first 8 characters** of the VNC password.
 
 The script is **idempotent** where it matters: an existing `~/.vnc/passwd` or certificate
@@ -80,15 +91,17 @@ is kept rather than regenerated (unless you override the password via `VNC_PASSW
 
 ## Configuration
 
-Defaults live at the top of the script — edit them there if needed:
+Defaults live at the top of the script — edit them there, or override them per-run with the
+matching command-line option (variable name lowercased, `_` → `-`):
 
-| Setting       | Default            | Meaning                          |
-| ------------- | ------------------ | -------------------------------- |
-| `VNC_PORT`    | `63512`            | TCP port the server listens on   |
-| `VNC_DISPLAY` | `:1`               | X display number                 |
-| `GEOMETRY`    | `1920x1080`        | Screen resolution                |
-| `DEPTH`       | `24`               | Colour depth (bits)              |
-| `XSESS_DIR`   | `/usr/share/xsessions` | Where X11 session files are read from |
+| Setting       | CLI option       | Default            | Meaning                          |
+| ------------- | ---------------- | ------------------ | -------------------------------- |
+| `VNC_USER`    | `--vnc-user`     | *(prompted)*       | Existing account to grant access |
+| `VNC_PORT`    | `--vnc-port`     | `63512`            | TCP port the server listens on   |
+| `VNC_DISPLAY` | `--vnc-display`  | `:1`               | X display number                 |
+| `GEOMETRY`    | `--geometry`     | `1920x1080`        | Screen resolution                |
+| `DEPTH`       | `--depth`        | `24`               | Colour depth (bits)              |
+| `XSESS_DIR`   | *(edit script)*  | `/usr/share/xsessions` | Where X11 session files are read from |
 
 ---
 
