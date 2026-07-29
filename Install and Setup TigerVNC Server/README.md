@@ -64,7 +64,7 @@ Works across the five major package-manager families:
 
 ## Usage
 
-Interactive (prompts for username and VNC password):
+Simplest (targets the invoking login user via `logname`; prompts only for the VNC password):
 
 ```bash
 sudo ./setup-vnc-combined.sh
@@ -82,7 +82,8 @@ Command-line options (each mirrors a config variable — lowercased, with `_` �
 sudo ./setup-vnc-combined.sh --vnc-user user --vnc-port 63512 --vnc-display :1 --geometry 1920x1080 --depth 24
 ```
 
-If `--vnc-user` (or `$VNC_USER`) is omitted, the script prompts for the username as usual.
+If `--vnc-user` (or `$VNC_USER`) is omitted, the script targets the **invoking login user**
+(via `logname`) — so a plain `sudo ./setup-vnc-combined.sh` sets VNC up for whoever ran it.
 The VNC **password is never taken on the command line** — it still comes from `$VNC_PASSWORD`
 or an interactive prompt, so it can't leak into your shell history. Run with `--help` to see
 all options and their defaults.
@@ -101,7 +102,7 @@ matching command-line option (variable name lowercased, `_` → `-`):
 
 | Setting       | CLI option       | Default            | Meaning                          |
 | ------------- | ---------------- | ------------------ | -------------------------------- |
-| `VNC_USER`    | `--vnc-user`     | *(prompted)*       | Existing account to grant access |
+| `VNC_USER`    | `--vnc-user`     | *(login user, `logname`)* | Existing account to grant access |
 | `VNC_PORT`    | `--vnc-port`     | `63512`            | TCP port the server listens on   |
 | `VNC_DISPLAY` | `--vnc-display`  | `:1`               | X display number                 |
 | `GEOMETRY`    | `--geometry`     | `1920x1080`        | Screen resolution                |

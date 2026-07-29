@@ -27,9 +27,9 @@
 #              --vnc-display :1 --geometry 1920x1080 --depth 24                  (command-line)
 #
 # Settings can be supplied on the command line (see --help). If --vnc-user is
-# omitted, the script prompts for the target username (or reads $VNC_USER). That account
-# MUST already exist on the system; if it does not, the script errors out and
-# does nothing else.
+# omitted, the script uses the invoking login user (via `logname`); $VNC_USER
+# still overrides. That account MUST already exist on the system; if it does not,
+# the script errors out and does nothing else.
 #
 # A graphical desktop must already be installed. If none is found, the script
 # tells you and stops before touching the service, so nothing is left broken.
@@ -64,7 +64,8 @@ usage() {
 Usage: $0 [options]
 
 Options:
-  --vnc-user USER        Existing account to grant VNC access to (else prompted)
+  --vnc-user USER        Existing account to grant VNC access to
+                           (default: the invoking login user, via logname)
   --vnc-port PORT        TCP port to listen on            (default: ${VNC_PORT})
   --vnc-display DISPLAY  X display number, e.g. :1        (default: ${VNC_DISPLAY})
   --geometry WxH         Screen resolution                (default: ${GEOMETRY})
@@ -106,12 +107,16 @@ esac
 
 [[ $EUID -eq 0 ]] || die "This script must be run as root (use sudo)."
 
-# --- resolve the target username (prompt, or take $VNC_USER from the env) -----
+# --- resolve the target username ---------------------------------------------
+# Priority: --vnc-user / $VNC_USER, else the invoking login user (logname).
 # The account must already exist; this script never creates users.
-if [[ -z "${VNC_USER:-}" ]]; then
-    read -rp "Enter the existing username to grant VNC access to: " VNC_USER
+if [[ -n "${VNC_USER:-}" ]]; then
+    log "VNC user: '${VNC_USER}'  (from --vnc-user / \$VNC_USER)."
+else
+    VNC_USER="$(logname 2>/dev/null || true)"
+    [[ -n "$VNC_USER" ]] || die "No username given and 'logname' returned nothing; pass --vnc-user."
+    log "VNC user: '${VNC_USER}'  (no --vnc-user given; using the login user via logname)."
 fi
-[[ -n "${VNC_USER:-}" ]] || die "No username provided."
 if ! id "$VNC_USER" &>/dev/null; then
     die "User '$VNC_USER' does not exist on this system. Create it first, then re-run."
 fi
