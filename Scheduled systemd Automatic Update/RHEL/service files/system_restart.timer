@@ -1,0 +1,14 @@
+# Timer for the service
+
+[Unit]
+Description=Triggers system reboot when an update requires it
+Requires=system_restart.service
+
+[Timer]
+Unit=system_restart.service
+OnCalendar=Fri 04:30:00
+Persistent=true
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

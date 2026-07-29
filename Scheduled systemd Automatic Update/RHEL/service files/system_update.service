@@ -1,0 +1,27 @@
+[Unit]
+Description=Update Linux Service
+After=network.target
+After=multi-user.target
+Wants=system_update.timer
+
+[Service]
+#Type=oneshot
+
+User=root
+Group=root
+
+
+# Where to send early-startup messages from the server
+# This is normally controlled by the global default set by systemd
+StandardOutput=syslog
+
+# Disable OOM kill on the scripts
+OOMScoreAdjust=-1000
+Environment=PGB_OOM_ADJUST_FILE=/proc/self/oom_score_adj
+Environment=PGB_OOM_ADJUST_VALUE=0
+
+# update & upgrade
+ExecStart=/bin/sh -c '/usr/bin/yum-complete-transaction --cleanup-only; /usr/bin/dnf -y upgrade --refresh'
+
+[Install]
+WantedBy=multi-user.target

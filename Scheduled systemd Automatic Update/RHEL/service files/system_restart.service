@@ -1,0 +1,27 @@
+[Unit]
+Description=Reboot Linux Service
+After=network.target
+After=multi-user.target
+Wants=system_restart.timer
+
+[Service]
+#Type=oneshot
+
+User=root
+Group=root
+
+
+# Where to send early-startup messages from the server
+# This is normally controlled by the global default set by systemd
+StandardOutput=syslog
+
+# Disable OOM kill on the scripts
+OOMScoreAdjust=-1000
+Environment=PGB_OOM_ADJUST_FILE=/proc/self/oom_score_adj
+Environment=PGB_OOM_ADJUST_VALUE=0
+
+# reboot if required
+ExecStart=/usr/bin/bash -c 'if /usr/bin/needs-restarting -r; then echo "No reboot required."; else echo "rebooting..."; /usr/sbin/reboot; fi'
+
+[Install]
+WantedBy=multi-user.target
