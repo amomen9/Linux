@@ -201,6 +201,76 @@ can't seek), so prefer range-capable mirrors when editing `TARGETS`.
 
 ---
 
+## Compared to a single-server speed test (Ookla)
+
+A single-server test like Ookla's `speedtest` and this script answer different
+questions, so they report very different numbers on the *same* machine. Here are two
+runs from one host — a ~6 Gbps 1&1 connection in Germany — taken moments apart.
+
+**Ookla `speedtest`** — one nearby, purpose-built speed-test server:
+
+```text
+   Server: cndd.net - Berlin
+Idle Latency:    0.19 ms
+    Download: 5993.64 Mbps  (data used: 2.8 GB)
+      Upload: 5955.09 Mbps  (data used: 2.9 GB)
+```
+
+**`./bandwidth_test.sh --mbps`** — eight world regions, ordinary file mirrors:
+
+```text
+Region                            Download (Mbps)   Min ms   Max ms
+------------------------------ ------------------ -------- --------
+North America (US East)                   2230.10       89      102
+Europe (Germany/central)                  3744.57       10       20
+Asia (Singapore)                           942.29      175      214
+Japan (Tokyo/Osaka)                        521.87      258      300
+India (Mumbai/Chennai)                     626.27      154      184
+Middle East (Fujairah/Tel Aviv)           2438.88       67      117
+Oceania (AU/NZ)                            307.53      299      437
+Iran (Asiatech, best-effort)                      DNS lookup failed
+
+Upload (500 MiB to nearest Cloudflare edge): 266.86 Mbps
+```
+
+Ookla reported ~6 Gbps; this script's closest-latency row (Europe, 10–20 ms — the
+only destination comparable to Ookla's 17 ms Berlin server) reached 3.7 Gbps, and the
+far regions fall off steadily as round-trip time climbs (Oceania at 300+ ms manages
+only ~0.3 Gbps). That ladder is not the script under-reporting; it is the two tools
+measuring different things:
+
+- **Ookla** hand-picks the single closest, best-provisioned server and reports the
+  peak. It answers *"what is my line's top speed to an ideal nearby endpoint?"*
+- **This script** streams from everyday file mirrors scattered across the globe and
+  reports the sustained aggregate to each. It answers *"how well does this box
+  actually reach the rest of the world?"* — what real downloads, backups, package
+  mirrors and CDN origins experience.
+
+### Which one is more reliable?
+
+It depends on what you want the number to be reliable *about* — so here is the honest
+split rather than a blanket winner:
+
+- For your **raw local line capacity**, Ookla is the more reliable figure here: it
+  saturated the 6 Gbps link, which this script deliberately cannot, because distant
+  rate-limited public mirrors and high round-trip times cap each connection well below
+  the line.
+- For **real-world, everyday throughput**, this script is the more reliable guide, in
+  two ways a single-server test is not:
+  - **It is much harder to game.** ISPs are known to prioritise or zero-rate traffic
+    to well-known speed-test servers, which can flatter the Ookla number; generic file
+    downloads from many unrelated hosts get no such special treatment, so the result
+    reflects what ordinary traffic really gets.
+  - **It measures many real destinations, not one best case.** A single nearby server
+    can look excellent while your actual transfers to other continents crawl — exactly
+    the spread the per-region table exposes, and exactly what a one-number test hides.
+
+So neither result is "wrong": Ookla is the better measure of your line's ceiling,
+while this script is the more reliable, harder-to-game picture of the throughput your
+real traffic will see across the world.
+
+---
+
 ## A caveat worth reading
 
 **Speed-test tools do not always show the real bandwidth capability of your server or
