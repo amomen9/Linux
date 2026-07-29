@@ -25,6 +25,9 @@ speed-test server?"*
   cannot fail for want of scratch space no matter how small `/tmp` or `/dev/shm` is.
 - **Probes each target with a 1 KB range request first**, so a dead URL, a bad
   certificate or a DNS failure is reported in a second instead of after a long stall.
+- Reports, per region, the **min and max TCP round-trip latency** across that
+  region's mirrors as two extra columns, and can print all rates in **Mbps** instead
+  of MiB/s with `--mbps`.
 - Uploads a payload to `speed.cloudflare.com` **once**, and reports it separately
   from the regional table.
 - Draws a **progress bar per action** while it runs; each successful bar fills to
@@ -83,6 +86,13 @@ Set the number of parallel connections per region with `-c` / `--connections`
 ./bandwidth_test.sh -c 16
 ```
 
+Report speeds in **Mbps** (megabits/s) instead of the default **MiB/s** with
+`--mbps` (this changes the download column, the live bar, and the upload line):
+
+```bash
+./bandwidth_test.sh --mbps
+```
+
 To print the raw `curl` errors underneath each failed row:
 
 ```bash
@@ -110,21 +120,26 @@ When everything has finished, each bar is left filled at 100% and the summary is
 printed below:
 
 ```text
-Region                                       Download (MiB/s)
------------------------------- ------------------------------
-North America (US East)                                112.40
-Europe (Germany/central)                                98.75
-Asia (Singapore)                                        41.02
-Japan (Tokyo/Osaka)                                     63.17
-Oceania (AU/NZ)                             could not connect
+Region                           Download (MiB/s)   Min ms   Max ms
+------------------------------ ------------------ -------- --------
+North America (US East)                    112.40       14      132
+Europe (Germany/central)                    98.75       21       30
+Asia (Singapore)                            41.02      168      190
+Japan (Tokyo/Osaka)                         63.17      110      140
+Oceania (AU/NZ)                                   could not connect
 
 Upload (500 MiB to nearest Cloudflare edge): 47.66 MiB/s
 ```
 
-- **The table is two columns.** A region that failed shows its reason **in red,
-  where the number would have been** — there is no separate failure column. The
-  reason comes from the HTTP status or `curl`'s exit code and error text, so a
-  failure tells you *why* rather than just *that*.
+- **Four columns: region, download rate, and Min/Max latency.** `Min ms` and
+  `Max ms` are the fastest and slowest **TCP round-trip** (the connect handshake)
+  among that region's mirrors, so they show the spread of your connectivity to the
+  region — a low min with a high max means one mirror is much closer than another.
+- **The download column's unit follows `--mbps`** — it reads `Download (MiB/s)` by
+  default, or `Download (Mbps)` when that flag is set.
+- **A region that failed shows its reason in red**, spanning the three data columns
+  where the numbers would have been. The reason comes from the HTTP status or
+  `curl`'s exit code and error text, so a failure tells you *why*, not just *that*.
 - **The table is downloads only.** Upload is a single measurement against the
   nearest Cloudflare edge, so it belongs to the machine rather than to any region —
   it is reported on its own line under the table instead of being repeated across
@@ -162,6 +177,7 @@ Everything tunable sits at the top of the script:
 | `MODE`       | `time`                      | `time` or `size`; set on the CLI by `--time-box` / `--file-size`   |
 | `TIMEBOX_S`  | `10`                        | time-box seconds (or `--time-box=DUR`)                             |
 | `SIZE_BYTES` | `512 MiB`                   | size-mode byte cap (or `--file-size=SZ`)                           |
+| `UNIT`       | `mib`                       | rate unit `mib` (MiB/s) or `mbps` (Mbps); `--mbps` sets `mbps`     |
 | `UL_MB`      | `500`                       | upload payload size in MiB                                         |
 | `DL_TIMEOUT` | `90`                        | hard per-connection cap in size mode (time mode uses the time-box) |
 | `TMPBASE`    | `/dev/shm`                  | preferred scratch location for the upload payload                 |

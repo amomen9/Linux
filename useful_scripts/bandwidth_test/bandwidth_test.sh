@@ -17,6 +17,9 @@ MODE=time
 TIMEBOX_S="$DEF_TIMEBOX_S"
 SIZE_BYTES="$DEF_SIZE_BYTES"
 
+# Rate unit for reported speeds: "mib" (MiB/s, default) or "mbps" (Mbps), via --mbps.
+UNIT=mib
+
 # ---------- Command-line arguments ----------
 usage() {
   cat >&2 <<EOF
@@ -28,6 +31,7 @@ Usage: ${0##*/} [options]
       --file-size[=SZ]  instead, download up to SZ per region (default: 512MiB). Its
                         bar fills to 100% at SZ. Units: KiB/MiB/GiB or KB/MB/GB; a
                         bare number is MiB.
+      --mbps            report speeds in Mbps (megabits/s) instead of MiB/s
   -h, --help            show this help and exit
 
 Both limits are caps: a region may finish sooner (a fast link empties the file),
@@ -79,6 +83,7 @@ while [ "$#" -gt 0 ]; do
     --time-box=*)  MODE=time; TIMEBOX_S=$(parse_time "${1#*=}") || exit 2; shift ;;
     --file-size)   MODE=size; shift ;;
     --file-size=*) MODE=size; SIZE_BYTES=$(parse_size "${1#*=}") || exit 2; shift ;;
+    --mbps)        UNIT=mbps; shift ;;
     -h|--help)
       usage; exit 0 ;;
     --)
@@ -96,6 +101,8 @@ esac
 [ "$CONN" -le 64 ] || { echo "Error: --connections capped at 64 (got '$CONN')." >&2; exit 2; }
 [ "$SIZE_BYTES" -ge 1048576 ] || { echo "Error: --file-size must be at least 1 MiB." >&2; exit 2; }
 [ "$TIMEBOX_S" -ge 1 ]        || { echo "Error: --time-box must be at least 1 second." >&2; exit 2; }
+
+if [ "$UNIT" = "mbps" ]; then UNIT_LABEL="Mbps"; else UNIT_LABEL="MiB/s"; fi
 
 # Downloads are streamed to /dev/null, so they need no scratch space at all.
 # Only the upload payload is written to disk, and it is the sole size requirement.
@@ -193,9 +200,12 @@ bar_render() {  # $1=label $2=pct $3=bytes $4=elapsed us
   for ((i = 0; i < 24; i++)); do
     if [ "$i" -lt "$filled" ]; then bar+='#'; else bar+='.'; fi
   done
-  [ "$4" -gt 0 ] && sp100=$(( $3 * 100000000 / 1048576 / $4 ))
-  printf '\r  %-28.28s [%s] %3d%%  %5d MiB  %d.%02d MiB/s\033[K' \
-         "$1" "$bar" "$pct" "$(( $3 / 1048576 ))" "$(( sp100 / 100 ))" "$(( sp100 % 100 ))" >&2
+  # sp100 is the rate x100 (for two decimals). MiB/s = bytes/MiB/s; Mbps = bytes*8/1e6/s.
+  if [ "$4" -gt 0 ]; then
+    if [ "$UNIT" = "mbps" ]; then sp100=$(( $3 * 800 / $4 )); else sp100=$(( $3 * 100000000 / 1048576 / $4 )); fi
+  fi
+  printf '\r  %-28.28s [%s] %3d%%  %5d MiB  %d.%02d %s\033[K' \
+         "$1" "$bar" "$pct" "$(( $3 / 1048576 ))" "$(( sp100 / 100 ))" "$(( sp100 % 100 ))" "$UNIT_LABEL" >&2
 }
 
 bar_finish() {  # $1=label $2=bytes $3=elapsed us -> draw a full 100% bar and keep the line
@@ -297,12 +307,18 @@ curl_reason() {  # $1=exit code [$2=stderr file] -> short human reason
 }
 
 # ---------- Measurement ----------
-probe() {  # $1=url -> "206|SIZE" (ranges work) | "200|SIZE" (no ranges) | "FAILED|reason"
-  local code rc size='' hdr="$SCRATCH/probe.hdr" err="$SCRATCH/probe.err"
-  code=$(curl -sS --location --range 0-1023 -D "$hdr" -o /dev/null -w '%{http_code}' \
-              --connect-timeout 15 --max-time 30 "$1" 2>"$err")
+probe() {  # $1=url -> "206|SIZE|RTTMS" | "200|SIZE|RTTMS" | "FAILED|reason"
+  local out rc code tconn tname rtt='' size='' hdr="$SCRATCH/probe.hdr" err="$SCRATCH/probe.err"
+  out=$(curl -sS --location --range 0-1023 -D "$hdr" -o /dev/null \
+             -w '%{http_code} %{time_connect} %{time_namelookup}' \
+             --connect-timeout 15 --max-time 30 "$1" 2>"$err")
   rc=$?
   [ "$rc" -ne 0 ] && { echo "FAILED|$(curl_reason "$rc" "$err")"; return; }
+  code=""; tconn=0; tname=0; read -r code tconn tname <<< "$out"
+  # Latency ~ the TCP handshake: connect time minus DNS lookup, one round trip, in
+  # whole milliseconds. curl may print these with a locale comma, so normalise.
+  tconn="${tconn/,/.}"; tname="${tname/,/.}"
+  rtt=$(awk -v c="${tconn:-0}" -v n="${tname:-0}" 'BEGIN{ d=(c-n)*1000; if(d<0)d=0; printf "%.0f", d }')
   # File size: prefer the total after the slash in a 206 Content-Range header
   # (bytes 0-1023/TOTAL); fall back to Content-Length. Take the last match so a
   # redirect's final hop wins, and match case-insensitively without gawk's
@@ -310,8 +326,8 @@ probe() {  # $1=url -> "206|SIZE" (ranges work) | "200|SIZE" (no ranges) | "FAIL
   size=$(awk 'tolower($0) ~ /^content-range:/ { n=split($0,a,"/"); if(n>=2){s=a[n]; gsub(/[^0-9]/,"",s); if(s!="") v=s} } END{ if(v!="") print v }' "$hdr")
   [ -n "$size" ] || size=$(awk 'tolower($0) ~ /^content-length:/ { s=$2; gsub(/[^0-9]/,"",s); if(s!="") v=s } END{ if(v!="") print v }' "$hdr")
   case "$code" in
-    206)     echo "206|$size" ;;
-    200)     echo "200|$size" ;;
+    206)     echo "206|$size|$rtt" ;;
+    200)     echo "200|$size|$rtt" ;;
     404|410) echo "FAILED|file missing on server ($code)" ;;
     401|403) echo "FAILED|server refused request ($code)" ;;
     5??)     echo "FAILED|server error ($code)" ;;
@@ -320,11 +336,12 @@ probe() {  # $1=url -> "206|SIZE" (ranges work) | "200|SIZE" (no ranges) | "FAIL
   esac
 }
 
-dl_speed() {  # $1=label $2..=one or more distinct target URLs -> "MiB/s|" or "FAILED|reason"
+dl_speed() {  # $1=label $2..=distinct URLs -> "SPEED||MINMS|MAXMS" or "FAILED|reason|MINMS|MAXMS"
   local label="$1"; shift
   local -a urls=("$@")
   local rc=0 w sum=0 b s_us e_us el code code0=000 i u slot Su Cu seg start end range
   local basis btotal ttotal maxt per_conn nconn totsize p m sz first_reason=""
+  local rest rt rmin='' rmax='' spdval
 
   # Clear before probing, so a probe failure cannot leave the previous region's
   # connection logs lying around for the debug dump to pick up.
@@ -334,6 +351,8 @@ dl_speed() {  # $1=label $2..=one or more distinct target URLs -> "MiB/s|" or "F
   # Spreading a region across several distinct hosts is what defeats a per-host
   # concurrency cap (e.g. Hetzner serves only 2 connections per IP): the other
   # hosts carry the rest instead of the region collapsing to two connections.
+  # Each probe also returns a round-trip latency (TCP handshake) to that host; the
+  # region's min and max across its usable mirrors become the two latency columns.
   local -a uurl=() umode=() usize=()
   for u in "${urls[@]}"; do
     p=$(probe "$u"); m="${p%%|*}"
@@ -341,12 +360,18 @@ dl_speed() {  # $1=label $2..=one or more distinct target URLs -> "MiB/s|" or "F
       [ -z "$first_reason" ] && first_reason="${p#*|}"
       continue
     fi
-    sz="${p#*|}"; case "$sz" in ''|*[!0-9]*) sz=0 ;; esac
+    rest="${p#*|}"; sz="${rest%%|*}"; rt="${rest#*|}"
+    case "$sz" in ''|*[!0-9]*) sz=0 ;; esac
+    case "$rt" in ''|*[!0-9]*) rt='' ;; esac
     uurl+=("$u"); umode+=("$m"); usize+=("$sz")
+    if [ -n "$rt" ]; then
+      { [ -z "$rmin" ] || [ "$rt" -lt "$rmin" ]; } && rmin="$rt"
+      { [ -z "$rmax" ] || [ "$rt" -gt "$rmax" ]; } && rmax="$rt"
+    fi
   done
   local nurls=${#uurl[@]}
   if [ "$nurls" -eq 0 ]; then
-    echo "FAILED|${first_reason:-no usable target}"
+    echo "FAILED|${first_reason:-no usable target}|$rmin|$rmax"
     return
   fi
 
@@ -417,9 +442,9 @@ dl_speed() {  # $1=label $2..=one or more distinct target URLs -> "MiB/s|" or "F
   if [ "$sum" -le 0 ]; then
     bar_clear
     if [ "${code0:-000}" -ge 400 ] 2>/dev/null; then
-      echo "FAILED|server error ($code0)"
+      echo "FAILED|server error ($code0)|$rmin|$rmax"
     else
-      echo "FAILED|$(curl_reason "$rc" "$SCRATCH/c0.err")"
+      echo "FAILED|$(curl_reason "$rc" "$SCRATCH/c0.err")|$rmin|$rmax"
     fi
     return
   fi
@@ -427,7 +452,8 @@ dl_speed() {  # $1=label $2..=one or more distinct target URLs -> "MiB/s|" or "F
   # Snap the bar to a full 100% on success -- an early finish (cap not reached)
   # still shows a completed bar, on its own line.
   bar_finish "$label" "$sum" "$el"
-  awk -v b="$sum" -v us="$el" 'BEGIN{ printf "%.2f|", b / (us / 1000000) / 1048576 }'
+  spdval=$(awk -v b="$sum" -v us="$el" -v u="$UNIT" 'BEGIN{ bps=b/(us/1000000); if(u=="mbps") printf "%.2f", bps*8/1000000; else printf "%.2f", bps/1048576 }')
+  echo "$spdval||$rmin|$rmax"
 }
 
 ul_speed() {  # -> "MiB/s|" or "FAILED|reason", to the nearest Cloudflare edge
@@ -467,7 +493,7 @@ ul_speed() {  # -> "MiB/s|" or "FAILED|reason", to the nearest Cloudflare edge
   else
     el=$(( e_us - s_us )); [ "$el" -le 0 ] && el=1
     bar_finish "upload to nearest edge" "$payload" "$el"
-    awk -v b="$bps" 'BEGIN{ printf "%.2f|", b / 1048576 }'
+    awk -v b="$bps" -v u="$UNIT" 'BEGIN{ if(u=="mbps") printf "%.2f|", b*8/1000000; else printf "%.2f|", b/1048576 }'
   fi
 }
 
@@ -487,7 +513,7 @@ fi
 [ "$TTY" -eq 1 ] && printf '%sMeasuring %d regions (%s over %d connections), then one %d MiB upload...%s\n\n' \
   "$DIM" "${#TARGETS[@]}" "$MODE_DESC" "$CONN" "$UL_MB" "$RST"
 
-declare -a R_LABEL=() R_VAL=() R_REASON=()
+declare -a R_LABEL=() R_VAL=() R_REASON=() R_MIN=() R_MAX=()
 failures=0
 
 for entry in "${TARGETS[@]}"; do
@@ -495,8 +521,9 @@ for entry in "${TARGETS[@]}"; do
   label="${parts[0]}"; urls=("${parts[@]:1}")
   idx=${#R_LABEL[@]}
   raw=$(dl_speed "$label" "${urls[@]}")
-  R_LABEL+=("$label"); R_VAL+=("${raw%%|*}"); R_REASON+=("${raw#*|}")
-  [ "${raw%%|*}" = "FAILED" ] && failures=$(( failures + 1 ))
+  IFS='|' read -r rv rrsn rmn rmx <<< "$raw"
+  R_LABEL+=("$label"); R_VAL+=("$rv"); R_REASON+=("$rrsn"); R_MIN+=("$rmn"); R_MAX+=("$rmx")
+  [ "$rv" = "FAILED" ] && failures=$(( failures + 1 ))
   # Keep this region's errors: the shared c*.err files are reused by the next one.
   cat "$SCRATCH/probe.err" "$SCRATCH/c0.err" 2>/dev/null | head -n 4 >"$SCRATCH/row$idx.err"
 done
@@ -506,23 +533,29 @@ ul_raw=$(ul_speed); ul="${ul_raw%%|*}"; ul_reason="${ul_raw#*|}"
 rm -f "$UPFILE"
 
 # ---------- Summary ----------
-# One measurement column: a failed region shows its reason where the number would
-# have been, so the table stays two columns wide.
-DLW=30
-DASH=$(printf '%*s' "$DLW" ''); DASH="${DASH// /-}"
+# Four columns: region, download rate, and the min/max round-trip latency across the
+# region's mirrors. A failed region shows its reason (in red) spanning the three data
+# columns, so the layout stays put.
+DLW=18; LATW=8
+RSW=$(( DLW + 1 + LATW + 1 + LATW ))
+DLDASH=$(printf '%*s' "$DLW" ''); DLDASH="${DLDASH// /-}"
+LDASH=$(printf '%*s' "$LATW" ''); LDASH="${LDASH// /-}"
 
-cell() {  # $1=text $2=1 when this is a failure -> right-aligned in DLW, red if failed
-  local padded; printf -v padded "%${DLW}.${DLW}s" "$1"
-  if [ "$2" = "1" ]; then printf '%s' "${RED}${padded}${RST}"; else printf '%s' "$padded"; fi
+cell() {  # $1=text $2=width $3=1 when this is a failure -> right-aligned, red if failed
+  local padded; printf -v padded "%${2}.${2}s" "$1"
+  if [ "$3" = "1" ]; then printf '%s' "${RED}${padded}${RST}"; else printf '%s' "$padded"; fi
 }
 
-printf "%-30s %${DLW}s\n" "Region" "Download (MiB/s)"
-printf '%-30s %s\n' "------------------------------" "$DASH"
+printf "%-30s %${DLW}s %${LATW}s %${LATW}s\n" "Region" "Download ($UNIT_LABEL)" "Min ms" "Max ms"
+printf '%-30s %s %s %s\n' "------------------------------" "$DLDASH" "$LDASH" "$LDASH"
 for i in "${!R_LABEL[@]}"; do
   if [ "${R_VAL[i]}" = "FAILED" ]; then
-    printf '%-30s %s\n' "${R_LABEL[i]}" "$(cell "${R_REASON[i]}" 1)"
+    printf '%-30s %s\n' "${R_LABEL[i]}" "$(cell "${R_REASON[i]}" "$RSW" 1)"
   else
-    printf '%-30s %s\n' "${R_LABEL[i]}" "$(cell "${R_VAL[i]}" 0)"
+    printf '%-30s %s %s %s\n' "${R_LABEL[i]}" \
+      "$(cell "${R_VAL[i]}" "$DLW" 0)" \
+      "$(cell "${R_MIN[i]:--}" "$LATW" 0)" \
+      "$(cell "${R_MAX[i]:--}" "$LATW" 0)"
   fi
   if [ "$BW_DEBUG" = "1" ] && [ "${R_VAL[i]}" = "FAILED" ] && [ -s "$SCRATCH/row$i.err" ]; then
     sed -e 's/^/    /' "$SCRATCH/row$i.err"
@@ -535,7 +568,7 @@ if [ "$ul" = "FAILED" ]; then
          "$UL_MB" "$RED" "$ul_reason" "$RST"
   [ "$BW_DEBUG" = "1" ] && [ -s "$SCRATCH/ul.err" ] && head -n 4 "$SCRATCH/ul.err" | sed -e 's/^/    /'
 else
-  printf 'Upload (%s MiB to nearest Cloudflare edge): %s MiB/s\n' "$UL_MB" "$ul"
+  printf 'Upload (%s MiB to nearest Cloudflare edge): %s %s\n' "$UL_MB" "$ul" "$UNIT_LABEL"
 fi
 
 echo
@@ -549,6 +582,7 @@ else
 fi
 echo "to disk. Upload is measured once, against the nearest Cloudflare edge rather than"
 echo "against each region: it describes your server's uplink, not the path to any row."
+echo "Min/Max ms are the fastest and slowest TCP round-trip among that region's mirrors."
 if [ "$failures" -gt 0 ] && [ "$BW_DEBUG" != "1" ]; then
   echo
   printf '%s\n' "${DIM}Re-run with BW_DEBUG=1 ./bandwidth_test.sh to see the raw curl errors.${RST}"
