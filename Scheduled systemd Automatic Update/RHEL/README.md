@@ -3,6 +3,11 @@
 This is the RHEL / Fedora family (RHEL, CentOS Stream, Rocky, AlmaLinux, Fedora)
  counterpart of the [Debian](../Debian/README.md) setup. It uses `dnf` instead of `apt`.
 
+> **Tip:** To install these units automatically on either Debian- or RHEL-family
+> systems, use the cross-platform [`install_system_maintenance.sh`](../install_system_maintenance.sh)
+> script (see the [top-level README](../README.md)). The rest of this document
+> describes the units and their manual installation.
+
 Install service files contained within the `service files` directory. Use `Systemd Service and Timer` instructions for help if needed.
  You can find it on the following link:
 
