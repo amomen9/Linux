@@ -150,17 +150,17 @@ Upload (500 MiB to nearest Cloudflare edge): 47.66 MiB/s
 
 ### Failure reasons you may see
 
-| Reason                         | What it usually means                                                       |
-| ------------------------------ | --------------------------------------------------------------------------- |
-| `file missing on server (404)` | the provider retired or renamed the test file — update the URL in `TARGETS` |
-| `server refused request (403)` | the provider blocks your IP range or requires a referrer                    |
-| `server error (503)`           | the test host is overloaded or rate-limiting you; try again later           |
-| `DNS lookup failed`            | no resolver, or that region's host no longer exists                         |
-| `TLS certificate rejected`     | missing or stale CA bundle on this machine                                  |
-| `could not connect`            | the host is unreachable, or a firewall is dropping the traffic              |
-| `connection reset by peer`     | the far end dropped the transfer mid-flight                                 |
-| `timed out with no data`       | the connection opened but nothing ever arrived                              |
-| `upload rejected (HTTP ...)`   | the upload sink refused the request; check `UPLOAD_URL`                     |
+| Reason                           | What it usually means                                                         |
+| -------------------------------- | ----------------------------------------------------------------------------- |
+| `file missing on server (404)` | the provider retired or renamed the test file — update the URL in`TARGETS` |
+| `server refused request (403)` | the provider blocks your IP range or requires a referrer                      |
+| `server error (503)`           | the test host is overloaded or rate-limiting you; try again later             |
+| `DNS lookup failed`            | no resolver, or that region's host no longer exists                           |
+| `TLS certificate rejected`     | missing or stale CA bundle on this machine                                    |
+| `could not connect`            | the host is unreachable, or a firewall is dropping the traffic                |
+| `connection reset by peer`     | the far end dropped the transfer mid-flight                                   |
+| `timed out with no data`       | the connection opened but nothing ever arrived                                |
+| `upload rejected (HTTP ...)`   | the upload sink refused the request; check`UPLOAD_URL`                      |
 
 If **every** row fails with the same reason, suspect this machine — its resolver, its
 CA bundle, or its egress firewall — rather than eight unrelated providers.
@@ -171,18 +171,18 @@ CA bundle, or its egress firewall — rather than eight unrelated providers.
 
 Everything tunable sits at the top of the script:
 
-| Variable     | Default                     | Meaning                                             |
-| ------------ | --------------------------- | --------------------------------------------------- |
-| `CONN`       | `8`                         | parallel connections per region (or `-c N` on the CLI)             |
-| `MODE`       | `time`                      | `time` or `size`; set on the CLI by `--time-box` / `--file-size`   |
-| `TIMEBOX_S`  | `10`                        | time-box seconds (or `--time-box=DUR`)                             |
-| `SIZE_BYTES` | `512 MiB`                   | size-mode byte cap (or `--file-size=SZ`)                           |
-| `UNIT`       | `mib`                       | rate unit `mib` (MiB/s) or `mbps` (Mbps); `--mbps` sets `mbps`     |
-| `UL_MB`      | `500`                       | upload payload size in MiB                                         |
-| `DL_TIMEOUT` | `90`                        | hard per-connection cap in size mode (time mode uses the time-box) |
-| `TMPBASE`    | `/dev/shm`                  | preferred scratch location for the upload payload                 |
-| `UPLOAD_URL` | `speed.cloudflare.com/__up` | upload sink                                                        |
-| `TARGETS`    | eight `Region\|url1\|url2\|...` rows | each region lists several distinct-host mirrors        |
+| Variable       | Default                            | Meaning                                                                  |
+| -------------- | ---------------------------------- | ------------------------------------------------------------------------ |
+| `CONN`       | `8`                              | parallel connections per region (or`-c N` on the CLI)                  |
+| `MODE`       | `time`                           | `time` or `size`; set on the CLI by `--time-box` / `--file-size` |
+| `TIMEBOX_S`  | `10`                             | time-box seconds (or`--time-box=DUR`)                                  |
+| `SIZE_BYTES` | `512 MiB`                        | size-mode byte cap (or`--file-size=SZ`)                                |
+| `UNIT`       | `mib`                            | rate unit`mib` (MiB/s) or `mbps` (Mbps); `--mbps` sets `mbps`    |
+| `UL_MB`      | `500`                            | upload payload size in MiB                                               |
+| `DL_TIMEOUT` | `90`                             | hard per-connection cap in size mode (time mode uses the time-box)       |
+| `TMPBASE`    | `/dev/shm`                       | preferred scratch location for the upload payload                        |
+| `UPLOAD_URL` | `speed.cloudflare.com/__up`      | upload sink                                                              |
+| `TARGETS`    | eight`Region\|url1\|url2\|...` rows | each region lists several distinct-host mirrors                          |
 
 Each `TARGETS` row is `Region|url1|url2|...`: the region label followed by one or
 more mirror URLs on **distinct hosts** near that region. The connections are spread
@@ -251,10 +251,6 @@ measuring different things:
 It depends on what you want the number to be reliable *about* — so here is the honest
 split rather than a blanket winner:
 
-- For your **raw local line capacity**, Ookla is the more reliable figure here: it
-  saturated the 6 Gbps link, which this script deliberately cannot, because distant
-  rate-limited public mirrors and high round-trip times cap each connection well below
-  the line.
 - For **real-world, everyday throughput**, this script is the more reliable guide, in
   two ways a single-server test is not:
   - **It is much harder to game.** ISPs are known to prioritise or zero-rate traffic
@@ -264,10 +260,10 @@ split rather than a blanket winner:
   - **It measures many real destinations, not one best case.** A single nearby server
     can look excellent while your actual transfers to other continents crawl — exactly
     the spread the per-region table exposes, and exactly what a one-number test hides.
+- For your **own** **raw local line capacity (your server/workstation interface)**, Ookla gives higher rates, but even for the purpose of filling your local bandwidth capacity with a **stress test**, Ookla is not the solution. Because you could choose custom destinations in the same datacenter. 
+  Ookla saturates the 6 Gbps link, which this script deliberately cannot and does not intend to, because distant rate-limited public mirrors and high round-trip times cap each connection well below the line.
 
-So neither result is "wrong": Ookla is the better measure of your line's ceiling,
-while this script is the more reliable, harder-to-game picture of the throughput your
-real traffic will see across the world.
+So this script is the more reliable, harder-to-game picture of **the throughput your real traffic will see across the world**.
 
 ---
 
