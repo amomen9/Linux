@@ -13,6 +13,8 @@
 #   3. install_packages/Install_Docker_Engine/install_docker_engine.sh
 #   4. maintenance/Scheduled_systemd_Automatic_Update/install_system_maintenance.sh
 #   5. useful_scripts/bandwidth_test/bandwidth_test.sh
+#   6. useful_scripts/Prepare_X11/prepare_x11.sh
+#   7. useful_scripts/OS_Config/os_config.sh
 #
 # Supported families: Debian/Ubuntu (apt) . RHEL/Fedora (dnf/yum) .
 # Arch (pacman) . openSUSE/SUSE (zypper) . Alpine (apk)* . Gentoo (emerge)* .
@@ -41,6 +43,8 @@ VNC_SCRIPT="${REPO_ROOT}/install_packages/Install_and_Setup_TigerVNC_Server/setu
 DOCKER_SCRIPT="${REPO_ROOT}/install_packages/Install_Docker_Engine/install_docker_engine.sh"
 MAINTENANCE_SCRIPT="${REPO_ROOT}/maintenance/Scheduled_systemd_Automatic_Update/install_system_maintenance.sh"
 BANDWIDTH_SCRIPT="${REPO_ROOT}/useful_scripts/bandwidth_test/bandwidth_test.sh"
+PREPARE_X11_SCRIPT="${REPO_ROOT}/useful_scripts/Prepare_X11/prepare_x11.sh"
+OS_CONFIG_SCRIPT="${REPO_ROOT}/useful_scripts/OS_Config/os_config.sh"
 
 # --- default arguments passed to each sub-script (edit to taste) -----------
 DESKTOP_ARGS=(--minimal --desktop xfce)
@@ -48,6 +52,8 @@ VNC_ARGS=()
 DOCKER_ARGS=()
 MAINTENANCE_ARGS=(--update --restart)
 BANDWIDTH_ARGS=(--mbps)
+PREPARE_X11_ARGS=()
+OS_CONFIG_ARGS=()
 
 # --------------------------------- defaults ----------------------------------
 DRY_RUN=0        # print commands without running them?
@@ -59,6 +65,8 @@ DO_VNC=1         # step 2: setup-vnc-combined.sh
 DO_DOCKER=1      # step 3: install_docker_engine.sh
 DO_MAINTENANCE=1 # step 4: install_system_maintenance.sh
 DO_BANDWIDTH=1   # step 5: bandwidth_test.sh
+DO_PREPARE_X11=1 # step 6: prepare_x11.sh
+DO_OS_CONFIG=1   # step 7: os_config.sh
 
 FAMILY=""        # debian | rhel | arch | suse | alpine | gentoo | slackware
 DISTRO_ID=""     # /etc/os-release ID
@@ -93,7 +101,8 @@ Usage: initiate_os_script.sh [options]
 
 Updates the system, then runs (in order): the minimum-UI desktop installer,
 the TigerVNC setup, the Docker Engine installer, the scheduled-maintenance
-installer, and the bandwidth test -- all from this repository.
+installer, the bandwidth test, the X11 preparation script, and the OS config
+script -- all from this repository.
 
 By default, nothing prompts for confirmation: this script proceeds
 automatically, and -y is forwarded to the sub-scripts that support it
@@ -106,6 +115,8 @@ Options:
   --skip-docker         Skip step 3 (install_docker_engine.sh).
   --skip-maintenance    Skip step 4 (install_system_maintenance.sh).
   --skip-bandwidth      Skip step 5 (bandwidth_test.sh).
+  --skip-x11            Skip step 6 (prepare_x11.sh).
+  --skip-os-config      Skip step 7 (os_config.sh).
   --dry-run             Print every command without executing anything
                           (does not require root).
   --prompt              Ask for confirmation before proceeding, instead of
@@ -138,6 +149,8 @@ while [ "$#" -gt 0 ]; do
         --skip-docker)      DO_DOCKER=0 ;;
         --skip-maintenance) DO_MAINTENANCE=0 ;;
         --skip-bandwidth)   DO_BANDWIDTH=0 ;;
+        --skip-x11)         DO_PREPARE_X11=0 ;;
+        --skip-os-config)   DO_OS_CONFIG=0 ;;
         --dry-run)          DRY_RUN=1 ;;
         --prompt)           PROMPT=1 ;;
         -h|--help)          usage; exit 0 ;;
@@ -242,6 +255,8 @@ log "Step 2 VNC server            : $([ "$DO_VNC" -eq 1 ] && echo yes || echo "s
 log "Step 3 Docker Engine         : $([ "$DO_DOCKER" -eq 1 ] && echo yes || echo "skip")"
 log "Step 4 scheduled maintenance : $([ "$DO_MAINTENANCE" -eq 1 ] && echo yes || echo "skip")"
 log "Step 5 bandwidth test        : $([ "$DO_BANDWIDTH" -eq 1 ] && echo yes || echo "skip")"
+log "Step 6 prepare X11           : $([ "$DO_PREPARE_X11" -eq 1 ] && echo yes || echo "skip")"
+log "Step 7 OS config             : $([ "$DO_OS_CONFIG" -eq 1 ] && echo yes || echo "skip")"
 [ "$DRY_RUN" -eq 1 ] && warn "DRY-RUN: no changes will be made."
 
 # Root is required for real runs (package installs + system config).
@@ -265,6 +280,8 @@ fi
 [ "$DO_DOCKER" -eq 1 ]      && require_script "$DOCKER_SCRIPT"
 [ "$DO_MAINTENANCE" -eq 1 ] && require_script "$MAINTENANCE_SCRIPT"
 [ "$DO_BANDWIDTH" -eq 1 ]   && require_script "$BANDWIDTH_SCRIPT"
+[ "$DO_PREPARE_X11" -eq 1 ] && require_script "$PREPARE_X11_SCRIPT"
+[ "$DO_OS_CONFIG" -eq 1 ]   && require_script "$OS_CONFIG_SCRIPT"
 
 # --------------------------------- execute -----------------------------------
 if [ "$DO_UPDATE" -eq 1 ]; then
@@ -273,20 +290,22 @@ if [ "$DO_UPDATE" -eq 1 ]; then
     update_system
 fi
 
-[ "$DO_DESKTOP" -eq 1 ] && { run chmod +x "$DESKTOP_SCRIPT"; run_step 1 5 "Minimum-UI desktop (install_server_with_minimum_ui.sh)" "$DESKTOP_SCRIPT" "${DESKTOP_ARGS[@]}"; }
-[ "$DO_VNC" -eq 1 ]     && { run chmod +x "$VNC_SCRIPT";     run_step 2 5 "TigerVNC server (setup-vnc-combined.sh)"              "$VNC_SCRIPT"     "${VNC_ARGS[@]}"; }
-[ "$DO_DOCKER" -eq 1 ]  && { run chmod +x "$DOCKER_SCRIPT";  run_step 3 5 "Docker Engine (install_docker_engine.sh)"            "$DOCKER_SCRIPT"  "${DOCKER_ARGS[@]}"; }
+[ "$DO_DESKTOP" -eq 1 ] && { run chmod +x "$DESKTOP_SCRIPT"; run_step 1 7 "Minimum-UI desktop (install_server_with_minimum_ui.sh)" "$DESKTOP_SCRIPT" "${DESKTOP_ARGS[@]}"; }
+[ "$DO_VNC" -eq 1 ]     && { run chmod +x "$VNC_SCRIPT";     run_step 2 7 "TigerVNC server (setup-vnc-combined.sh)"              "$VNC_SCRIPT"     "${VNC_ARGS[@]}"; }
+[ "$DO_DOCKER" -eq 1 ]  && { run chmod +x "$DOCKER_SCRIPT";  run_step 3 7 "Docker Engine (install_docker_engine.sh)"            "$DOCKER_SCRIPT"  "${DOCKER_ARGS[@]}"; }
 
 if [ "$DO_MAINTENANCE" -eq 1 ]; then
     run chmod +x "$MAINTENANCE_SCRIPT"
     case "$FAMILY" in
-        debian|rhel) run_step 4 5 "Scheduled maintenance (install_system_maintenance.sh)" "$MAINTENANCE_SCRIPT" "${MAINTENANCE_ARGS[@]}" ;;
+        debian|rhel) run_step 4 7 "Scheduled maintenance (install_system_maintenance.sh)" "$MAINTENANCE_SCRIPT" "${MAINTENANCE_ARGS[@]}" ;;
         *) printf '\n--------------------------------------------------------------------------------\n'
-           warn "Step 4/5: install_system_maintenance.sh only supports Debian/RHEL; skipping on '$FAMILY'." ;;
+           warn "Step 4/7: install_system_maintenance.sh only supports Debian/RHEL; skipping on '$FAMILY'." ;;
     esac
 fi
 
-[ "$DO_BANDWIDTH" -eq 1 ] && { run chmod +x "$BANDWIDTH_SCRIPT"; run_step 5 5 "Bandwidth test (bandwidth_test.sh)" "$BANDWIDTH_SCRIPT" "${BANDWIDTH_ARGS[@]}"; }
+[ "$DO_BANDWIDTH" -eq 1 ]   && { run chmod +x "$BANDWIDTH_SCRIPT";   run_step 5 7 "Bandwidth test (bandwidth_test.sh)"     "$BANDWIDTH_SCRIPT"   "${BANDWIDTH_ARGS[@]}"; }
+[ "$DO_PREPARE_X11" -eq 1 ] && { run chmod +x "$PREPARE_X11_SCRIPT"; run_step 6 7 "Prepare X11 (prepare_x11.sh)"          "$PREPARE_X11_SCRIPT" "${PREPARE_X11_ARGS[@]}"; }
+[ "$DO_OS_CONFIG" -eq 1 ]   && { run chmod +x "$OS_CONFIG_SCRIPT";   run_step 7 7 "OS config (os_config.sh)"              "$OS_CONFIG_SCRIPT"   "${OS_CONFIG_ARGS[@]}"; }
 
 printf '\n--------------------------------------------------------------------------------\n'
 log "Done."

@@ -11,6 +11,8 @@ scripts from this repository **in order**:
 | 3 | [`install_packages/Install_Docker_Engine/install_docker_engine.sh`](../../install_packages/Install_Docker_Engine/install_docker_engine.sh) | Installs Docker Engine + Compose |
 | 4 | [`maintenance/Scheduled_systemd_Automatic_Update/install_system_maintenance.sh`](../../maintenance/Scheduled_systemd_Automatic_Update/install_system_maintenance.sh) | Installs scheduled-update / scheduled-reboot systemd timers |
 | 5 | [`useful_scripts/bandwidth_test/bandwidth_test.sh`](../bandwidth_test/bandwidth_test.sh) | Runs a multi-region bandwidth test |
+| 6 | [`useful_scripts/Prepare_X11/prepare_x11.sh`](../Prepare_X11/prepare_x11.sh) | Prepares X11 |
+| 7 | [`useful_scripts/OS_Config/os_config.sh`](../OS_Config/os_config.sh) | Fixes ownership of the invoking user's home directory |
 
 It is cross-platform across every distribution family in
 [`Supported Distributions.txt`](../../Migrate_to_Linux/Supported%20Distributions.txt):
@@ -23,6 +25,10 @@ the system update/upgrade step uses that family's own tooling.
 > **Step 4 is Debian/RHEL only.** `install_system_maintenance.sh` itself only
 > supports the Debian and RHEL families. On every other family, step 4 is
 > skipped automatically with a warning — the rest of the plan still runs.
+
+> **Step 6 (`prepare_x11.sh`) is currently an empty placeholder.** The script
+> file exists but has no content yet; step 6 will run it (and succeed
+> trivially) until it's filled in. Use `--skip-x11` to leave it out until then.
 
 ## Quick start
 
@@ -55,6 +61,8 @@ chmod +x useful_scripts/initiate_os_script/initiate_os_script.sh && sudo useful_
 | `--skip-docker` | Skip step 3 (`install_docker_engine.sh`). | runs |
 | `--skip-maintenance` | Skip step 4 (`install_system_maintenance.sh`). | runs |
 | `--skip-bandwidth` | Skip step 5 (`bandwidth_test.sh`). | runs |
+| `--skip-x11` | Skip step 6 (`prepare_x11.sh`). | runs |
+| `--skip-os-config` | Skip step 7 (`os_config.sh`). | runs |
 | `--dry-run` | Print every command without executing anything. Does **not** require root. | off |
 | `--prompt` | Ask for confirmation before proceeding, instead of auto-approving; also leaves the desktop and Docker installers to show their own confirmation prompts (no `-y` forwarded). | auto-approved |
 | `-h`, `--help` | Show usage and exit. | — |
@@ -90,6 +98,8 @@ want different defaults:
 | `install_docker_engine.sh` | *(none)* |
 | `install_system_maintenance.sh` | `--update --restart` |
 | `bandwidth_test.sh` | `--mbps` |
+| `prepare_x11.sh` | *(none)* |
+| `os_config.sh` | *(none)* |
 
 Each sub-script has its own flags (window manager, VNC port, update
 schedule, connection count, ...) — see that script's own `--help` / README
@@ -106,6 +116,15 @@ already set in the environment, independently of `--prompt` — set
 ```bash
 chmod +x useful_scripts/initiate_os_script/initiate_os_script.sh && VNC_PASSWORD='secret' sudo -E useful_scripts/initiate_os_script/initiate_os_script.sh
 ```
+
+### Notes on the OS config step
+
+`os_config.sh` recursively `chown`s the invoking login user's home directory
+back to that user (resolved via `$SUDO_USER`, not `logname` — see
+[`OS_Config/README.md`](../OS_Config/README.md) for why). It runs last so it
+also cleans up anything earlier steps wrote there as root (e.g. VNC's
+`~/.vnc`). It also ships a library of optional, commented-out config
+recommendations — see its README for details.
 
 ## Fixed from the previous version
 
