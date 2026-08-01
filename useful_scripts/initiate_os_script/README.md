@@ -26,26 +26,23 @@ the system update/upgrade step uses that family's own tooling.
 
 ## Quick start
 
-```bash
-# Run every step, with a confirmation prompt first
-sudo ./initiate_os_script.sh
+Run these from the repository root. `chmod +x` sets the executable bit,
+which is commonly lost after checking out the repo on Windows — harmless to
+repeat, so every command below sets it first.
 
-# Same, but skip the confirmation prompt (also passed as -y to the desktop
-# and Docker installers, which prompt for confirmation themselves)
-sudo ./initiate_os_script.sh -y
+```bash
+# Run every step, no confirmation prompts (the default)
+chmod +x useful_scripts/initiate_os_script/initiate_os_script.sh && sudo useful_scripts/initiate_os_script/initiate_os_script.sh
+
+# Same, but ask for confirmation first (also leaves the desktop and Docker
+# installers to show their own confirmation prompts, instead of auto-approving)
+chmod +x useful_scripts/initiate_os_script/initiate_os_script.sh && sudo useful_scripts/initiate_os_script/initiate_os_script.sh --prompt
 
 # Preview every command without changing anything (no root needed)
-./initiate_os_script.sh --dry-run
+chmod +x useful_scripts/initiate_os_script/initiate_os_script.sh && useful_scripts/initiate_os_script/initiate_os_script.sh --dry-run
 
 # Skip steps you've already done or don't want
-sudo ./initiate_os_script.sh --skip-vnc --skip-docker
-```
-
-If the executable bit is not set (e.g. after checking out on Windows), run it
-through bash:
-
-```bash
-sudo bash initiate_os_script.sh
+chmod +x useful_scripts/initiate_os_script/initiate_os_script.sh && sudo useful_scripts/initiate_os_script/initiate_os_script.sh --skip-vnc --skip-docker
 ```
 
 ## Flags
@@ -59,14 +56,16 @@ sudo bash initiate_os_script.sh
 | `--skip-maintenance` | Skip step 4 (`install_system_maintenance.sh`). | runs |
 | `--skip-bandwidth` | Skip step 5 (`bandwidth_test.sh`). | runs |
 | `--dry-run` | Print every command without executing anything. Does **not** require root. | off |
-| `-y`, `--yes` | Skip the confirmation prompt; forwarded as `-y` to the sub-scripts that support it (desktop, Docker). | prompt |
+| `--prompt` | Ask for confirmation before proceeding, instead of auto-approving; also leaves the desktop and Docker installers to show their own confirmation prompts (no `-y` forwarded). | auto-approved |
 | `-h`, `--help` | Show usage and exit. | — |
 
 ## What the script does
 
 1. Detects the distribution family and requires root for a real run
-   (`--dry-run` is exempt); asks for confirmation unless `-y`/`--yes` is
-   given.
+   (`--dry-run` is exempt). By default it proceeds without asking, and
+   forwards `-y` to the desktop and Docker installers so their own prompts
+   are skipped too; pass `--prompt` to ask for confirmation instead (and
+   leave the sub-scripts' own prompts in place).
 2. Verifies every sub-script it's about to run actually exists, before
    touching anything.
 3. Updates and upgrades system packages with the family's own tooling
@@ -101,11 +100,11 @@ for the full list.
 `setup-vnc-combined.sh` grants access to the invoking login user (via
 `logname`) and requires a graphical desktop to already be installed (which
 step 1 provides). It prompts for a VNC password unless `$VNC_PASSWORD` is
-already set in the environment, and is **not** affected by `-y`/`--yes` — set
+already set in the environment, independently of `--prompt` — set
 `VNC_PASSWORD` beforehand for a fully non-interactive run:
 
 ```bash
-VNC_PASSWORD='secret' sudo -E ./initiate_os_script.sh -y
+chmod +x useful_scripts/initiate_os_script/initiate_os_script.sh && VNC_PASSWORD='secret' sudo -E useful_scripts/initiate_os_script/initiate_os_script.sh
 ```
 
 ## Fixed from the previous version

@@ -22,8 +22,8 @@
 # families itself; on every other family it is skipped with a warning.
 #
 # Usage:
-#   sudo ./initiate_os_script.sh                 # run every step
-#   sudo ./initiate_os_script.sh -y               # no confirmation prompts
+#   sudo ./initiate_os_script.sh                 # run every step, no prompts
+#   sudo ./initiate_os_script.sh --prompt         # ask for confirmation first
 #   ./initiate_os_script.sh --dry-run             # preview only, no root needed
 #   sudo ./initiate_os_script.sh --skip-vnc --skip-docker
 #
@@ -51,7 +51,8 @@ BANDWIDTH_ARGS=(--mbps)
 
 # --------------------------------- defaults ----------------------------------
 DRY_RUN=0        # print commands without running them?
-ASSUME_YES=0     # skip confirmation prompts? (-y / --yes) -- forwarded to sub-scripts that support it
+PROMPT=0         # ask for confirmation before proceeding? (--prompt) -- default: auto-approved.
+                 # When off (default), -y is also forwarded to the sub-scripts that support it.
 DO_UPDATE=1      # run the system update/upgrade step?
 DO_DESKTOP=1     # step 1: install_server_with_minimum_ui.sh
 DO_VNC=1         # step 2: setup-vnc-combined.sh
@@ -94,6 +95,10 @@ Updates the system, then runs (in order): the minimum-UI desktop installer,
 the TigerVNC setup, the Docker Engine installer, the scheduled-maintenance
 installer, and the bandwidth test -- all from this repository.
 
+By default, nothing prompts for confirmation: this script proceeds
+automatically, and -y is forwarded to the sub-scripts that support it
+(desktop, docker) so their own confirmation prompts are skipped too.
+
 Options:
   --skip-update         Do not update/upgrade system packages first.
   --skip-desktop        Skip step 1 (install_server_with_minimum_ui.sh).
@@ -103,21 +108,22 @@ Options:
   --skip-bandwidth      Skip step 5 (bandwidth_test.sh).
   --dry-run             Print every command without executing anything
                           (does not require root).
-  -y, --yes             Do not prompt for confirmation; forwarded as -y to the
-                          sub-scripts that support it (desktop, docker).
+  --prompt              Ask for confirmation before proceeding, instead of
+                          auto-approving; sub-scripts are also left to show
+                          their own confirmation prompts.
   -h, --help             Show this help and exit.
 
 Notes:
   * Must be run as root (unless --dry-run), e.g. via sudo.
   * The TigerVNC step grants access to the invoking login user (via `logname`)
-    and prompts for a VNC password unless $VNC_PASSWORD is already set; it is
-    not affected by -y/--yes.
+    and prompts for a VNC password unless $VNC_PASSWORD is already set; this
+    is independent of --prompt.
   * install_system_maintenance.sh only supports the Debian and RHEL families;
     on every other family, step 4 is skipped automatically with a warning.
 
 Examples:
   sudo ./initiate_os_script.sh
-  sudo ./initiate_os_script.sh -y
+  sudo ./initiate_os_script.sh --prompt
   sudo ./initiate_os_script.sh --skip-vnc --skip-docker
   ./initiate_os_script.sh --dry-run
 EOF
@@ -133,14 +139,14 @@ while [ "$#" -gt 0 ]; do
         --skip-maintenance) DO_MAINTENANCE=0 ;;
         --skip-bandwidth)   DO_BANDWIDTH=0 ;;
         --dry-run)          DRY_RUN=1 ;;
-        -y|--yes)           ASSUME_YES=1 ;;
+        --prompt)           PROMPT=1 ;;
         -h|--help)          usage; exit 0 ;;
         *)                  echo "Unknown option: $1" >&2; usage; exit 1 ;;
     esac
     shift
 done
 
-[ "$ASSUME_YES" -eq 1 ] && { DESKTOP_ARGS+=(-y); DOCKER_ARGS+=(-y); }
+[ "$PROMPT" -eq 0 ] && { DESKTOP_ARGS+=(-y); DOCKER_ARGS+=(-y); }
 
 # --------------------------- detect the distro family ------------------------
 detect_family() {
@@ -243,8 +249,8 @@ if [ "$DRY_RUN" -eq 0 ] && [ "$(id -u)" -ne 0 ]; then
     die "This script must be run as root (try: sudo $0 ...). Use --dry-run to preview."
 fi
 
-# Confirmation prompt (skipped by -y/--yes and by --dry-run).
-if [ "$DRY_RUN" -eq 0 ] && [ "$ASSUME_YES" -eq 0 ]; then
+# Confirmation prompt (shown only with --prompt; skipped by default and by --dry-run).
+if [ "$DRY_RUN" -eq 0 ] && [ "$PROMPT" -eq 1 ]; then
     printf 'Proceed with the plan above? [y/N] '
     read -r ans || ans=""
     case "$ans" in
