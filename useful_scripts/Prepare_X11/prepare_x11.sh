@@ -29,6 +29,24 @@
 #      never changes between logins (e.g. always ":10.0") and everything else
 #      checks out -- the cookie sshd wrote is for the real per-session
 #      display, not the stale one the shell forces afterwards.
+#   6. The GUI app is sandboxed (a snap, or a flatpak) and $XAUTHORITY is not
+#      set. This is THE cause when a plain X11 client (xeyes, xclock) works
+#      in the very same session where the sandboxed app fails -- that split
+#      is the tell. Inside strict snap confinement $HOME is *redirected* to
+#      SNAP_USER_DATA (/home/<user>/snap/<app>/<rev>), not the real home. Over
+#      SSH, sshd writes the cookie to ~/.Xauthority and sets DISPLAY but
+#      leaves XAUTHORITY unset, so every X client falls back to
+#      "$HOME/.Xauthority": for an unconfined binary that resolves to the real
+#      /home/<user>/.Xauthority (works), but inside the sandbox it resolves to
+#      /home/<user>/snap/<app>/<rev>/.Xauthority, which does not exist -> "No
+#      authorisation provided". Note this leaves NO AppArmor denial in dmesg,
+#      because a missing file inside an allowed directory is a plain ENOENT,
+#      not a confinement violation -- so an empty audit log does not clear
+#      this cause. The fix is to export XAUTHORITY with the ABSOLUTE real path
+#      (AppArmor's x11/unity7 rule `owner @{HOME}/.Xauthority r` permits it,
+#      since @{HOME} there is the real home), which this script installs
+#      system-wide via /etc/profile.d so it applies to every login and every
+#      sandboxed app, not just one.
 #
 # This script runs ON THE REMOTE LINUX SERVER (the machine you SSH into),
 # not on the Windows/MobaXterm side.
@@ -127,9 +145,18 @@ Options:
                        the default, so this flag does nothing extra.
   -h, --help          Show this help and exit.
 
-Fixes that need root (installing xauth, editing sshd_config, restarting
-sshd) are skipped with a clear message if not run as root -- the rest of the
-script (diagnosis, and any fix that doesn't need root) still runs normally.
+Fixes that need root (installing xauth, editing sshd_config, installing the
+XAUTHORITY profile snippet, restarting sshd) are skipped with a clear message
+if not run as root -- the rest of the script (diagnosis, and any fix that
+doesn't need root) still runs normally.
+
+Sandboxed apps: snaps and flatpaks fail with the same "No authorisation
+provided" even when xeyes/xclock work, because their $HOME is redirected
+inside the sandbox and sshd leaves XAUTHORITY unset. This script installs
+/etc/profile.d/99-x11-xauthority.sh to export XAUTHORITY with the absolute
+real path, which fixes every such app from the next login onward. A script
+cannot export into the shell that invoked it, so to fix the CURRENT session
+run:  export XAUTHORITY="$HOME/.Xauthority"
 
 Examples:
   sudo ./prepare_x11.sh          # diagnose AND fix, idempotent
@@ -247,7 +274,7 @@ x11apps_pkg_name() {  # a package providing xclock, for --test's live check
 }
 
 # ============================== 1. xauth binary ===============================
-log "1/5 -- xauth binary"
+log "1/6 -- xauth binary"
 if command -v xauth >/dev/null 2>&1; then
   ok "xauth is installed ($(command -v xauth))."
 else
@@ -264,7 +291,7 @@ else
 fi
 
 # ========================= 2. sshd X11Forwarding setting ======================
-log "2/5 -- sshd X11Forwarding"
+log "2/6 -- sshd X11Forwarding"
 EFFECTIVE_X11FWD=""
 if [ "$(id -u)" -eq 0 ]; then
   # sshd -T dumps the fully-resolved effective config (all Includes/Match
@@ -344,7 +371,7 @@ else
 fi
 
 # ============================ 3. ~/.Xauthority state ===========================
-log "3/5 -- ~/.Xauthority for user '$TARGET_USER'"
+log "3/6 -- ~/.Xauthority for user '$TARGET_USER'"
 if [ ! -e "$XAUTH_FILE" ]; then
   info "$XAUTH_FILE does not exist yet -- normal if that user hasn't logged in over SSH"
   info "with X11 forwarding since the last fix. It is created automatically at login"
@@ -392,7 +419,7 @@ info "Reminder: never launch GUI apps (e.g. midori) with sudo/su -- that drops t
 info "forwarded X11 cookie and produces this exact same error, even with a healthy setup."
 
 # ==================== 4. stale/hardcoded DISPLAY + cookie sanity ================
-log "4/5 -- \$DISPLAY sanity (stale overrides, cookie match)"
+log "4/6 -- \$DISPLAY sanity (stale overrides, cookie match)"
 
 # A hardcoded `export DISPLAY=...` in a shell startup file silently overrides
 # whatever sshd assigns for THIS session, and is the usual explanation when
@@ -437,9 +464,91 @@ elif [ -z "${DISPLAY:-}" ]; then
   info "\$DISPLAY is not set in this shell, so the cookie match can't be checked here."
 fi
 
-# ================================ 5. live test ==================================
+# ============ 5. XAUTHORITY export (sandboxed snap/flatpak apps) ==============
+log "5/6 -- XAUTHORITY export for sandboxed apps (snap/flatpak)"
+
+PROFILE_SNIPPET="/etc/profile.d/99-x11-xauthority.sh"
+
+# The snippet is deliberately POSIX sh (profile.d is sourced by dash/ash as well
+# as bash) and deliberately conservative: it only acts on an X11-forwarded login
+# that has a real cookie file, and it never overrides an XAUTHORITY that is
+# already set -- some sshd setups point that at a private temp xauth file, and
+# clobbering it would break the very thing we are fixing.
+xauthority_snippet() {
+  cat <<'SNIPPET'
+# Managed by prepare_x11.sh -- safe to remove, but do not hand-edit.
+#
+# Export XAUTHORITY with an absolute path to the real ~/.Xauthority.
+#
+# sshd sets DISPLAY for a forwarded session but leaves XAUTHORITY unset, so X
+# clients fall back to "$HOME/.Xauthority". That fallback breaks for sandboxed
+# apps: inside strict snap confinement $HOME is redirected to SNAP_USER_DATA
+# (~/snap/<app>/<rev>), where no cookie exists -- so the app reports "No
+# authorisation provided" while unconfined clients (xeyes/xclock) work fine in
+# the same session. Setting the variable explicitly makes every client, sandboxed
+# or not, look at the one real cookie file.
+if [ -n "${DISPLAY:-}" ] && [ -z "${XAUTHORITY:-}" ] && [ -f "$HOME/.Xauthority" ]; then
+    XAUTHORITY="$HOME/.Xauthority"
+    export XAUTHORITY
+fi
+SNIPPET
+}
+
+if [ -f "$PROFILE_SNIPPET" ] && xauthority_snippet | cmp -s - "$PROFILE_SNIPPET"; then
+  ok "$PROFILE_SNIPPET is already installed and up to date."
+else
+  if [ -f "$PROFILE_SNIPPET" ]; then
+    warn "$PROFILE_SNIPPET exists but differs from the current version; it will be refreshed."
+  else
+    fail "$PROFILE_SNIPPET is missing: sandboxed (snap/flatpak) apps will fail with 'No authorisation provided' even though plain X11 clients work."
+  fi
+  if [ "$DO_FIX" -eq 0 ]; then
+    info "Fix by re-running without --check: sudo $0"
+  elif [ "$DRY_RUN" -eq 1 ]; then
+    printf '%s[dry-run]%s would write the XAUTHORITY export snippet to %s (mode 644):\n' "$DIM" "$RST" "$PROFILE_SNIPPET"
+    xauthority_snippet | sed -e 's/^/      /'
+  elif [ "$HAVE_ROOT" -eq 1 ]; then
+    if xauthority_snippet > "$PROFILE_SNIPPET" && chmod 644 "$PROFILE_SNIPPET"; then
+      ok "Installed $PROFILE_SNIPPET (applies to every user, every login)."
+    else
+      fail "Could not write $PROFILE_SNIPPET."
+    fi
+  else
+    info "Needs root to install -- re-run with sudo to apply automatically."
+  fi
+fi
+
+# Report on this shell too. A child process can never export into its parent, so
+# the snippet only takes effect on the NEXT login -- say so explicitly rather
+# than letting the user think the current session was just fixed.
+if [ -n "${DISPLAY:-}" ]; then
+  if [ -z "${XAUTHORITY:-}" ]; then
+    info "This shell has XAUTHORITY unset (it applies from your next login onward)."
+    info "To fix the session you are in right now, run:"
+    printf '        export XAUTHORITY="%s"\n' "$XAUTH_FILE"
+  elif [ ! -f "$XAUTHORITY" ]; then
+    fail "XAUTHORITY is set to '$XAUTHORITY', but that file does not exist -- X clients will find no cookie."
+    info "Clear the stale value and use the real cookie instead:"
+    printf '        unset XAUTHORITY; export XAUTHORITY="%s"\n' "$XAUTH_FILE"
+  elif [ "$XAUTHORITY" != "$XAUTH_FILE" ]; then
+    info "XAUTHORITY is set to '$XAUTHORITY' (not $XAUTH_FILE). That is fine if deliberate,"
+    info "but note sandboxed apps can only read paths their confinement allows -- the real"
+    info "home path is the one permitted by the snap x11/unity7 rules."
+  else
+    ok "This shell already exports XAUTHORITY=$XAUTHORITY."
+  fi
+fi
+
+# Sandboxed apps are only worth calling out when some are actually installed.
+if command -v snap >/dev/null 2>&1 || command -v flatpak >/dev/null 2>&1; then
+  info "Sandboxed package managers detected (snap/flatpak). Note that a passing"
+  info "xeyes/xclock test does NOT prove those work: unconfined clients read the"
+  info "cookie via \$HOME, which the sandbox redirects. Test one of those apps too."
+fi
+
+# ================================ 6. live test ==================================
 if [ "$DO_TEST" -eq 1 ]; then
-  log "5/5 -- live round-trip test"
+  log "6/6 -- live round-trip test"
   if [ -z "${DISPLAY:-}" ]; then
     warn "\$DISPLAY is not set in this shell -- run --test from inside the actual SSH/X11 session you're troubleshooting."
   elif ! command -v xauth >/dev/null 2>&1; then
@@ -493,4 +602,8 @@ else
   printf '\n%sImportant:%s after installing xauth and/or changing X11Forwarding, fully close\n' "$YEL" "$RST"
   echo "and reopen your MobaXterm/SSH session -- sshd writes the auth cookie once, at"
   echo "login time, so a session that is already open cannot pick up the fix."
+  echo
+  echo "The same applies to the XAUTHORITY snippet: /etc/profile.d is sourced at login,"
+  echo "so it takes effect on your next session. For the session you are in right now:"
+  printf '    export XAUTHORITY="%s"\n' "$XAUTH_FILE"
 fi

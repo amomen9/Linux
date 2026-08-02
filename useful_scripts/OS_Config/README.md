@@ -1,32 +1,41 @@
 # OS Config (`os_config.sh`)
 
 Fixes ownership of a user's home directory — recursively `chown`s it back to
-the real user — and ships a library of optional, distro-aware OS config
-recommendations that you can opt into.
+the real user — grants that user passwordless sudo, and ships a library of
+optional, distro-aware OS config recommendations that you can opt into.
 
 It's step 7 (the last step) of
 [`initiate_os_script.sh`](../initiate_os_script/initiate_os_script.sh), where
 it cleans up anything earlier steps (VNC, Docker, etc.) wrote under the
 invoking user's `$HOME` while running as root. It also works standalone.
 
+> **Security note:** passwordless sudo means any process running as that
+> user can gain root without a password prompt. This is a convenience
+> trade-off meant for a personal single-user box being freshly migrated —
+> skip it with `--no-passwordless-sudo` on any shared or security-sensitive
+> machine.
+
 It is cross-platform across every distribution family in
 [`Supported Distributions.txt`](../../Migrate_to_Linux/Supported%20Distributions.txt):
 Debian/Ubuntu (`apt`), RHEL/Fedora (`dnf`/`yum`), Arch (`pacman`),
 openSUSE/SUSE (`zypper`), Alpine (`apk`), Gentoo (`emerge`) and Slackware
-(`slackpkg`). The ownership fix itself needs no package manager and works
-identically on all of them; the distro family is only consulted by the
-optional recommendations below.
+(`slackpkg`). The ownership fix and sudoers steps themselves need no package
+manager and work identically on all of them; the distro family is only
+consulted by the optional recommendations below.
 
 ## Quick start
 
 ```bash
 chmod +x useful_scripts/OS_Config/os_config.sh
 
-# Fix ownership of the invoking user's own home directory
+# Fix home ownership + grant passwordless sudo, both for the invoking user
 sudo useful_scripts/OS_Config/os_config.sh
 
-# Fix a specific user's home directory instead
+# Same, but for a specific user instead
 sudo useful_scripts/OS_Config/os_config.sh --user alice
+
+# Fix ownership only, skip the sudoers change
+sudo useful_scripts/OS_Config/os_config.sh --no-passwordless-sudo
 
 # Preview only, no root needed
 useful_scripts/OS_Config/os_config.sh --dry-run
@@ -36,21 +45,29 @@ useful_scripts/OS_Config/os_config.sh --dry-run
 
 | Flag | Effect | Default |
 | ---- | ------ | ------- |
-| `--user NAME` | Fix `NAME`'s home directory instead of the default. | `$SUDO_USER` when run via `sudo`, otherwise the current user |
+| `--user NAME` | Act on `NAME` instead of the default. | `$SUDO_USER` when run via `sudo`, otherwise the current user |
+| `--no-passwordless-sudo` | Skip granting passwordless sudo; only fix home directory ownership. | passwordless sudo is granted |
 | `--dry-run` | Print what would be done without changing anything. Does **not** require root. | off |
 | `-h`, `--help` | Show usage and exit. | — |
 
 ## What the script does
 
-1. Works out which user's home directory to fix — `--user`, else
-   `$SUDO_USER` (set by `sudo`), else the current user.
+1. Works out which user to act on — `--user`, else `$SUDO_USER` (set by
+   `sudo`), else the current user.
 2. Resolves that user's home directory from the passwd database (`getent`,
    falling back to `awk` over `/etc/passwd` if `getent` isn't installed) and
    refuses to continue if it can't find one, if the directory doesn't exist,
    or if it resolves to `/` (a defensive guard against ever recursively
    `chown`ing the whole filesystem).
 3. Recursively `chown`s that directory to `user:user`.
-4. Detects the distro family (same detection logic as the other scripts in
+4. Unless the user is `root` or `--no-passwordless-sudo` was passed, writes
+   `<user> ALL=(ALL) NOPASSWD:ALL` to a new
+   `/etc/sudoers.d/99-<user>-nopasswd` drop-in, with mode `0440` and
+   `root:root` ownership. The entry is written to a temp file and validated
+   with `visudo -c` (when available) *before* it's installed — a malformed
+   sudoers file can break `sudo` for everyone, so a failed validation is
+   discarded instead of ever landing in `/etc/sudoers.d`.
+5. Detects the distro family (same detection logic as the other scripts in
    this repo), for use by the optional recommendations below.
 
 Every command is routed through a `run` helper, so `--dry-run` is a faithful
@@ -88,6 +105,20 @@ their home directory explicitly via the passwd database instead of relying
 on shell tilde-expansion, and refuses to proceed if that resolution is empty,
 missing, or `/` — so a lookup failure now produces a clear error message
 instead of silently operating on the wrong directory.
+
+## Passwordless sudo
+
+By default, `os_config.sh` also grants the resolved user passwordless sudo,
+unless that user is already `root` or `--no-passwordless-sudo` is passed.
+This is separate from the ownership-fix bug fix above — it's a new, opt-out
+convenience feature for freshly migrated personal boxes where prompting for
+a password on every `sudo` is more friction than it's worth.
+
+It writes `<user> ALL=(ALL) NOPASSWD:ALL` to
+`/etc/sudoers.d/99-<user>-nopasswd` (mode `0440`, owned by `root:root`), and
+validates the file with `visudo -c` before installing it, so a bad write
+can't lock `sudo` itself out. See the security note near the top of this
+README before relying on it outside a personal, single-user machine.
 
 ## Optional recommendations (disabled by default)
 

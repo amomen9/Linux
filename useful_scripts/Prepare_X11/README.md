@@ -31,6 +31,8 @@ almost always one of:
    between logins (e.g. always `:10.0`) even though everything else checks
    out — the cookie sshd wrote is for the real per-session display, not the
    stale one the shell forces afterwards.
+6. **The app is sandboxed (snap/flatpak) and `$XAUTHORITY` is unset.** See
+   below — this is the cause when `xeyes` works but the app still fails.
 
 Run this **on the Linux server you SSH into** (not on Windows).
 
@@ -75,6 +77,58 @@ best-effort note instead, since it normally ships `xauth` with X itself).
 `X11Forwarding` is checked and set via `sshd -T`/a validated `sshd -t` before
 any restart, so a bad edit is rolled back automatically instead of locking you
 out of SSH.
+
+---
+
+## Sandboxed apps (snap / flatpak): when `xeyes` works but your app doesn't
+
+If a plain X11 client works in the very same session where a snap or flatpak
+app fails with `No authorisation provided`, **that split is the whole
+diagnosis**. It is not an AppArmor problem, and you will find **no denial in
+`dmesg`** — a missing file inside an allowed directory is a plain `ENOENT`, not
+a confinement violation, so an empty audit log does not clear this cause.
+
+What actually happens:
+
+- sshd writes the cookie to `~/.Xauthority` and sets `DISPLAY`, but leaves
+  `XAUTHORITY` **unset**. Every X client therefore falls back to
+  `"$HOME/.Xauthority"`.
+- For an unconfined binary (`xeyes`) that resolves to the real
+  `/home/<user>/.Xauthority` → **works**.
+- Inside strict snap confinement `$HOME` is **redirected** to `SNAP_USER_DATA`
+  (`/home/<user>/snap/<app>/<rev>`), so the same fallback resolves to a path
+  where no cookie exists → **"No authorisation provided"**.
+
+The fix is to set `XAUTHORITY` explicitly to the **absolute real path**, which
+the script installs system-wide as `/etc/profile.d/99-x11-xauthority.sh`:
+
+```sh
+if [ -n "${DISPLAY:-}" ] && [ -z "${XAUTHORITY:-}" ] && [ -f "$HOME/.Xauthority" ]; then
+    XAUTHORITY="$HOME/.Xauthority"
+    export XAUTHORITY
+fi
+```
+
+That path is permitted by the snap `x11`/`unity7` rule
+`owner @{HOME}/.Xauthority r` (AppArmor's `@{HOME}` is the *real* home), and it
+fixes **every** sandboxed app at once rather than one package at a time. It
+never overrides an `XAUTHORITY` that is already set, since some sshd setups
+point that at a private temp xauth file.
+
+`/etc/profile.d` is sourced **at login**, so it applies from your next session
+onward. To fix the session you are already in (a script can never export into
+its parent shell):
+
+```bash
+export XAUTHORITY="$HOME/.Xauthority"
+```
+
+> **Things that do _not_ work**, for the record: copying the cookie to
+> `/run/user/<uid>/.Xauthority` (not covered by the snap's X11 rules — it
+> produces a *new* denial), and hand-patching
+> `/etc/apparmor.d/local/snap.<app>.<app>` (snapd's generated profile does not
+> include those local files for every app, and `snap refresh` regenerates the
+> profile anyway).
 
 ---
 

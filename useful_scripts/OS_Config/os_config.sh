@@ -5,19 +5,22 @@
 # Fixes ownership of the invoking (non-root) user's home directory --
 # useful after earlier setup steps ran as root (see
 # ../initiate_os_script/initiate_os_script.sh) and left root-owned files
-# under the real user's $HOME.
+# under the real user's $HOME -- and grants that same user passwordless sudo
+# (via a validated /etc/sudoers.d drop-in), unless they are already root.
 #
 # Supported families (see
 #   ../../Migrate_to_Linux/Supported Distributions.txt ):
 # Debian/Ubuntu (apt) . RHEL/Fedora (dnf/yum) . Arch (pacman) .
 # openSUSE/SUSE (zypper) . Alpine (apk)* . Gentoo (emerge)* .
-# Slackware (slackpkg)* (* = best-effort; the ownership fix itself needs no
-# package manager and works identically everywhere -- the family is only
-# consulted by the optional recommendations at the bottom of this file).
+# Slackware (slackpkg)* (* = best-effort; the ownership fix and sudoers
+# steps themselves need no package manager and work identically everywhere
+# -- the family is only consulted by the optional recommendations at the
+# bottom of this file).
 #
 # Usage:
-#   sudo ./os_config.sh                  # fix the invoking user's home
-#   sudo ./os_config.sh --user alice     # fix a specific user's home instead
+#   sudo ./os_config.sh                  # fix home ownership + passwordless sudo
+#   sudo ./os_config.sh --user alice     # do it for a specific user instead
+#   sudo ./os_config.sh --no-passwordless-sudo   # ownership fix only
 #   ./os_config.sh --dry-run             # preview only, no root needed
 #
 # See --help for the full flag list.
@@ -32,8 +35,9 @@
 set -euo pipefail
 
 # --------------------------------- defaults ----------------------------------
-DRY_RUN=0        # --dry-run: print what would happen, change nothing
-TARGET_USER=""   # --user NAME: whose home directory to fix (default: see below)
+DRY_RUN=0          # --dry-run: print what would happen, change nothing
+TARGET_USER=""     # --user NAME: whose home directory to fix (default: see below)
+ENABLE_SUDO=1      # --no-passwordless-sudo clears this
 
 # ------------------------------- pretty output -------------------------------
 if [ -t 1 ]; then
@@ -68,21 +72,25 @@ Usage: os_config.sh [options]
 
 Fixes ownership of a user's home directory (recursively), so files created
 by earlier root-run setup steps end up owned by the real user instead of
-root. Also carries a library of optional, distro-aware config
-recommendations -- see the comments near the bottom of the script for how
-to enable them.
+root. Also grants that user passwordless sudo (via a validated
+/etc/sudoers.d drop-in), unless they are already root. Also carries a
+library of optional, distro-aware config recommendations -- see the
+comments near the bottom of the script for how to enable those.
 
 Options:
-  --user NAME    Fix NAME's home directory instead of the default. Default
-                  is $SUDO_USER (when run via sudo), otherwise the current
-                  user.
-  --dry-run      Print what would be done without changing anything. Does
-                  not require root.
-  -h, --help     Show this help and exit.
+  --user NAME              Act on NAME instead of the default. Default is
+                             $SUDO_USER (when run via sudo), otherwise the
+                             current user.
+  --no-passwordless-sudo   Skip granting passwordless sudo; only fix home
+                             directory ownership.
+  --dry-run                Print what would be done without changing
+                             anything. Does not require root.
+  -h, --help               Show this help and exit.
 
 Examples:
   sudo ./os_config.sh
   sudo ./os_config.sh --user alice
+  sudo ./os_config.sh --no-passwordless-sudo
   ./os_config.sh --dry-run
 EOF
 }
@@ -94,6 +102,7 @@ while [ "$#" -gt 0 ]; do
             [ "$#" -ge 2 ] || die "--user needs a value."
             TARGET_USER="$2"; shift ;;
         --user=*)  TARGET_USER="${1#*=}" ;;
+        --no-passwordless-sudo) ENABLE_SUDO=0 ;;
         --dry-run) DRY_RUN=1 ;;
         -h|--help) usage; exit 0 ;;
         *)         echo "Unknown option: $1" >&2; usage; exit 1 ;;
@@ -174,6 +183,38 @@ log "Fixing ownership of '$TARGET_HOME' -> $TARGET_USER:$TARGET_USER"
 [ "$DRY_RUN" -eq 1 ] && warn "DRY-RUN: no changes will be made."
 run chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME"
 log "Done."
+
+# ------------------------- passwordless sudo for the user --------------------
+if [ "$TARGET_USER" = "root" ]; then
+    log "Target user is root; no sudoers entry needed."
+elif [ "$ENABLE_SUDO" -eq 0 ]; then
+    log "Skipping passwordless-sudo setup (--no-passwordless-sudo)."
+elif ! command -v sudo >/dev/null 2>&1; then
+    warn "'sudo' is not installed; skipping passwordless-sudo setup for '$TARGET_USER'."
+else
+    SUDOERS_FILE="/etc/sudoers.d/99-${TARGET_USER}-nopasswd"
+    log "Granting passwordless sudo to '$TARGET_USER' ($SUDOERS_FILE)"
+    if [ "$DRY_RUN" -eq 1 ]; then
+        warn "DRY-RUN: no changes will be made."
+        printf '%s[dry-run]%s would write to %s:\n    %s ALL=(ALL) NOPASSWD:ALL\n' \
+            "$DIM" "$RST" "$SUDOERS_FILE" "$TARGET_USER"
+    else
+        # Write to a temp file and validate with `visudo -c` before installing it
+        # -- a malformed /etc/sudoers.d file can break sudo for everyone, so this
+        # is checked (and discarded on failure) before it ever lands in place.
+        TMP_SUDOERS=$(mktemp)
+        printf '%s ALL=(ALL) NOPASSWD:ALL\n' "$TARGET_USER" > "$TMP_SUDOERS"
+        chmod 0440 "$TMP_SUDOERS"
+        if command -v visudo >/dev/null 2>&1 && ! visudo -c -f "$TMP_SUDOERS" >/dev/null 2>&1; then
+            rm -f "$TMP_SUDOERS"
+            die "Generated sudoers entry failed validation (visudo -c); aborting without touching $SUDOERS_FILE."
+        fi
+        mv "$TMP_SUDOERS" "$SUDOERS_FILE"
+        chown root:root "$SUDOERS_FILE"
+        chmod 0440 "$SUDOERS_FILE"
+        log "Done -- '$TARGET_USER' can now run sudo without a password."
+    fi
+fi
 
 # ==============================================================================
 # OPTIONAL RECOMMENDATIONS (disabled by default -- read, then uncomment what

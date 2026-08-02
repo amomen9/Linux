@@ -121,10 +121,11 @@ chmod +x useful_scripts/initiate_os_script/initiate_os_script.sh && VNC_PASSWORD
 
 `os_config.sh` recursively `chown`s the invoking login user's home directory
 back to that user (resolved via `$SUDO_USER`, not `logname` — see
-[`OS_Config/README.md`](../OS_Config/README.md) for why). It runs last so it
-also cleans up anything earlier steps wrote there as root (e.g. VNC's
-`~/.vnc`). It also ships a library of optional, commented-out config
-recommendations — see its README for details.
+[`OS_Config/README.md`](../OS_Config/README.md) for why), and grants that
+user passwordless sudo unless `OS_CONFIG_ARGS` includes
+`--no-passwordless-sudo`. It runs last so it also cleans up anything earlier
+steps wrote there as root (e.g. VNC's `~/.vnc`). It also ships a library of
+optional, commented-out config recommendations — see its README for details.
 
 ## Fixed from the previous version
 

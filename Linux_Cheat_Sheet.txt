@@ -2659,8 +2659,9 @@ microsoft-edge-stable 2>/dev/null &
 sudo wget https://packages.microsoft.com/config/rhel/8/packages-microsoft-prod.rpm
 sudo rpm -Uvh packages-microsoft-prod.rpm
 
-## fix Missing X server or $DISPLAY
-
+## fix Missing X server or $DISPLAY under snapd packages
+export XAUTHORITY=/run/user/$(id -u)/.Xauthority
+cp ~/.Xauthority "$XAUTHORITY"
 ```
 
 
