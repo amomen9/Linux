@@ -2660,8 +2660,41 @@ sudo wget https://packages.microsoft.com/config/rhel/8/packages-microsoft-prod.r
 sudo rpm -Uvh packages-microsoft-prod.rpm
 
 ## fix Missing X server or $DISPLAY under snapd packages
-export XAUTHORITY=/run/user/$(id -u)/.Xauthority
-cp ~/.Xauthority "$XAUTHORITY"
+```
+# ── 1. Undo the two dead ends from earlier (harmless if already gone) ────────
+rm -f "/run/user/$(id -u)/.Xauthority"
+[ -f /etc/apparmor.d/local/snap.midori.midori ] && \
+  sudo sed -i '/run\/user.*Xauthority/d' /etc/apparmor.d/local/snap.midori.midori
+
+# ── 2. Permanent system-wide fix: every user, every login, every sandboxed app ─
+sudo tee /etc/profile.d/99-x11-xauthority.sh >/dev/null <<'EOF'
+# Export XAUTHORITY with an absolute path to the real ~/.Xauthority.
+#
+# sshd sets DISPLAY for a forwarded session but leaves XAUTHORITY unset, so X
+# clients fall back to "$HOME/.Xauthority". Inside strict snap confinement $HOME
+# is redirected to SNAP_USER_DATA (~/snap/<app>/<rev>), where no cookie exists ->
+# "No authorisation provided", even though unconfined clients (xeyes/xclock)
+# work fine in the same session. Setting it explicitly fixes both.
+#
+# Guarded: only on X11 logins, only with a real cookie, and never overriding an
+# XAUTHORITY that is already set (some sshd setups use a private temp xauth file).
+if [ -n "${DISPLAY:-}" ] && [ -z "${XAUTHORITY:-}" ] && [ -f "$HOME/.Xauthority" ]; then
+    XAUTHORITY="$HOME/.Xauthority"
+    export XAUTHORITY
+fi
+EOF
+sudo chmod 644 /etc/profile.d/99-x11-xauthority.sh
+
+# ── 3. Apply to the session you are in RIGHT NOW (step 2 starts at next login) ─
+unset XAUTHORITY
+export XAUTHORITY="$HOME/.Xauthority"
+
+# ── 4. Verify, then launch ──────────────────────────────────────────────────
+echo "DISPLAY=$DISPLAY"
+echo "XAUTHORITY=$XAUTHORITY"
+xauth list "$DISPLAY" || echo "!! no cookie for $DISPLAY — reconnect your SSH session"
+
+```
 ```
 
 
