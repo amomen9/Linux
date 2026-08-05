@@ -1,0 +1,129 @@
+# settings_config.txt
+# -----------------------------------------------------------------------------
+# Human-readable reference of the Windows settings extracted by
+# C_detect_windows_settings.ps1 and the corresponding macOS commands
+# applied by apply_settings.sh.
+#
+# This file is documentation only. The actual logic lives in
+# "Execute on macOS!/submodules/apply_settings.sh" — a single self-contained
+# script generated from submodules/templates/apply_settings.sh.tmpl, universal
+# across every supported macOS release and both CPU architectures.
+# -----------------------------------------------------------------------------
+
+==============================================================================
+1. POWER SETTINGS — sleep timeouts and lid-close behaviour
+==============================================================================
+
+Windows extract:
+  - Read from active power plan GUID via WMI (Win32_PowerSettingDataIndex)
+  - Registry fallback: HKLM\SYSTEM\CurrentControlSet\Control\Power\User\...
+  - Produces: "sleep", "do nothing", "hibernate", "shut down", "turn off display"
+    plus the AC / battery sleep timeouts in seconds
+
+macOS apply (→ pmset):
+  Sleep timeouts (Windows reports seconds; pmset takes whole minutes, 0 = never):
+    sleep_ac  → pmset -c sleep <minutes>
+    sleep_dc  → pmset -b sleep <minutes>
+
+  Lid close: closing the lid ALWAYS sleeps a Mac — there is no "do nothing"
+  equivalent, so the Windows setting is already the macOS behaviour. The script
+  only ensures the Mac wakes on opening it:
+    pmset -a lidwake 1
+  (A Mac can be kept awake with the lid shut via `sudo pmset -a disablesleep 1`,
+  but that is deliberately NOT applied automatically.)
+
+==============================================================================
+2. DISPLAY RESOLUTION & SCALING
+==============================================================================
+
+Windows extract:
+  - Resolution from CIM_VideoController (CurrentHorizontalResolution ×
+    CurrentVerticalResolution), e.g. "1920x1080"
+  - Scaling from HKCU\Control Panel\Desktop LogPixels / AppliedDPI,
+    e.g. "125%" or "100%"
+
+macOS apply:
+  - Resolution: displayplacer "id:<persistent screen id> res:<WxH>"
+    (displayplacer is offered on demand — macOS ships no resolution CLI.)
+  - Scaling: REPORTED as a manual note, not applied. macOS has no text-scaling
+    factor: the whole interface is scaled by choosing a HiDPI "looks like"
+    resolution per display in System Settings > Displays.
+
+==============================================================================
+3. KEYBOARD LAYOUT, KEY REPEAT & SHORTCUTS
+==============================================================================
+
+Windows extract:
+  - Current culture: [System.Globalization.CultureInfo]::CurrentCulture
+  - Installed input languages: Get-WinUserLanguageList → LanguageTag
+  - Key-repeat delay/rate (ms) and the NumLock state
+  - Also notes standard Windows shortcuts (Win+E, Win+L, etc.)
+
+macOS apply:
+  - Language tag → macOS input source (en-US→"U.S.", fa-IR→"Persian", ...)
+      defaults write com.apple.HIToolbox AppleEnabledInputSources -array \
+        '{ InputSourceKind = "Keyboard Layout"; "KeyboardLayout ID" = 0;    "KeyboardLayout Name" = "U.S."; }' \
+        '{ InputSourceKind = "Keyboard Layout"; "KeyboardLayout ID" = 1600; "KeyboardLayout Name" = "Persian"; }'
+    (takes effect after a log out / log in)
+  - Key repeat — Windows reports milliseconds, macOS counts 15 ms ticks and a
+    LOWER number is FASTER, so both values are converted and clamped:
+      defaults write NSGlobalDomain InitialKeyRepeat <delay_ms / 15>
+      defaults write NSGlobalDomain KeyRepeat        <rate_ms / 15>
+  - NumLock: not applicable — Mac keyboards have no Num Lock key (logged only).
+  - Shortcuts: prints an informational reference mapping Windows → macOS
+    (Ctrl→Command for copy/paste/save, Win+E→Finder, Win+L→Ctrl+Cmd+Q,
+     Win+Shift+S→Shift+Cmd+4, Win+R→Spotlight, Win+V→a clipboard manager).
+
+==============================================================================
+4. DISABLE TELEMETRY; LIMIT LOCATION
+==============================================================================
+
+Windows extract:
+  - Telemetry: HKLM\...\Policies\DataCollection AllowTelemetry
+    (0=Security, 1=Basic, 2=Enhanced, 3=Full)
+  - Location: HKLM\...\CapabilityAccessManager\ConsentStore\location Value
+
+macOS apply (telemetry):
+  - defaults write "/Library/Application Support/CrashReporter/DiagnosticMessagesHistory.plist" \
+      AutoSubmit -bool false          (and ThirdPartyDataSubmit -bool false)
+  - defaults write com.apple.assistant.support "Siri Data Sharing Opt-In Status" -int 2
+  - defaults write com.apple.AdLib allowApplePersonalizedAdvertising -bool false
+
+macOS apply (location):
+  - defaults write /var/db/locationd/Library/Preferences/ByHost/com.apple.locationd \
+      LocationServicesEnabled -int 0
+    followed by: launchctl kickstart -k system/com.apple.locationd
+  - System Integrity Protection guards that plist on recent releases, so a failure
+    is EXPECTED and is reported as a manual note pointing at
+    System Settings > Privacy & Security > Location Services.
+
+==============================================================================
+5. TIMEZONE & TIME SYNCHRONIZATION
+==============================================================================
+
+Windows extract:
+  - Time zone id, mapped to its IANA name (e.g. "Asia/Tehran")
+  - Configured NTP server (often time.windows.com)
+
+macOS apply:
+  - systemsetup -settimezone "<IANA zone>"
+  - systemsetup -setnetworktimeserver "<server>"   (time.apple.com replaces
+    time.windows.com) followed by systemsetup -setusingnetworktime on
+
+==============================================================================
+WORKFLOW SUMMARY
+==============================================================================
+
+  Step 1 (Windows):  powershell -ExecutionPolicy Bypass -File C_detect_windows_settings.ps1
+                     → produces C_windows_configs.csv
+
+  Step 2 (generate): run_project.ps1 bakes that CSV into
+                     "Execute on macOS!/submodules/apply_settings.sh"
+
+  Step 3 (copy):     copy the whole "Execute on macOS!" folder to your Mac
+
+  Step 4 (macOS):    sudo ./execute_all.sh          (runs both settings phases)
+                     — or, standalone:  sudo ./submodules/apply_settings.sh
+
+  Step 5 (verify):   check the summary output. Log out and back in to pick up the
+                     input-source and language changes.

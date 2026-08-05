@@ -1,0 +1,501 @@
+Rank,Application Name,Category
+1,Google Chrome,Web Browser
+2,Microsoft Edge,Web Browser
+3,Mozilla Firefox,Web Browser
+4,Brave,Web Browser
+5,Opera,Web Browser
+6,Vivaldi,Web Browser
+7,Tor Browser,Web Browser
+8,Microsoft Word,Productivity
+9,Microsoft Excel,Productivity
+10,Microsoft PowerPoint,Productivity
+11,Microsoft Outlook,Productivity
+12,Microsoft OneNote,Productivity
+13,Microsoft Access,Productivity
+14,Microsoft Publisher,Productivity
+15,LibreOffice,Productivity
+16,Notion,Productivity
+17,Evernote,Productivity
+18,Adobe Acrobat Reader,Productivity
+19,Adobe Acrobat Pro,Productivity
+20,Foxit PDF Reader,Productivity
+21,Todoist,Productivity
+22,Trello,Productivity
+23,Asana,Productivity
+24,ClickUp,Productivity
+25,Obsidian,Productivity
+26,Microsoft To Do,Productivity
+27,Grammarly,Productivity
+28,Microsoft Teams,Communication
+29,Slack,Communication
+30,Zoom,Communication
+31,Discord,Communication
+32,WhatsApp Desktop,Communication
+33,Skype,Communication
+34,Telegram Desktop,Communication
+35,Signal Desktop,Communication
+36,Google Meet,Communication
+37,Cisco Webex,Communication
+38,GoToMeeting,Communication
+39,VLC Media Player,Media
+40,Spotify,Media
+41,iTunes,Media
+42,Windows Media Player,Media
+43,Plex,Media
+44,Winamp,Media
+45,foobar2000,Media
+46,KMPlayer,Media
+47,MediaMonkey,Media
+48,YouTube Music Desktop,Media
+49,Netflix App,Media
+50,Amazon Prime Video,Media
+51,Apple Music,Media
+52,Tidal,Media
+53,WinRAR,Utilities
+54,7-Zip,Utilities
+55,WinZip,Utilities
+56,PeaZip,Utilities
+57,Dropbox,Storage
+58,Google Drive,Storage
+59,OneDrive,Storage
+60,Box,Storage
+61,MEGA,Storage
+62,Everything,Utilities
+63,Windows Defender,Security
+64,Malwarebytes,Security
+65,Norton 360,Security
+66,Bitdefender,Security
+67,McAfee,Security
+68,Avast,Security
+69,AVG AntiVirus,Security
+70,Kaspersky,Security
+71,ESET NOD32,Security
+72,Sophos,Security
+73,CCleaner,Utilities
+74,TeamViewer,Remote Access
+75,AnyDesk,Remote Access
+76,Chrome Remote Desktop,Remote Access
+77,Notepad++,Development
+78,Visual Studio,Development
+79,Visual Studio Code,Development
+80,Git,Development
+81,GitHub Desktop,Development
+82,GitKraken,Development
+83,Docker Desktop,Development
+84,Postman,Development
+85,PyCharm,Development
+86,IntelliJ IDEA,Development
+87,Sublime Text,Development
+88,Atom,Development
+89,Eclipse,Development
+90,Android Studio,Development
+91,XAMPP,Development
+92,MySQL Workbench,Development
+93,PuTTY,Development
+94,FileZilla,Development
+95,WinSCP,Development
+96,Adobe Photoshop,Creative
+97,Adobe Illustrator,Creative
+98,Adobe Premiere Pro,Creative
+99,Adobe After Effects,Creative
+100,Adobe Lightroom,Creative
+101,Adobe InDesign,Creative
+102,Adobe XD,Creative
+103,GIMP,Creative
+104,Inkscape,Creative
+105,Blender,Creative
+106,Audacity,Creative
+107,DaVinci Resolve,Creative
+108,CorelDRAW,Creative
+109,Krita,Creative
+110,Canva,Creative
+111,Figma,Creative
+112,Sketch,Creative
+113,OBS Studio,Creative
+114,Camtasia,Creative
+115,Paint.NET,Creative
+116,Steam,Gaming
+117,Epic Games Launcher,Gaming
+118,GOG Galaxy,Gaming
+119,Battle.net,Gaming
+120,Ubisoft Connect,Gaming
+121,EA App,Gaming
+122,Xbox App,Gaming
+123,Rockstar Games Launcher,Gaming
+124,MSI Afterburner,Gaming
+125,Razer Cortex,Gaming
+126,Origin,Gaming
+127,Minecraft Launcher,Gaming
+128,VirtualBox,Virtualization
+129,VMware Workstation,Virtualization
+130,Hyper-V Manager,Virtualization
+131,Parallels Desktop,Virtualization
+132,7-Zip File Manager,Utilities
+133,Revo Uninstaller,Utilities
+134,IObit Uninstaller,Utilities
+135,Driver Booster,Utilities
+136,CPU-Z,Utilities
+137,GPU-Z,Utilities
+138,HWMonitor,Utilities
+139,Speccy,Utilities
+140,CrystalDiskInfo,Utilities
+141,Disk Cleanup,Utilities
+142,WinDirStat,Utilities
+143,Recuva,Utilities
+144,EaseUS Data Recovery,Utilities
+145,Acronis True Image,Backup
+146,Macrium Reflect,Backup
+147,PowerToys,Utilities
+148,Wallpaper Engine,Customization
+149,Rainmeter,Customization
+150,AutoHotkey,Utilities
+151,ShareX,Utilities
+152,Greenshot,Utilities
+153,Lightshot,Utilities
+154,Snagit,Utilities
+155,F.lux,Utilities
+156,Process Explorer,Utilities
+157,Process Monitor,Utilities
+158,Wireshark,Networking
+159,Advanced IP Scanner,Networking
+160,NetLimiter,Networking
+161,Fiddler,Networking
+162,Cloudflare WARP,Networking
+163,ExpressVPN,VPN
+164,NordVPN,VPN
+165,ProtonVPN,VPN
+166,Surfshark,VPN
+167,Hotspot Shield,VPN
+168,Skype for Business,Communication
+169,Viber,Communication
+170,Line,Communication
+171,WeChat,Communication
+172,QQ,Communication
+173,Thunderbird,Email
+174,Mailbird,Email
+175,eM Client,Email
+176,Adobe Creative Cloud,Creative
+177,Microsoft Visio,Productivity
+178,Microsoft Project,Productivity
+179,XMind,Productivity
+180,MindManager,Productivity
+181,Calibre,Utilities
+182,Foxit PhantomPDF,Productivity
+183,PDF24 Creator,Utilities
+184,Bandicam,Creative
+185,Fraps,Gaming
+186,MSI Dragon Center,Gaming
+187,Logitech G HUB,Gaming
+188,Corsair iCUE,Gaming
+189,Razer Synapse,Gaming
+190,Realtek Audio Console,Utilities
+191,Java Runtime Environment,Development
+192,.NET Framework,Development
+193,DirectX,Gaming
+194,Microsoft Visual C++ Redistributable,Development
+195,Windows Subsystem for Linux,Development
+196,Anaconda,Development
+197,Jupyter Notebook,Development
+198,R Studio,Development
+199,MATLAB,Development
+200,Unity Hub,Development
+201,Unreal Engine,Development
+202,Godot Engine,Development
+203,Visual Studio Code Insiders,Development
+204,NetBeans,Development
+205,Code::Blocks,Development
+206,Dev-C++,Development
+207,Vim,Development
+208,Neovim,Development
+209,Emacs,Development
+210,WebStorm,Development
+211,PhpStorm,Development
+212,RubyMine,Development
+213,CLion,Development
+214,DataGrip,Development
+215,DBeaver,Development
+216,SQL Server Management Studio,Development
+217,Navicat,Development
+218,HeidiSQL,Development
+219,Robo 3T,Development
+220,MongoDB Compass,Development
+221,Insomnia,Development
+222,SoapUI,Development
+223,Apache JMeter,Development
+224,Selenium IDE,Development
+225,Cypress,Development
+226,Node.js,Development
+227,npm,Development
+228,Yarn,Development
+229,Composer,Development
+230,Vagrant,Development
+231,Kubernetes Dashboard,Development
+232,Minikube,Development
+233,Terraform,Development
+234,Ansible,Development
+235,Jenkins,Development
+236,GitLab Runner,Development
+237,SourceTree,Development
+238,TortoiseGit,Development
+239,TortoiseSVN,Development
+240,Beyond Compare,Development
+241,WinMerge,Development
+242,Meld,Development
+243,UltraEdit,Development
+244,EditPlus,Development
+245,Notepad3,Development
+246,Brackets,Development
+247,Light Table,Development
+248,RStudio Desktop,Development
+249,Spyder,Development
+250,PyScripter,Development
+251,Thonny,Development
+252,Eclipse Che,Development
+253,NetBeans IDE,Development
+254,Apache NetBeans,Development
+255,Lazarus IDE,Development
+256,Qt Creator,Development
+257,CodeLite,Development
+258,MonoDevelop,Development
+259,Xamarin Studio,Development
+260,Delphi,Development
+261,PowerShell ISE,Development
+262,Windows Terminal,Development
+263,ConEmu,Development
+264,Cmder,Development
+265,Hyper Terminal,Development
+266,MobaXterm,Development
+267,Bitvise SSH Client,Development
+268,Cyberduck,Development
+269,WinFTP,Development
+270,CoreFTP,Development
+271,SmartFTP,Development
+272,Total Commander,Utilities
+273,Directory Opus,Utilities
+274,XYplorer,Utilities
+275,FreeCommander,Utilities
+276,Q-Dir,Utilities
+277,Files,Utilities
+278,Clover,Utilities
+279,Bulk Rename Utility,Utilities
+280,Duplicate Cleaner,Utilities
+281,CCEnhancer,Utilities
+282,BleachBit,Utilities
+283,Wise Disk Cleaner,Utilities
+284,Glary Utilities,Utilities
+285,Advanced SystemCare,Utilities
+286,System Mechanic,Utilities
+287,Ashampoo WinOptimizer,Utilities
+288,Tune Up Utilities,Utilities
+289,O&O Defrag,Utilities
+290,Auslogics Disk Defrag,Utilities
+291,Defraggler,Utilities
+292,Smart Defrag,Utilities
+293,UltraDefrag,Utilities
+294,Paragon Partition Manager,Utilities
+295,MiniTool Partition Wizard,Utilities
+296,AOMEI Partition Assistant,Utilities
+297,EaseUS Partition Master,Utilities
+298,GParted,Utilities
+299,Rufus,Utilities
+300,Ventoy,Utilities
+301,WinToUSB,Utilities
+302,UNetbootin,Utilities
+303,balenaEtcher,Utilities
+304,ImgBurn,Utilities
+305,CDBurnerXP,Utilities
+306,Nero Burning ROM,Utilities
+307,PowerISO,Utilities
+308,DAEMON Tools,Utilities
+309,Virtual CloneDrive,Utilities
+310,WinCDEmu,Utilities
+311,Alcohol 120%,Utilities
+312,UltraISO,Utilities
+313,MagicISO,Utilities
+314,Format Factory,Utilities
+315,HandBrake,Media
+316,FFmpeg,Media
+317,XMedia Recode,Media
+318,Any Video Converter,Media
+319,Freemake Video Converter,Media
+320,VSDC Video Editor,Creative
+321,Shotcut,Creative
+322,OpenShot,Creative
+323,Lightworks,Creative
+324,HitFilm Express,Creative
+325,Filmora,Creative
+326,PowerDirector,Creative
+327,VideoPad,Creative
+328,Movie Maker,Creative
+329,Clipchamp,Creative
+330,Kdenlive,Creative
+331,Avidemux,Creative
+332,MPC-HC,Media
+333,PotPlayer,Media
+334,GOM Player,Media
+335,5KPlayer,Media
+336,DivX Player,Media
+337,RealPlayer,Media
+338,QuickTime,Media
+339,Zoom Player,Media
+340,SMPlayer,Media
+341,BS.Player,Media
+342,Light Alloy,Media
+343,Daum PotPlayer,Media
+344,Media Player Classic,Media
+345,JRiver Media Center,Media
+346,AIMP,Media
+347,MusicBee,Media
+348,Clementine,Media
+349,Foobar2000,Media
+350,Winamp Pro,Media
+351,Deezer,Media
+352,Pandora,Media
+353,SoundCloud,Media
+354,Audible,Media
+355,Audiobook Builder,Media
+356,Pocket Casts,Media
+357,Overcast,Media
+358,Podcast Addict,Media
+359,iHeartRadio,Media
+360,TuneIn Radio,Media
+361,Shazam,Media
+362,MusicBrainz Picard,Media
+363,Mp3tag,Media
+364,TagScanner,Media
+365,EAC (Exact Audio Copy),Media
+366,CDex,Media
+367,dBpoweramp,Media
+368,Switch Audio Converter,Media
+369,Audio Converter Plus,Media
+370,FreeRIP,Media
+371,Movavi Video Editor,Creative
+372,CyberLink PowerDirector,Creative
+373,Magix Movie Edit Pro,Creative
+374,Pinnacle Studio,Creative
+375,Vegas Pro,Creative
+376,Final Cut Pro (via Boot Camp),Creative
+377,Nuke,Creative
+378,Houdini,Creative
+379,Cinema 4D,Creative
+380,Autodesk Maya,Creative
+381,Autodesk 3ds Max,Creative
+382,ZBrush,Creative
+383,SketchUp,Creative
+384,AutoCAD,Creative
+385,Revit,Creative
+386,SolidWorks,Creative
+387,Fusion 360,Creative
+388,FreeCAD,Creative
+389,Tinkercad,Creative
+390,Rhino 3D,Creative
+391,Substance Painter,Creative
+392,Substance Designer,Creative
+393,Marvelous Designer,Creative
+394,Daz Studio,Creative
+395,Poser,Creative
+396,iClone,Creative
+397,MotionBuilder,Creative
+398,Vue,Creative
+399,World Machine,Creative
+400,Gaea,Creative
+401,Affinity Photo,Creative
+402,Affinity Designer,Creative
+403,Affinity Publisher,Creative
+404,Pixelmator,Creative
+405,PaintShop Pro,Creative
+406,ArtRage,Creative
+407,Clip Studio Paint,Creative
+408,MediBang Paint,Creative
+409,SAI Paint Tool,Creative
+410,FireAlpaca,Creative
+411,Procreate (via emulator),Creative
+412,Sketchbook,Creative
+413,Vectr,Creative
+414,Gravit Designer,Creative
+415,Boxy SVG,Creative
+416,Synfig Studio,Creative
+417,Toon Boom Harmony,Creative
+418,Moho (Anime Studio),Creative
+419,Adobe Animate,Creative
+420,CrazyTalk Animator,Creative
+421,Wondershare Filmora,Creative
+422,Bandicut,Creative
+423,ActivePresenter,Creative
+424,iSpring Suite,Creative
+425,Articulate Storyline,Creative
+426,Adobe Captivate,Creative
+427,Loom,Creative
+428,Screencast-O-Matic,Creative
+429,Icecream Screen Recorder,Creative
+430,Apowersoft Screen Recorder,Creative
+431,Debut Video Capture,Creative
+432,XSplit,Creative
+433,Streamlabs Desktop,Creative
+434,Wirecast,Creative
+435,vMix,Creative
+436,NDI Tools,Creative
+437,Voicemeeter,Creative
+438,Audio Hijack,Creative
+439,Reaper,Creative
+440,FL Studio,Creative
+441,Ableton Live,Creative
+442,Cubase,Creative
+443,Studio One,Creative
+444,Pro Tools,Creative
+445,Logic Pro (via Boot Camp),Creative
+446,GarageBand (via Boot Camp),Creative
+447,LMMS,Creative
+448,MuseScore,Creative
+449,Sibelius,Creative
+450,Finale,Creative
+451,Guitar Pro,Creative
+452,Anvil Studio,Creative
+453,MixPad,Creative
+454,WavePad,Creative
+455,Soundtrap,Creative
+456,BandLab,Creative
+457,Mixcraft,Creative
+458,n-Track Studio,Creative
+459,Tracktion Waveform,Creative
+460,Bitwig Studio,Creative
+461,Renoise,Creative
+462,OpenMPT,Creative
+463,Caustic,Creative
+464,Synthesia,Creative
+465,Piano Marvel,Creative
+466,GameMaker Studio,Development
+467,RPG Maker,Development
+468,Construct 3,Development
+469,Stencyl,Development
+470,Defold,Development
+471,Cocos Creator,Development
+472,Phaser,Development
+473,CryEngine,Development
+474,Source 2,Development
+475,Source Filmmaker,Development
+476,Tiled Map Editor,Development
+477,Aseprite,Creative
+478,Pyxel Edit,Creative
+479,GraphicsGale,Creative
+480,Piskel,Creative
+481,LibreSprite,Creative
+482,Spine,Creative
+483,DragonBones,Creative
+484,FaceRig,Creative
+485,VTube Studio,Creative
+486,Live2D Cubism,Creative
+487,Voicemod,Creative
+488,Clownfish Voice Changer,Creative
+489,MorphVOX,Creative
+490,VB-Audio Cable,Utilities
+491,EarTrumpet,Utilities
+492,SoundSwitch,Utilities
+493,Equalizer APO,Utilities
+494,Peace Equalizer,Utilities
+495,DeskPins,Utilities
+496,WinSplit Revolution,Utilities
+497,FancyZones,Utilities
+498,DisplayFusion,Utilities
+499,UltraMon,Utilities
+500,Actual Multiple Monitors,Utilities

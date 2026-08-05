@@ -3502,6 +3502,7 @@ a. autossh (Critical for tunnel stability)
 sudo apt update && sudo apt install autossh -y
 # Generate dedicated SSH key (no passphrase for automation)
 ssh-keygen -t ed25519 -f ~/.ssh/tunnel_key -C ""
+ssh-keygen -t ed25519 -f %USERPROFILE%\.ssh\scaleway_test_cheapest -C ""
 # Copy key to YOUR server (Server-P)
 ssh-copy-id -p 22    -i ~/.ssh/tunnel_key.pub user@your-server-P.com
 ssh-copy-id  -p 9011 -i ~/.ssh/tunnel_key.pub root@87.248.150.140
