@@ -2458,10 +2458,11 @@ main() {
   app_alt 3 4 1 80 install_app --name "SQL Server Management Studio (SSMS)" --alt "DBeaver" --method cask --cask "dbeaver-community" --dlpage "https://formulae.brew.sh/cask/dbeaver-community"
   app_alt 4 4 1 65 install_app --name "SQL Server Management Studio (SSMS)" --alt "sqlcmd + mssql-cli" --method cask --cask "sqlcmd" --dlpage "https://docs.microsoft.com/en-us/sql/tools/sqlcmd-utility" --note "auto-guessed install from the alternative name (unverified)"
   app_alt 1 1 1 100 install_app --name "Strawberry Perl" --alt "Perl for macOS" --method brew --brew "perl" --dlpage "https://formulae.brew.sh/formula/perl"
-  app_alt 1 4 1 100 install_app --name "TickTick" --alt "TickTick for Mac" --method cask --cask "ticktick" --minos "11" --dlpage "https://ticktick.com/download"
-  app_alt 2 4 1 85 install_app --name "TickTick" --alt "Things 3" --method mas --mas "904280696" --dlpage "https://apps.apple.com/app/id904280696" --paid
-  app_alt 3 4 0 80 install_app --name "TickTick" --alt "TickTick Web" --method webapp --webapp "https://ticktick.com/webapp" --dlpage "https://ticktick.com/webapp"
-  app_alt 4 4 1 75 install_app --name "TickTick" --alt "Reminders" --method builtin --builtin "Reminders"
+  app_alt 1 5 1 100 install_app --name "TickTick" --alt "TickTick for Mac" --method cask --cask "ticktick" --minos "11" --dlpage "https://ticktick.com/download"
+  app_alt 2 5 1 90 install_app --name "TickTick" --alt "Todoist" --method cask --cask "todoist" --minos "11" --dlpage "https://www.todoist.com/downloads/mac"
+  app_alt 3 5 1 85 install_app --name "TickTick" --alt "Things 3" --method mas --mas "904280696" --dlpage "https://apps.apple.com/app/id904280696" --paid
+  app_alt 4 5 0 80 install_app --name "TickTick" --alt "TickTick Web" --method webapp --webapp "https://ticktick.com/webapp" --dlpage "https://ticktick.com/webapp"
+  app_alt 5 5 1 75 install_app --name "TickTick" --alt "Reminders" --method builtin --builtin "Reminders"
   app_alt 1 3 1 100 install_app --name "TigerVNC" --alt "TigerVNC Viewer" --method cask --cask "tigervnc-viewer" --dlpage "https://tigervnc.org/"
   app_alt 2 3 1 95 install_app --name "TigerVNC" --alt "Screen Sharing" --method builtin --builtin "Screen Sharing" --dlpage "https://support.apple.com/guide/mac-help/share-the-screen-of-another-mac-mh14066/mac"
   app_alt 3 3 1 90 install_app --name "TigerVNC" --alt "RealVNC Viewer" --method cask --cask "vnc-viewer" --dlpage "https://formulae.brew.sh/cask/vnc-viewer"

@@ -24379,6 +24379,23 @@
                                                                   }
                                                   },
                                                   {
+                                                      "name":  "Todoist",
+                                                      "competency":  "90",
+                                                      "pricingModel":  "Freemium",
+                                                      "mustInclude":  "no",
+                                                      "canSync":  "Yes",
+                                                      "notes":  "The closest cross-platform peer to TickTick: native macOS app, natural-language quick add, projects/labels/filters, shared projects and karma. TickTick can be exported to CSV and imported into Todoist, and both keep everything in their own cloud account, so nothing is tied to the old PC.",
+                                                      "installMethod":  "cask",
+                                                      "appType":  "Native (Homebrew Cask)",
+                                                      "downloadUrl":  "https://formulae.brew.sh/cask/todoist",
+                                                      "install":  {
+                                                                      "method":  "cask",
+                                                                      "caskId":  "todoist",
+                                                                      "minOS":  "11",
+                                                                      "downloadPage":  "https://www.todoist.com/downloads/mac"
+                                                                  }
+                                                  },
+                                                  {
                                                       "name":  "Things 3",
                                                       "competency":  "85",
                                                       "pricingModel":  "Paid",
