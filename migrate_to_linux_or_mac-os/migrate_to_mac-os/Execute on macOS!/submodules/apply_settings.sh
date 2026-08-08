@@ -2257,24 +2257,24 @@ CFG_default_browser="edge"
 WIFI_DATA="$(cat <<'__WIFI_EOF__'
 eduroam	wpa		none
 somenet	open		none
-V.momen	wpa	U2FsdGVkX19FJwTIB2dqo6Rg/AVzDGm2AzhDFOMYUcs=	enc
+V.momen	wpa	U2FsdGVkX19vvnWu7tXSlcluvWx5flN2qjpaPMxvXrg=	enc
 Tbilisi Loves You	open		none
 Tbilisi Airport Free	open		none
 Simorgh-WiFi	open		none
-Shatel	wpa	U2FsdGVkX18sUarv5Z5bIFojbOy4/5q3mF0s0ouuVuc=	enc
-SHAW-48EE	wpa	U2FsdGVkX1/TXziJUIe+D3eKehppjPmBsxdsjD6sUmE=	enc
-Redmi Note 10 Pro Max	wpa	U2FsdGVkX1/lGdmAjs1XxIzHwfHyvUKS93dUPlkttKQ=	enc
-Parsway	wpa	U2FsdGVkX1+CVjBVPmrAhf9QTGWWudVAywgVxtahwF4=	enc
-NZT9930134C	wpa	U2FsdGVkX18cU4amal5zzTyDwcZlx2KPsfIAD1pqUv0=	enc
+Shatel	wpa	U2FsdGVkX1/PtPlTfE0/r93xofKjRk9vVFpK4BLBG/g=	enc
+SHAW-48EE	wpa	U2FsdGVkX1+yMMHReYQmcNk4QShH25C7mZIxQZdPHic=	enc
+Redmi Note 10 Pro Max	wpa	U2FsdGVkX1+mkQ9W/pYcz5A17IehRj62O7gx/FsaprE=	enc
+Parsway	wpa	U2FsdGVkX18soUnbdnuGLsx82wKBhp9+aU1dRQQ5Z3E=	enc
+NZT9930134C	wpa	U2FsdGVkX19JsgXCOcyMdbnjGGvbO7uUDZrXhCQeyME=	enc
 Mofid-GoHyper!	open		none
-Jobvision-WiFi	wpa	U2FsdGVkX18sfh3IbTw9fEO24GGB9R/UI/N9cJVsX3E=	enc
-JobVision_DLink	wpa	U2FsdGVkX19vtFyuhubdPlXZLCuCJgMlHS3hr+DEViU=	enc
-JobVision-3rd	wpa	U2FsdGVkX19Ezx3vWuLdbwClzDsSSeUjAeMRjClS/Z0=	enc
-JobVision	wpa	U2FsdGVkX1984XY5AEgt6dfJYu/YB00qAR8UvFv7zAA=	enc
-Galaxy A51	wpa	U2FsdGVkX1/v6zhlIbi2hKbrMFf1h+gqZkfQn0agRp4=	enc
-Fatemeh's Galaxy A71	wpa	U2FsdGVkX1//UtTtnJMYGpdlyiV9hR1cOMemWtNtsjo=	enc
-AndroidAPA50	wpa	U2FsdGVkX19sLl6kVgApQxs41PrJGkhQkS+/H8uJt0M=	enc
-DivorceHousing	wpa	U2FsdGVkX183bAjS0vNXgViuPAJnT9UGL1cvI/l/Ah7Wwt4NSHaf/UGyi17IpKfe	enc
+Jobvision-WiFi	wpa	U2FsdGVkX1/iKWzaBkepMWEBh5OybRFv9i5dT13amS4=	enc
+JobVision_DLink	wpa	U2FsdGVkX1+8l6U/KmQWdMS5SDhoGwvU6GpghNZ+IMo=	enc
+JobVision-3rd	wpa	U2FsdGVkX18FeZnzkLCObgRn8E1eeiOstnSjxQ+9k88=	enc
+JobVision	wpa	U2FsdGVkX18cwLUpzACSdN2tEX3bnJqgxYL473sBhrs=	enc
+Galaxy A51	wpa	U2FsdGVkX19l2ZHR24T9HYPo42tP/orvIboZJ0nQfbE=	enc
+Fatemeh's Galaxy A71	wpa	U2FsdGVkX18c9CzgBFbHa+dtXumqAaZceLmjyMbAN6w=	enc
+AndroidAPA50	wpa	U2FsdGVkX18Ika6JDrBitv++K3+d8WIrmwmV02xyPGo=	enc
+DivorceHousing	wpa	U2FsdGVkX182tKjF026Ww+H/xCdaFc4iG9H8TUPhnEn9iBBZT6n+qBotM8iRBTum	enc
 __WIFI_EOF__
 )"
 
@@ -2862,9 +2862,6 @@ desktop	restart chrome.bat - Shortcut	restart chrome
 desktop	restart explorer.bat - Shortcut	restart explorer
 desktop	restart firefox.bat - Shortcut	restart firefox
 desktop	restart jabber.bat - Shortcut	restart jabber
-desktop	Todoist	Todoist
-desktop	Hotspot Shield	hsscp
-desktop	VMware Workstation Pro	vmware
 __SC_EOF__
 )"
 
@@ -3038,6 +3035,7 @@ VMware Network Adapter VMnet1	192.168.88.1
 VMware Network Adapter VMnet11	192.168.171.1		
 vEthernet (Default Switch)	172.23.160.1		
 VMware Network Adapter VMnet12	172.23.124.1		
+vEthernet (WSL (Hyper-V firewall))	172.18.80.1		
 Ethernet 3	192.168.56.1		
 NordLynx	10.5.0.2		
 Wi-Fi 2		10.112.63.254 1.1.1.1	10.112.10.254,10.112.11.254
