@@ -83,6 +83,12 @@ if ($ExtraArgs) {
 }
 if ($ArchiveFormat -notin @('zip', '7z', 'enctar')) { $ArchiveFormat = 'zip' }
 
+# CPU budget for compression/encryption: leave max(1, floor(cores/3)) logical cores free for
+# the rest of the system, use the remainder (min 1). 7-Zip threads to this via -mmt=N below.
+$totalCores = [Environment]::ProcessorCount
+$reservedCores = [Math]::Max(1, [Math]::Floor($totalCores / 3))
+$useCores = [Math]::Max(1, $totalCores - $reservedCores)
+
 function Write-Info  { param($m) Write-Host "       $m" }
 function Write-OkLine { param($m) Write-Host "       $m" -ForegroundColor Green }
 function Write-WarnY { param($m) Write-Host "       $m" -ForegroundColor Yellow }
@@ -183,7 +189,7 @@ function Invoke-CmdWithProgress {
         while (-not $p.HasExited) {
             $cur = 0; try { $cur = (Get-Item -LiteralPath $WatchFile -ErrorAction SilentlyContinue).Length } catch {}
             $pct = [Math]::Min(99, [int](($cur / $Denom) * 100))
-            Write-Progress -Activity $Activity -Status ("{0} / ~{1}" -f (Format-Size $cur), (Format-Size $Denom)) -PercentComplete $pct
+            Write-Progress -Activity $Activity -Status ("{0} / ~{1}    (estimated)" -f (Format-Size $cur), (Format-Size $Denom)) -PercentComplete $pct
             Start-Sleep -Milliseconds 250
         }
         $p.WaitForExit()
@@ -725,7 +731,7 @@ if ($ArchiveFormat -eq 'enctar') {
         if ($encrypt) { Write-Info "  (7-Zip takes the password on its command line, so the running 7z process briefly shows it; the temp launcher is deleted immediately.)" }
         $zErr = [System.IO.Path]::GetTempFileName()
         # cd into staging so entries are stored as user\... / apps\... (not the temp path).
-        $zCmdText = '@cd /d "' + $staging + '"' + "`r`n" + '@"' + $sevenZip + '" a ' + $typeOpt + ' -mx=5 -bsp0' + $encOpt + ' "' + $finalPath + '" * > "' + $zErr + '" 2>&1'
+        $zCmdText = '@cd /d "' + $staging + '"' + "`r`n" + '@"' + $sevenZip + '" a ' + $typeOpt + ' -mx=5 -mmt=' + $useCores + ' -bsp0' + $encOpt + ' "' + $finalPath + '" * > "' + $zErr + '" 2>&1'
         $zRc = Invoke-CmdWithProgress -CmdText $zCmdText -WatchFile $finalPath -Denom $denom -Activity ("Creating {0} archive (compress + encrypt)" -f $ArchiveFormat.ToUpper())
         $zErrText = (Get-Content -LiteralPath $zErr -Raw -ErrorAction SilentlyContinue)
         Remove-Item -LiteralPath $zErr -Force -ErrorAction SilentlyContinue
