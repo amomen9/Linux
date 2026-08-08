@@ -20,7 +20,7 @@ function Show-MegaTitle {
     Write-Host ''
     Write-Host '  ###########################################################' -ForegroundColor Cyan
     Write-Host '  ##                                                       ##' -ForegroundColor Cyan
-    Write-Host '  ##            M I G R A T E   T O   L I N U X             ##' -ForegroundColor Cyan
+    Write-Host '  ##            M I G R A T E   T O   m a c O S             ##' -ForegroundColor Cyan
     Write-Host '  ##        Windows  ->  macOS   Migration  Toolkit         ##' -ForegroundColor Cyan
     Write-Host '  ##                                                       ##' -ForegroundColor Cyan
     Write-Host '  ###########################################################' -ForegroundColor Cyan

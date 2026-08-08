@@ -2234,7 +2234,7 @@ CFG_a11y_highcontrast="false"
 CFG_a11y_magnifier="false"
 CFG_key_repeat_delay="500"
 CFG_key_repeat_rate="33"
-CFG_numlock="false"
+CFG_numlock="true"
 CFG_timezone="Europe/Berlin"
 CFG_ntp_server="pool.ntp.org"
 CFG_color_scheme="default"
@@ -2257,24 +2257,24 @@ CFG_default_browser="edge"
 WIFI_DATA="$(cat <<'__WIFI_EOF__'
 eduroam	wpa		none
 somenet	open		none
-V.momen	wpa	U2FsdGVkX193A7YNgv1dH3N4njyjdvRzBfn2FYP1I5Y=	enc
+V.momen	wpa	U2FsdGVkX19FJwTIB2dqo6Rg/AVzDGm2AzhDFOMYUcs=	enc
 Tbilisi Loves You	open		none
 Tbilisi Airport Free	open		none
 Simorgh-WiFi	open		none
-Shatel	wpa	U2FsdGVkX19QcR1xQSpL2AxTIAwOBiqxI7CbKUzGvb4=	enc
-SHAW-48EE	wpa	U2FsdGVkX19jxDUZ+0UvzcdcWMdY4QWH+e13R2DGjVg=	enc
-Redmi Note 10 Pro Max	wpa	U2FsdGVkX1/FzO8/HrYLGjwSrDLviv8fc2RCTSjN7wY=	enc
-Parsway	wpa	U2FsdGVkX18pvkkhAJQwcvGk/NoZ0/b/oWbF32JUB3Y=	enc
-NZT9930134C	wpa	U2FsdGVkX1+elLgu23uZM9f9oAksReHSLYDLGHKVC2U=	enc
+Shatel	wpa	U2FsdGVkX18sUarv5Z5bIFojbOy4/5q3mF0s0ouuVuc=	enc
+SHAW-48EE	wpa	U2FsdGVkX1/TXziJUIe+D3eKehppjPmBsxdsjD6sUmE=	enc
+Redmi Note 10 Pro Max	wpa	U2FsdGVkX1/lGdmAjs1XxIzHwfHyvUKS93dUPlkttKQ=	enc
+Parsway	wpa	U2FsdGVkX1+CVjBVPmrAhf9QTGWWudVAywgVxtahwF4=	enc
+NZT9930134C	wpa	U2FsdGVkX18cU4amal5zzTyDwcZlx2KPsfIAD1pqUv0=	enc
 Mofid-GoHyper!	open		none
-Jobvision-WiFi	wpa	U2FsdGVkX1/UPlucXJlkCB/ELXULvew9A13BkBqfJ5Y=	enc
-JobVision_DLink	wpa	U2FsdGVkX18wtpAMyIPVGkk+mQloTYM2+0CX44vljZA=	enc
-JobVision-3rd	wpa	U2FsdGVkX18OtixUn2xbpGwmBIu02BUbt74/GNOF0Tg=	enc
-JobVision	wpa	U2FsdGVkX1+zidUMP9f1W0WVQQCPZ0ycLznMMXpI41M=	enc
-Galaxy A51	wpa	U2FsdGVkX19Fmud9eUo8p/jgdTnRlRZvEzQeQNJUchc=	enc
-Fatemeh's Galaxy A71	wpa	U2FsdGVkX19Z2L7XNZE/Ouif70Agwj8N3A6zWBGxMaw=	enc
-AndroidAPA50	wpa	U2FsdGVkX19DXT9blsQsLvlkwKg3G2P6q0tm+0RrenQ=	enc
-DivorceHousing	wpa	U2FsdGVkX1+AV789H6ECCqTnzOxiurHtr93uzEhEB41YTNjtH/hgbcunKzhhJJ3v	enc
+Jobvision-WiFi	wpa	U2FsdGVkX18sfh3IbTw9fEO24GGB9R/UI/N9cJVsX3E=	enc
+JobVision_DLink	wpa	U2FsdGVkX19vtFyuhubdPlXZLCuCJgMlHS3hr+DEViU=	enc
+JobVision-3rd	wpa	U2FsdGVkX19Ezx3vWuLdbwClzDsSSeUjAeMRjClS/Z0=	enc
+JobVision	wpa	U2FsdGVkX1984XY5AEgt6dfJYu/YB00qAR8UvFv7zAA=	enc
+Galaxy A51	wpa	U2FsdGVkX1/v6zhlIbi2hKbrMFf1h+gqZkfQn0agRp4=	enc
+Fatemeh's Galaxy A71	wpa	U2FsdGVkX1//UtTtnJMYGpdlyiV9hR1cOMemWtNtsjo=	enc
+AndroidAPA50	wpa	U2FsdGVkX19sLl6kVgApQxs41PrJGkhQkS+/H8uJt0M=	enc
+DivorceHousing	wpa	U2FsdGVkX183bAjS0vNXgViuPAJnT9UGL1cvI/l/Ah7Wwt4NSHaf/UGyi17IpKfe	enc
 __WIFI_EOF__
 )"
 
@@ -2686,31 +2686,16 @@ Microsoft Edge	Inbound	Allow	True	TCP	Any	Any	C:\program files (x86)\microsoft\e
 Microsoft Edge	Inbound	Allow	True	UDP	Any	Any	C:\program files (x86)\microsoft\edge\application\msedge.exe	
 Bitvise SSH Client	Inbound	Allow	True	TCP	Any	Any	C:\program files (x86)\bitvise ssh client\bvssh.exe	
 Bitvise SSH Client	Inbound	Allow	True	UDP	Any	Any	C:\program files (x86)\bitvise ssh client\bvssh.exe	
-Google Chrome (mDNS-In)	Inbound	Allow	True	UDP	5353	Any	C:\Program Files\Google\Chrome\Application\chrome.exe	
 Visual Studio Code	Inbound	Allow	True	TCP	Any	Any	C:\users\ali\appdata\local\programs\microsoft vs code\code.exe	
 Visual Studio Code	Inbound	Allow	True	UDP	Any	Any	C:\users\ali\appdata\local\programs\microsoft vs code\code.exe	
-Samsung account	Outbound	Allow	True	Any	Any	Any		
-Samsung account	Inbound	Allow	True	Any	Any	Any		
-Store Experience Host	Outbound	Allow	True	Any	Any	Any		
-Store Experience Host	Inbound	Allow	True	Any	Any	Any		
 Windows Camera	Outbound	Allow	True	Any	Any	Any		
 Windows Camera	Inbound	Allow	True	Any	Any	Any		
-Windows Calculator	Outbound	Allow	True	Any	Any	Any		
-Windows Sound Recorder	Outbound	Allow	True	Any	Any	Any		
 MSN Weather	Outbound	Allow	True	Any	Any	Any		
 MSN Weather	Inbound	Allow	True	Any	Any	Any		
 HNS Container Networking - ICS DNS (TCP-In) - C08CB7B8-9B3C-408E-8E30-5E16A3AEB445 - 0	Inbound	Allow	True	TCP	53	Any	%SystemRoot%\system32\svchost.exe	sharedaccess
 HNS Container Networking - DNS (UDP-In) - C08CB7B8-9B3C-408E-8E30-5E16A3AEB445 - 0	Inbound	Allow	True	UDP	53	Any		
 App Installer	Outbound	Allow	True	Any	Any	Any		
 App Installer	Inbound	Allow	True	Any	Any	Any		
-Claude	Inbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsApps\Claude_1.18286.0.0_x64__pzs8sxrjxfjjc\app\Claude.exe	
-Claude	Outbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsApps\Claude_1.18286.0.0_x64__pzs8sxrjxfjjc\app\Claude.exe	
-Claude	Inbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsApps\Claude_1.18286.0.0_x64__pzs8sxrjxfjjc\app\resources\cowork-svc.exe	
-Claude	Outbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsApps\Claude_1.18286.0.0_x64__pzs8sxrjxfjjc\app\resources\cowork-svc.exe	
-Claude	Outbound	Allow	True	Any	Any	Any		
-Windows Subsystem for Linux	Outbound	Allow	True	Any	Any	Any		
-Microsoft.Office.ActionsServer	Outbound	Allow	True	Any	Any	Any		
-OfficePushNotificationsUtility	Outbound	Allow	True	Any	Any	Any		
 Microsoft Office Outlook	Inbound	Allow	True	UDP	6004	Any	C:\Program Files\Microsoft Office\root\Office16\outlook.exe	
 Microsoft Lync	Inbound	Allow	True	UDP	Any	Any	C:\Program Files\Microsoft Office\root\Office16\Lync.exe	
 Microsoft Lync	Inbound	Allow	True	TCP	Any	Any	C:\Program Files\Microsoft Office\root\Office16\Lync.exe	
@@ -2718,21 +2703,137 @@ Microsoft Lync UcMapi	Inbound	Allow	True	UDP	Any	Any	C:\Program Files\Microsoft 
 Microsoft Lync UcMapi	Inbound	Allow	True	TCP	Any	Any	C:\Program Files\Microsoft Office\root\Office16\UcMapi.exe	
 xwin_mobax.exe	Inbound	Allow	True	TCP	Any	Any	C:\users\ali\appdata\roaming\mobaxterm\slash\bin\xwin_mobax.exe	
 xwin_mobax.exe	Inbound	Allow	True	UDP	Any	Any	C:\users\ali\appdata\roaming\mobaxterm\slash\bin\xwin_mobax.exe	
-Windows Clock	Outbound	Allow	True	Any	Any	Any		
-Windows Clock	Inbound	Allow	True	Any	Any	Any		
 Firefox (C:\Program Files\Mozilla Firefox)	Inbound	Allow	True	TCP	Any	Any	C:\Program Files\Mozilla Firefox\firefox.exe	
 Firefox (C:\Program Files\Mozilla Firefox)	Inbound	Allow	True	UDP	Any	Any	C:\Program Files\Mozilla Firefox\firefox.exe	
-Microsoft 365 Copilot	Inbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsApps\Microsoft.MicrosoftOfficeHub_19.2606.60031.0_x64__8wekyb3d8bbwe\M365Copilot.exe	
-Microsoft 365 Copilot	Inbound	Allow	True	UDP	Any	Any	C:\Program Files\WindowsApps\Microsoft.MicrosoftOfficeHub_19.2606.60031.0_x64__8wekyb3d8bbwe\M365Copilot.exe	
-Microsoft 365 Copilot	Outbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsApps\Microsoft.MicrosoftOfficeHub_19.2606.60031.0_x64__8wekyb3d8bbwe\M365Copilot.exe	
-Microsoft 365 Copilot	Outbound	Allow	True	UDP	Any	Any	C:\Program Files\WindowsApps\Microsoft.MicrosoftOfficeHub_19.2606.60031.0_x64__8wekyb3d8bbwe\M365Copilot.exe	
-Microsoft 365 Copilot	Outbound	Allow	True	Any	Any	Any		
-Microsoft 365 Copilot	Inbound	Allow	True	Any	Any	Any		
 HNS Container Networking - ICS DNS (TCP-In) - 790E58B4-7939-4434-9358-89AE7DDBE87F - 0	Inbound	Allow	True	TCP	53	Any	%SystemRoot%\system32\svchost.exe	sharedaccess
 HNS Container Networking - DNS (UDP-In) - 790E58B4-7939-4434-9358-89AE7DDBE87F - 0	Inbound	Allow	True	UDP	53	Any		
 Docker Desktop Backend	Inbound	Allow	True	TCP	Any	Any	C:\program files\docker\docker\resources\com.docker.backend.exe	
 Docker Desktop Backend	Inbound	Allow	True	UDP	Any	Any	C:\program files\docker\docker\resources\com.docker.backend.exe	
+Divorce Housing	Inbound	Allow	True	TCP	3389,5900	Any		
+VNC Server	Inbound	Allow	True	TCP	Any	Any	C:\Program Files\RealVNC\VNC Server\vncserver.exe	
+VNC Server	Inbound	Allow	True	UDP	Any	Any	C:\Program Files\RealVNC\VNC Server\vncserver.exe	
+Microsoft Edge (mDNS-In)	Inbound	Allow	True	UDP	5353	Any	C:\Program Files (x86)\Microsoft\EdgeWebView\Application\150.0.4078.65\msedgewebview2.exe	
+Dropbox Lite	Outbound	Allow	True	Any	Any	Any		
+Dropbox Lite	Inbound	Allow	True	Any	Any	Any		
+Windows Default Lock Screen	Outbound	Allow	True	Any	Any	Any		
+Windows Default Lock Screen	Inbound	Allow	True	Any	Any	Any		
+Windows Feature Experience Pack	Outbound	Allow	True	Any	Any	Any		
+Windows Feature Experience Pack	Outbound	Allow	True	Any	Any	Any		
+Windows Feature Experience Pack	Outbound	Allow	True	Any	Any	Any		
+Windows Feature Experience Pack	Outbound	Allow	True	Any	Any	Any		
+Windows Feature Experience Pack	Outbound	Allow	True	Any	Any	Any		
+Windows Feature Experience Pack	Outbound	Allow	True	Any	Any	Any		
+Windows Feature Experience Pack	Inbound	Allow	True	Any	Any	Any		
+Click to Do	Outbound	Allow	True	Any	Any	Any		
+Windows Feature Experience Pack	Outbound	Allow	True	Any	Any	Any		
+Windows Feature Experience Pack	Inbound	Allow	True	Any	Any	Any		
+Windows Feature Experience Pack	Outbound	Allow	True	Any	Any	Any		
+Windows Feature Experience Pack	Inbound	Allow	True	Any	Any	Any		
+ms-resource:ProductPkgDisplayName	Inbound	Allow	True	TCP	7000	Any	C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\WindowsBackupClient.exe	
+ms-resource:ProductPkgDisplayName	Inbound	Allow	True	TCP	7000	Any	C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\WindowsBackupClient.exe	
+ms-resource:ProductPkgDisplayName	Inbound	Allow	True	UDP	7000	Any	C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\WindowsBackupClient.exe	
+ms-resource:ProductPkgDisplayName	Inbound	Allow	True	UDP	7000	Any	C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\WindowsBackupClient.exe	
+ms-resource:ProductPkgDisplayName	Outbound	Allow	True	TCP	7000	Any	C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\WindowsBackupClient.exe	
+ms-resource:ProductPkgDisplayName	Outbound	Allow	True	TCP	7000	Any	C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\WindowsBackupClient.exe	
+ms-resource:ProductPkgDisplayName	Outbound	Allow	True	UDP	7000	Any	C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\WindowsBackupClient.exe	
+ms-resource:ProductPkgDisplayName	Outbound	Allow	True	UDP	7000	Any	C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\WindowsBackupClient.exe	
+ms-resource:ProductPkgDisplayName	Inbound	Allow	True	TCP	7000	Any	C:\Windows\SystemApps\MicrosoftWindows.Client.OOBE_cw5n1h2txyewy\OobeHostApp.exe	
+ms-resource:ProductPkgDisplayName	Inbound	Allow	True	TCP	7000	Any	C:\Windows\SystemApps\MicrosoftWindows.Client.OOBE_cw5n1h2txyewy\OobeHostApp.exe	
+ms-resource:ProductPkgDisplayName	Inbound	Allow	True	UDP	7000	Any	C:\Windows\SystemApps\MicrosoftWindows.Client.OOBE_cw5n1h2txyewy\OobeHostApp.exe	
+ms-resource:ProductPkgDisplayName	Inbound	Allow	True	UDP	7000	Any	C:\Windows\SystemApps\MicrosoftWindows.Client.OOBE_cw5n1h2txyewy\OobeHostApp.exe	
+ms-resource:ProductPkgDisplayName	Outbound	Allow	True	TCP	7000	Any	C:\Windows\SystemApps\MicrosoftWindows.Client.OOBE_cw5n1h2txyewy\OobeHostApp.exe	
+ms-resource:ProductPkgDisplayName	Outbound	Allow	True	TCP	7000	Any	C:\Windows\SystemApps\MicrosoftWindows.Client.OOBE_cw5n1h2txyewy\OobeHostApp.exe	
+ms-resource:ProductPkgDisplayName	Outbound	Allow	True	UDP	7000	Any	C:\Windows\SystemApps\MicrosoftWindows.Client.OOBE_cw5n1h2txyewy\OobeHostApp.exe	
+ms-resource:ProductPkgDisplayName	Outbound	Allow	True	UDP	7000	Any	C:\Windows\SystemApps\MicrosoftWindows.Client.OOBE_cw5n1h2txyewy\OobeHostApp.exe	
+Windows Terminal	Outbound	Allow	True	Any	Any	Any		
+Microsoft Edge (mDNS-In)	Inbound	Allow	True	UDP	5353	Any	C:\Program Files (x86)\Microsoft\EdgeWebView\Application\150.0.4078.83\msedgewebview2.exe	
+utorrent.exe	Inbound	Allow	True	TCP	Any	Any	C:\users\ali\appdata\roaming\utorrent\utorrent.exe	
+utorrent.exe	Inbound	Allow	True	UDP	Any	Any	C:\users\ali\appdata\roaming\utorrent\utorrent.exe	
+Bluetooth for Windows	Outbound	Allow	True	Any	Any	Any		
+PowerShell	Outbound	Allow	True	Any	Any	Any		
+Store Experience Host	Outbound	Allow	True	Any	Any	Any		
+Store Experience Host	Inbound	Allow	True	Any	Any	Any		
+MSMPI-LaunchSvc	Inbound	Allow	True	Any	Any	Any	C:\Program Files\Microsoft MPI\Bin\msmpilaunchsvc.exe	
+MSMPI-LaunchSvc	Outbound	Allow	True	Any	Any	Any	C:\Program Files\Microsoft MPI\Bin\msmpilaunchsvc.exe	
+MSMPI-MPIEXEC	Inbound	Allow	True	Any	Any	Any	C:\Program Files\Microsoft MPI\Bin\mpiexec.exe	
+MSMPI-MPIEXEC	Outbound	Allow	True	Any	Any	Any	C:\Program Files\Microsoft MPI\Bin\mpiexec.exe	
+MSMPI-SMPD	Inbound	Allow	True	Any	Any	Any	C:\Program Files\Microsoft MPI\Bin\smpd.exe	
+MSMPI-SMPD	Outbound	Allow	True	Any	Any	Any	C:\Program Files\Microsoft MPI\Bin\smpd.exe	
+Block network access for AppContainer-00 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any	Any		
+Block network access for AppContainer-01 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any	Any		
+Block network access for AppContainer-02 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any	Any		
+Block network access for AppContainer-03 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any	Any		
+Block network access for AppContainer-04 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any	Any		
+Block network access for AppContainer-05 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any	Any		
+Block network access for AppContainer-06 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any	Any		
+Block network access for AppContainer-07 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any	Any		
+Block network access for AppContainer-08 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any	Any		
+Block network access for AppContainer-09 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any	Any		
+Block network access for AppContainer-10 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any	Any		
+Block network access for AppContainer-11 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any	Any		
+Block network access for AppContainer-12 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any	Any		
+Block network access for AppContainer-13 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any	Any		
+Block network access for AppContainer-14 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any	Any		
+Block network access for AppContainer-15 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any	Any		
+Block network access for AppContainer-16 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any	Any		
+Block network access for AppContainer-17 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any	Any		
+Block network access for AppContainer-18 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any	Any		
+Block network access for AppContainer-19 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any	Any		
+Block network access for AppContainer-20 in SQL Server instance MSSQLSERVER	Outbound	Block	True	Any	Any	Any		
+Windows Subsystem for Linux	Outbound	Allow	True	Any	Any	Any		
+Microsoft Edge (mDNS-In)	Inbound	Allow	True	UDP	5353	Any	C:\Program Files (x86)\Microsoft\EdgeWebView\Application\150.0.4078.99\msedgewebview2.exe	
+Bing Wallpaper	Outbound	Allow	True	Any	Any	Any		
+Microsoft Edge (mDNS-In)	Inbound	Allow	True	UDP	5353	Any	C:\Program Files (x86)\Microsoft\EdgeWebView\Application\150.0.4078.105\msedgewebview2.exe	
+Samsung account	Outbound	Allow	True	Any	Any	Any		
+Samsung account	Inbound	Allow	True	Any	Any	Any		
+Windows Security	Outbound	Allow	True	Any	Any	Any		
+Windows Security	Inbound	Allow	True	Any	Any	Any		
+Microsoft Teams	Inbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsApps\MSTeams_26198.304.4946.9672_x64__8wekyb3d8bbwe\ms-teams.exe	
+Microsoft Teams	Inbound	Allow	True	UDP	Any	Any	C:\Program Files\WindowsApps\MSTeams_26198.304.4946.9672_x64__8wekyb3d8bbwe\ms-teams.exe	
+Microsoft Teams	Outbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsApps\MSTeams_26198.304.4946.9672_x64__8wekyb3d8bbwe\ms-teams.exe	
+Microsoft Teams	Outbound	Allow	True	UDP	Any	Any	C:\Program Files\WindowsApps\MSTeams_26198.304.4946.9672_x64__8wekyb3d8bbwe\ms-teams.exe	
+Microsoft Teams	Outbound	Allow	True	Any	Any	Any		
+Microsoft Teams	Inbound	Allow	True	Any	Any	Any		
+Start Experiences App	Outbound	Allow	True	Any	Any	Any		
+Windows Web Experience Pack	Outbound	Allow	True	Any	Any	Any		
 Microsoft Edge (mDNS-In)	Inbound	Allow	True	UDP	5353	Any	C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe	
+Get Help	Outbound	Allow	True	Any	Any	Any		
+Microsoft Edge (mDNS-In)	Inbound	Allow	True	UDP	5353	Any	C:\Program Files (x86)\Microsoft\EdgeWebView\Application\151.0.4129.59\msedgewebview2.exe	
+Lenovo Vantage	Outbound	Allow	True	Any	Any	Any		
+Lenovo Vantage	Inbound	Allow	True	Any	Any	Any		
+Windows Calculator	Outbound	Allow	True	Any	Any	Any		
+Windows Sound Recorder	Outbound	Allow	True	Any	Any	Any		
+Windows Media Player	Outbound	Allow	True	Any	Any	Any		
+Windows Media Player	Inbound	Allow	True	Any	Any	Any		
+Dropbox	Inbound	Allow	True	TCP	17500-17510	Any	C:\Program Files (x86)\Dropbox\Client\Dropbox.exe	
+Dropbox	Inbound	Allow	True	UDP	17500	Any	C:\Program Files (x86)\Dropbox\Client\Dropbox.exe	
+Devolutions RDM	Inbound	Allow	True	UDP	Any	Any	C:\Program Files\Devolutions\Remote Desktop Manager\RemoteDesktopManager.exe	
+Devolutions Jetsocat (AMD64)	Inbound	Allow	True	TCP	Any	Any	C:\Program Files\Devolutions\Remote Desktop Manager\runtimes\win-x64\native\jetsocat.exe	
+Google Chrome (mDNS-In)	Inbound	Allow	True	UDP	5353	Any	C:\Program Files\Google\Chrome\Application\chrome.exe	
+Windows Clock	Outbound	Allow	True	Any	Any	Any		
+Windows Clock	Inbound	Allow	True	Any	Any	Any		
+WhatsApp	Outbound	Allow	True	Any	Any	Any		
+Microsoft Store	Outbound	Allow	True	Any	Any	Any		
+Microsoft Store	Inbound	Allow	True	Any	Any	Any		
+Microsoft 365 Copilot	Inbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsApps\Microsoft.MicrosoftOfficeHub_19.2608.34011.0_x64__8wekyb3d8bbwe\M365Copilot.exe	
+Microsoft 365 Copilot	Inbound	Allow	True	UDP	Any	Any	C:\Program Files\WindowsApps\Microsoft.MicrosoftOfficeHub_19.2608.34011.0_x64__8wekyb3d8bbwe\M365Copilot.exe	
+Microsoft 365 Copilot	Outbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsApps\Microsoft.MicrosoftOfficeHub_19.2608.34011.0_x64__8wekyb3d8bbwe\M365Copilot.exe	
+Microsoft 365 Copilot	Outbound	Allow	True	UDP	Any	Any	C:\Program Files\WindowsApps\Microsoft.MicrosoftOfficeHub_19.2608.34011.0_x64__8wekyb3d8bbwe\M365Copilot.exe	
+Microsoft 365 Copilot	Outbound	Allow	True	Any	Any	Any		
+Microsoft 365 Copilot	Inbound	Allow	True	Any	Any	Any		
+AnyDesk	Inbound	Allow	True	TCP	Any	Any	C:\Program Files (x86)\AnyDesk\AnyDesk.exe	
+AnyDesk	Inbound	Allow	True	UDP	Any	Any	C:\Program Files (x86)\AnyDesk\AnyDesk.exe	
+AnyDesk	Inbound	Allow	True	TCP	Any	Any	C:\Program Files (x86)\AnyDesk\AnyDesk.exe	
+AnyDesk	Inbound	Allow	True	UDP	Any	Any	C:\Program Files (x86)\AnyDesk\AnyDesk.exe	
+AnyDesk	Inbound	Allow	True	TCP	Any	Any	C:\Program Files (x86)\AnyDesk\AnyDesk.exe	
+AnyDesk	Inbound	Allow	True	UDP	Any	Any	C:\Program Files (x86)\AnyDesk\AnyDesk.exe	
+Claude	Inbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsApps\Claude_1.26832.0.0_x64__pzs8sxrjxfjjc\app\Claude.exe	
+Claude	Outbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsApps\Claude_1.26832.0.0_x64__pzs8sxrjxfjjc\app\Claude.exe	
+Claude	Inbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsApps\Claude_1.26832.0.0_x64__pzs8sxrjxfjjc\app\resources\cowork-svc.exe	
+Claude	Outbound	Allow	True	TCP	Any	Any	C:\Program Files\WindowsApps\Claude_1.26832.0.0_x64__pzs8sxrjxfjjc\app\resources\cowork-svc.exe	
+Claude	Outbound	Allow	True	Any	Any	Any		
+OfficePushNotificationsUtility	Outbound	Allow	True	Any	Any	Any		
+Microsoft.Office.ActionsServer	Outbound	Allow	True	Any	Any	Any		
 __FW_EOF__
 )"
 
@@ -2742,6 +2843,7 @@ SHORTCUTS_DATA="$(cat <<'__SC_EOF__'
 quicklaunch	Command Prompt	cmd
 quicklaunch	Excel	EXCEL
 quicklaunch	File Explorer	
+quicklaunch	Foxit PDF Editor	FoxitPDFEditor
 quicklaunch	Longman Dictionary of Contemporary English 5th Edition	ldoce5
 quicklaunch	Microsoft Edge	msedge
 quicklaunch	Microsoft SQL Server Management Studio (SSMS) 20	Ssms
@@ -2755,10 +2857,12 @@ desktop	Close Firefox.bat - Shortcut	Close Firefox
 desktop	close frequent programs.bat - Shortcut	close frequent programs
 desktop	Kill Acrobat	Kill Acrobat
 desktop	Kill VS Code.bat - Shortcut	Kill VS Code
+desktop	KMPlayer	KMPlayer
 desktop	restart chrome.bat - Shortcut	restart chrome
 desktop	restart explorer.bat - Shortcut	restart explorer
 desktop	restart firefox.bat - Shortcut	restart firefox
 desktop	restart jabber.bat - Shortcut	restart jabber
+desktop	Todoist	Todoist
 desktop	Hotspot Shield	hsscp
 desktop	VMware Workstation Pro	vmware
 __SC_EOF__
@@ -2779,12 +2883,16 @@ user	ConnectDetector	connectdetector
 user	Discord	Update
 user	Docker Desktop	Program
 user	NordVPN	NordVPN
+user	Reverso	Reverso
+user	org.whispersystems.signal-desktop	Signal
+user	Advanced SystemCare	ASCTray
 user	ca direct.tlp	ca direct
 user	Command Prompt	cmd
 user	de direct.tlp	de direct
 user	ir direct.tlp	ir direct
 user	OUTLOOK	OUTLOOK
 user	Send to OneNote	ONENOTEM
+user	TickTick	TickTick
 system	SecurityHealth	SecurityHealthSystray
 system	RtkAudUService	RtkAudUService64
 system	Leonvo Go Central Startup	LenovoGoCentral
@@ -2802,30 +2910,39 @@ __ST_EOF__
 # Auto-start third-party Windows services, one per line:  displayName<TAB>serviceName
 SERVICES_DATA="$(cat <<'__SV_EOF__'
 Advanced SystemCare Service 19	AdvancedSystemCareService19
+AnyDesk Service	AnyDesk
+Azure Arc Proxy	ArcProxy
 Microsoft Office Click-to-Run Service	ClickToRunSvc
 CMigrationService	CMigrationService
 DropboxUpdater InternalService 123.0.6299.144 (DropboxUpdaterInternalService123.0.6299.144)	DropboxUpdaterInternalService123.0.6299.144
 DropboxUpdater Service 123.0.6299.144 (DropboxUpdaterService123.0.6299.144)	DropboxUpdaterService123.0.6299.144
 Microsoft Edge Update Service (edgeupdate)	edgeupdate
-Google Updater Internal Service (GoogleUpdaterInternalService151.0.7910.0)	GoogleUpdaterInternalService151.0.7910.0
-Google Updater Service (GoogleUpdaterService151.0.7910.0)	GoogleUpdaterService151.0.7910.0
+Guest Configuration Extension Service	ExtensionService
+Guest Configuration Arc Service	GCArcService
+Google Updater Internal Service (GoogleUpdaterInternalService152.0.7933.0)	GoogleUpdaterInternalService152.0.7933.0
+Google Updater Service (GoogleUpdaterService152.0.7933.0)	GoogleUpdaterService152.0.7933.0
+Azure Hybrid Instance Metadata Service	himds
 Hotspot Shield Service 12.16.0	hshld_12.16.0
 Intel® Graphics Software	IntelGraphicsSoftwareService
 Critical Service for Lenovo Vantage	LenovoVantageService
 Microsoft Defender Core Service	MDCoreSvc
+SQL Server Integration Services 17.0	MsDtsServer170
+SQL Server Launchpad (MSSQLSERVER)	MSSQLLaunchpad
+SQL Server (MSSQLSERVER)	MSSQLSERVER
 nordsec-threatprotection-service	nordsec-threatprotection-service
 NordSec Update Service	NordUpdaterService
 nordvpn-service	nordvpn-service
 PaperCut Print Deploy Client	pc-print-deploy-client
 PaperCut Direct Print Monitor	PCPrintProvider
 SamsungMagicianSVC	SamsungMagicianSVC
+SQL Server Integration Services CEIP service 17.0	SSISTELEMETRY170
 SynTPEnh Caller Service	SynTPEnhService
 VMware Authorization Service	VMAuthdService
 VMware USB Arbitration Service	VMUSBArbService
 Microsoft Defender Antivirus Service	WinDefend
-Claude	CoworkVMService
 Windows Subsystem for Linux	WslInstaller
 WSL Service	WSLService
+Claude	CoworkVMService
 __SV_EOF__
 )"
 
@@ -2835,20 +2952,20 @@ SCHEDTASKS_DATA="$(cat <<'__TK_EOF__'
 ASC_PerformanceMonitor	User	onlogon	Monitor
 ASC_SkipUac_Ali	User	unsupported	ASC
 CreateExplorerShellUnelevatedTask	User	unsupported	explorer
-OneDrive Per-Machine Standalone Update Task	System	daily,11,00	OneDriveStandaloneUpdater
-OneDrive Reporting Task-S-1-5-21-134476807-1998891258-1216728456-1001	User	daily,12,07	OneDriveStandaloneUpdater
+OneDrive Per-Machine Standalone Update Task	System	daily,05,00	OneDriveStandaloneUpdater
+OneDrive Reporting Task-S-1-5-21-134476807-1998891258-1216728456-1001	User	daily,06,26	OneDriveStandaloneUpdater
 OneDrive Startup Task-S-1-5-21-134476807-1998891258-1216728456-1001	User	onlogon	OneDriveLauncher
 RPCServiceHealthCheck	User	daily,00,45	RPCDownloader
 update-S-1-5-21-134476807-1998891258-1216728456-1001	User	daily,15,45	Updater
 Quick Share Relaunch	User	daily,22,10	nearby_share_launcher
 RunPlatformExperienceHelperOnUnlock	User	unsupported	platform_experience_helper
 RunPlatformExperienceHelper_Daily	User	daily,10,44	platform_experience_helper
-RunPlatformExperienceHelper_Metrics	User	daily,11,34	platform_experience_helper
+RunPlatformExperienceHelper_Metrics	User	daily,14,30	platform_experience_helper
 Lenovo Professional Ultraslim Wireless Combo Gen2 OSD task	User	onlogon	UltraslimOSD
 Firefox Default Browser Agent 308046B0AF4A39CB	User	daily,13,49	default-browser-agent
 Autorun for Ali	User	onlogon	PowerToys
 SoftLandingCreativeManagementTask	User	unsupported	
-SoftLandingDeferralTask-{dc7733d4-ca5f-4af7-bca5-a24548af1b72}	User	daily,12,32	
+SoftLandingDeferralTask-{1ab7a946-2fb8-4d56-a149-772256be252b}	User	daily,01,02	
 __TK_EOF__
 )"
 
@@ -2916,13 +3033,15 @@ __PR_EOF__
 
 # Static IP / DNS (reported as a manual note), one per line:  iface<TAB>ip<TAB>gw<TAB>dns
 NETCFG_DATA="$(cat <<'__NE_EOF__'
-vEthernet (Default Switch)	172.24.48.1		
+Ethernet 5	192.168.46.1		
 VMware Network Adapter VMnet1	192.168.88.1		
 VMware Network Adapter VMnet11	192.168.171.1		
+vEthernet (Default Switch)	172.23.160.1		
 VMware Network Adapter VMnet12	172.23.124.1		
-vEthernet (WSL (Hyper-V firewall))	172.18.80.1		
+Ethernet 3	192.168.56.1		
 NordLynx	10.5.0.2		
 Wi-Fi 2		10.112.63.254 1.1.1.1	10.112.10.254,10.112.11.254
+OpenVPN Data Channel Offload for NordVPN			103.86.96.100,103.86.99.100
 __NE_EOF__
 )"
 

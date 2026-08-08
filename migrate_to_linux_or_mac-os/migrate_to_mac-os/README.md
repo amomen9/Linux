@@ -27,12 +27,12 @@ sudo ./execute_all.sh        # drivers → apps → settings, continue-on-error
 
 Several tools touch the same problem from different angles. Here is how this kit relates to them:
 
-| Project                                                | What it does                                                                                                                                                          | Link                                                                                                            |
-| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Project                                                | What it does                                                                                                                                                          | Link                                                                                                              |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | **Operese**                                      | In-place Windows 10 →**Kubuntu only** conversion of files/settings (written in Rust); app migration is explicitly unfinished. Converts the partition in place. | [https://codeberg.org/Operese/operese](https://codeberg.org/Operese/operese)                                       |
-| **WinApps**                                      | Does not migrate - it**runs** the real Windows apps (Office/Adobe) inside a Windows VM and surfaces them on the Mac over RDP.                         | [https://github.com/winapps-org/winapps](https://github.com/winapps-org/winapps)                                   |
+| **WinApps**                                      | Does not migrate, and is **Linux-only** - it**runs** the real Windows apps (Office/Adobe) inside a Windows VM and surfaces them on the Linux desktop over RDP. Parallels Desktop is the Mac equivalent.                                   | [https://github.com/winapps-org/winapps](https://github.com/winapps-org/winapps)                                   |
 | **AlternativeTo**                                | A manual directory for looking up macOS equivalents; no detection, no automation.                                                                                     | [https://alternativeto.net](https://alternativeto.net)                                                             |
-| **Apple Migration Assistant**                    | Copies files, accounts and some settings from a Windows PC to a Mac - but it does **not** install your applications or their Mac equivalents.                                        |
+| **Apple Migration Assistant**                    | Copies files, accounts and some settings from a Windows PC to a Mac - but it does**not** install your applications or their Mac equivalents.                    |                                                                                                                   |
 | **Ubuntu wiki: software-alternatives-migration** | A documented concept / checklist, not a working tool.                                                                                                                 | [https://wiki.ubuntu.com/software-alternatives-migration](https://wiki.ubuntu.com/software-alternatives-migration) |
 
 **What makes this project different**
@@ -72,7 +72,11 @@ There are two phases:
 **Windows side:** open a PowerShell terminal in the `Migrate to macOS/` folder and run:
 
 ```powershell
+# cd to run_project directory migrate_to_linux_or_mac-os\migrate_to_mac-os\
+cd <repo root>\migrate_to_linux_or_mac-os\migrate_to_mac-os\
 .\run_project.ps1
+# Or best practical recommended command for comprehensive migration
+clear && powershell -ExecutionPolicy ByPass -File ".\run_project.ps1" --enc_pwd "Your€ncryptionP@$$" --data-backup
 ```
 
 This runs the three detection scripts in order - **config → software → drivers** -
@@ -207,17 +211,17 @@ Dry-run needs no root, makes no changes and writes nothing - it just prints the 
 
 ### Windows-side (run on Windows, in `Migrate to macOS/`)
 
-| File                                                                                                  | What it is                                                                                                                                                                                                                                               |
-| ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`run_project.ps1`](run_project.ps1)                                                                   | **Windows orchestrator** - runs the three detection scripts (steps 1-3), the generator (step 4), Supported Versions and Architectures (5) and the optional user/app data backup (6). Forwards parameters to the sub-scripts. `--data-backup` auto-confirms step 6; `--data-backup-only` runs only step 6.        |
-| [`submodules/`](submodules/)                                                                           | Detection scripts (A/B/C), the generator`D_compile_and_generate_shell_script.ps1`, the universal `templates/` (`_common.sh` + `*.sh.tmpl`), and `docker_discovery.sh` / `docker_discovery.ps1`.                                              |
-| [`Supported Versions and Architechtures.txt`](Supported%20Versions%20and%20Architechtures.txt)         | Supported macOS releases (Tahoe 26 → Catalina 10.15) ranked newest-first with a "best for" note, the supported CPU architectures (Apple Silicon `arm64` / Intel `x86_64` / Rosetta 2), per-app minimum-macOS constraints, and the per-channel coverage (Cask / formula / Mac App Store / MacPorts). Auto-generated from the manifest. |
-| [`Additional_Manual_macOS_Software_Requirments.csv`](Additional_Manual_macOS_Software_Requirments.csv) | **Hand-curated** list of hardcoded applications included regardless of the Windows CSV - apps absent from the Windows PC and apps whose install logic goes beyond the CSV (Wine installs, multi-package splits like PowerToys, web-app shortcuts). |
-| [`documents/B_applications.json`](documents/B_applications.json)                                       | The manifest: every app's macOS options - the vendor's own Mac build first - plus the `install{}` descriptor (`method`, `caskId`, `masId`, `builtinApp`, `native.brew`/`native.port`, `arch`, `minOS`) the generator reads.                        |
-| [`documents/B_installed_windows_software.csv`](documents/B_installed_windows_software.csv)             | Generated software report (one row per app).                                                                                                                                                                                                             |
-| [`documents/A_installed_windows_drivers.csv`](documents/A_installed_windows_drivers.csv)               | Generated driver report (12 columns, one row per device).                                                                                                                                                                                                |
-| [`documents/C_windows_configs.csv`](documents/C_windows_configs.csv)                                   | Generated settings CSV (produced by`C_detect_windows_settings.ps1`).                                                                                                                                                                                   |
-| [`documents/instructions.txt`](documents/instructions.txt)                                             | Self-contained spec to**reproduce** all artifacts from scratch with fresh data.                                                                                                                                                                    |
+| File                                                                                                    | What it is                                                                                                                                                                                                                                                                                                                                |
+| ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`run_project.ps1`](run_project.ps1)                                                                   | **Windows orchestrator** - runs the three detection scripts (steps 1-3), the generator (step 4), Supported Versions and Architectures (5) and the optional user/app data backup (6). Forwards parameters to the sub-scripts. `--data-backup` auto-confirms step 6; `--data-backup-only` runs only step 6.                       |
+| [`submodules/`](submodules/)                                                                           | Detection scripts (A/B/C), the generator`D_compile_and_generate_shell_script.ps1`, the universal `templates/` (`_common.sh` + `*.sh.tmpl`), and `docker_discovery.sh` / `docker_discovery.ps1`.                                                                                                                               |
+| [`Supported Versions and Architechtures.txt`](<Supported%20Versions%20and%20Architechtures.txt>)       | Supported macOS releases (Tahoe 26 → Catalina 10.15) ranked newest-first with a "best for" note, the supported CPU architectures (Apple Silicon`arm64` / Intel `x86_64` / Rosetta 2), per-app minimum-macOS constraints, and the per-channel coverage (Cask / formula / Mac App Store / MacPorts). Auto-generated from the manifest. |
+| [`Additional_Manual_macOS_Software_Requirments.csv`](Additional_Manual_macOS_Software_Requirments.csv) | **Hand-curated** list of hardcoded applications included regardless of the Windows CSV - apps absent from the Windows PC and apps whose install logic goes beyond the CSV (Wine installs, multi-package splits like PowerToys, web-app shortcuts).                                                                                  |
+| [`documents/B_applications.json`](documents/B_applications.json)                                       | The manifest: every app's macOS options - the vendor's own Mac build first - plus the`install{}` descriptor (`method`, `caskId`, `masId`, `builtinApp`, `native.brew`/`native.port`, `arch`, `minOS`) the generator reads.                                                                                              |
+| [`documents/B_installed_windows_software.csv`](documents/B_installed_windows_software.csv)             | Generated software report (one row per app).                                                                                                                                                                                                                                                                                              |
+| [`documents/A_installed_windows_drivers.csv`](documents/A_installed_windows_drivers.csv)               | Generated driver report (12 columns, one row per device).                                                                                                                                                                                                                                                                                 |
+| [`documents/C_windows_configs.csv`](documents/C_windows_configs.csv)                                   | Generated settings CSV (produced by`C_detect_windows_settings.ps1`).                                                                                                                                                                                                                                                                    |
+| [`documents/instructions.txt`](documents/instructions.txt)                                             | Self-contained spec to**reproduce** all artifacts from scratch with fresh data.                                                                                                                                                                                                                                                     |
 
 ### macOS-side (run on the target machine, in `Execute on macOS!/`)
 
@@ -226,14 +230,14 @@ supported macOS release. They detect the macOS version (`sw_vers`) and CPU
 architecture (`uname -m`, Rosetta-aware) at runtime and install everything
 **Cask-first**, with Homebrew formulae, the Mac App Store and direct `.dmg`/`.pkg`
 downloads as fallbacks. See
-[`Supported Versions and Architechtures.txt`](Supported%20Versions%20and%20Architechtures.txt).
+[`Supported Versions and Architechtures.txt`](<Supported%20Versions%20and%20Architechtures.txt>).
 
 | File                                                | What it is                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Execute on macOS!/execute_all.sh`                | **One-shot orchestrator** - asks **up front** which stages to run (drivers / apps / settings) and whether to *"Migrate docker components?"* (only if a `docker_rebuild.sh` snapshot exists); runs them **unattended**; then handles manual-download apps **last** (type the installer's path in single quotes, or `skip`/`skip all`, with red errors + retry on a bad path). Also supports `--dry-run`. |
-| `Execute on macOS!/install_must_have_software.sh` | Unattended **root installer** - installs every app flagged `Must be included on macOS = yes`, Cask-first with Homebrew-formula / Mac App Store / direct-download fallbacks. Installs Homebrew (and the Xcode Command Line Tools) itself if the Mac does not have it yet. |
-| `Execute on macOS!/install_device_drivers.sh`     | **Root driver stage** - Apple driver/firmware updates, Rosetta 2, a hardware and kernel-extension report, printing/scanning, the vendor drivers macOS does not include, plus a reference list of the Windows devices detected. |
-| `Execute on macOS!/apply_settings.sh`             | **Settings runner** - applies the captured Windows settings (display, lock, keyboard, mouse/trackpad, privacy, power, Wi-Fi, firewall, printers, Dock/login items, launchd jobs) with `defaults`, `pmset`, `systemsetup`, `networksetup`, `socketfilterfw`, `pfctl` and `launchctl`. |
+| `Execute on macOS!/install_must_have_software.sh` | Unattended**root installer** - installs every app flagged `Must be included on macOS = yes`, Cask-first with Homebrew-formula / Mac App Store / direct-download fallbacks. Installs Homebrew (and the Xcode Command Line Tools) itself if the Mac does not have it yet.                                                                                                                                                           |
+| `Execute on macOS!/install_device_drivers.sh`     | **Root driver stage** - Apple driver/firmware updates, Rosetta 2, a hardware and kernel-extension report, printing/scanning, the vendor drivers macOS does not include, plus a reference list of the Windows devices detected.                                                                                                                                                                                                      |
+| `Execute on macOS!/apply_settings.sh`             | **Settings runner** - applies the captured Windows settings (display, lock, keyboard, mouse/trackpad, privacy, power, Wi-Fi, firewall, printers, Dock/login items, launchd jobs) with `defaults`, `pmset`, `systemsetup`, `networksetup`, `socketfilterfw`, `pfctl` and `launchctl`.                                                                                                                                  |
 
 ### run_project.ps1 - Windows orchestrator
 
@@ -254,7 +258,7 @@ This runs in order:
 6. **User & application data backup** *(optional)* - offers (y/n, 15s timeout, default **yes**)
    to run `submodules/E_backup_user&application_data.ps1`, which packs your important user +
    application data into one password-protected archive on your Desktop. See
-   [Step 6 - data backup & restore](#step-6---user--application-data-backup--restore).
+   [Step 6 - data backup &amp; restore](#step-6---user--application-data-backup--restore).
 
 Steps 1-3 need no administrator rights. If a step fails the pipeline stops unless
 `-ContinueOnError` is passed. Use `-SkipDetection` to regenerate the scripts from
@@ -265,22 +269,22 @@ the data backup, non-interactively, in the default location.
 
 #### Options
 
-| Parameter                       | Default    | Purpose                                                                     |
-| ------------------------------- | ---------- | --------------------------------------------------------------------------- |
-| `-OutputDir <path>`           | documents/ | Directory where the three CSV files are written.                            |
-| `-ContinueOnError`            | off        | Skip failed steps instead of stopping the pipeline.                         |
-| `-SkipDetection`              | off        | Skip steps 1-3; regenerate the installer scripts from existing CSVs.        |
-| `-SkipGenerator`              | off        | Skip step 4; only run detection.                                            |
-| `-DataBackup` / `--data-backup` | off      | Run the **full** pipeline, but auto-confirm the step-6 backup: the "Back up now?" question is answered **yes with no timeout wait**, and E_'s low-disk-space confirmation is auto-answered yes too. Every other prompt (e.g. the password) is normal. |
-| `-DataBackupOnly` / `--data-backup-only` | off | Skip detection + generation; **only** create the data backup (step 6) in the default location (Desktop) with no prompts at all - not even the low-space one. Encrypts if `-EncPwd`/`--enc_pwd` is given, else unencrypted. |
-| `-ArchiveFormat` / `--archive-format` | `zip` | Backup archive format: `zip` (AES-256 zip via 7-Zip, default), `7z` (AES-256 7z with encrypted headers), or `enctar` (tar+gzip+OpenSSL). The required tool is auto-installed when needed (Windows: winget → Chocolatey → standalone 7-Zip download; macOS: Homebrew's `sevenzip`/`p7zip`). An **internet connection is required only if a tool must be installed**. If the tool for the chosen format truly can't be obtained automatically, the script says so **at the very start and exits** (suggesting: install it, pick another format, or drop the password so no encryption/tool is needed - an unencrypted `zip` needs no external tool at all). |
-| `-EncPwd <secret>` / `--enc_pwd` | (prompt) | Transfer password used to encrypt exported secrets **and** the data backup. When given, the interactive password prompt is skipped. |
-| `-MustIncludeThreshold <int>` | 70         | Forwarded to B script - minimum competency for "Must be included on macOS". |
-| `-IncludeSystemComponents`    | off        | Forwarded to B script - keep redistributables / runtimes / drivers.         |
-| `-IncludeStoreApps <bool>`    | $true      | Forwarded to B script - include filtered Store/UWP apps.                    |
-| `-Online`                     | off        | Forwarded to B script - query repology.org live for unknown apps.           |
-| `-IncludeVirtualDevices`      | off        | Forwarded to A script - keep ROOT\ and SW\ virtual devices.                 |
-| `-IncludeMicrosoftInbox`      | off        | Forwarded to A script - keep generic Microsoft in-box drivers.              |
+| Parameter                                    | Default    | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| -------------------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-OutputDir <path>`                        | documents/ | Directory where the three CSV files are written.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `-ContinueOnError`                         | off        | Skip failed steps instead of stopping the pipeline.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `-SkipDetection`                           | off        | Skip steps 1-3; regenerate the installer scripts from existing CSVs.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `-SkipGenerator`                           | off        | Skip step 4; only run detection.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `-DataBackup` / `--data-backup`          | off        | Run the**full** pipeline, but auto-confirm the step-6 backup: the "Back up now?" question is answered **yes with no timeout wait**, and E_'s low-disk-space confirmation is auto-answered yes too. Every other prompt (e.g. the password) is normal.                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `-DataBackupOnly` / `--data-backup-only` | off        | Skip detection + generation;**only** create the data backup (step 6) in the default location (Desktop) with no prompts at all - not even the low-space one. Encrypts if `-EncPwd`/`--enc_pwd` is given, else unencrypted.                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `-ArchiveFormat` / `--archive-format`    | `zip`    | Backup archive format:`zip` (AES-256 zip via 7-Zip, default), `7z` (AES-256 7z with encrypted headers), or `enctar` (tar+gzip+OpenSSL). The required tool is auto-installed when needed (Windows: winget → Chocolatey → standalone 7-Zip download; macOS: Homebrew's `sevenzip`/`p7zip`). An **internet connection is required only if a tool must be installed**. If the tool for the chosen format truly can't be obtained automatically, the script says so **at the very start and exits** (suggesting: install it, pick another format, or drop the password so no encryption/tool is needed - an unencrypted `zip` needs no external tool at all). |
+| `-EncPwd <secret>` / `--enc_pwd`         | (prompt)   | Transfer password used to encrypt exported secrets**and** the data backup. When given, the interactive password prompt is skipped.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `-MustIncludeThreshold <int>`              | 70         | Forwarded to B script - minimum competency for "Must be included on macOS".                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `-IncludeSystemComponents`                 | off        | Forwarded to B script - keep redistributables / runtimes / drivers.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `-IncludeStoreApps <bool>`                 | $true      | Forwarded to B script - include filtered Store/UWP apps.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `-Online`                                  | off        | Forwarded to B script - query repology.org live for unknown apps.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `-IncludeVirtualDevices`                   | off        | Forwarded to A script - keep ROOT\ and SW\ virtual devices.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `-IncludeMicrosoftInbox`                   | off        | Forwarded to A script - keep generic Microsoft in-box drivers.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 ### Directory layout
 
@@ -323,7 +327,7 @@ Migrate to macOS/
 
 The generated scripts in `Execute on macOS!/` are **universal**: they detect the
 macOS release and CPU architecture at runtime, so the same set runs on every version
-listed in [`Supported Versions and Architechtures.txt`](Supported%20Versions%20and%20Architechtures.txt) -
+listed in [`Supported Versions and Architechtures.txt`](<Supported%20Versions%20and%20Architechtures.txt>) -
 no per-version folders needed.
 
 ---
@@ -352,11 +356,11 @@ application data** across. It is data-driven by
   - **`7z`** - AES-256 7z with **encrypted file names** (headers), also single-pass via 7-Zip.
   - **`enctar`** - `tar` + `gzip` (medium) + OpenSSL AES-256-CBC/PBKDF2 (streamed, so a 32-bit
     OpenSSL works on multi-GB data too).
-  7-Zip (Windows) / p7zip (macOS) is **auto-installed when needed**. No password → an
-  unencrypted archive (your choice). Live progress bars, size and free-space pre-checks (with a
-  confirmation if it looks tight or exceeds 50 GB), and a neat `<source> --> <macOS target>`
-  table are shown. Temp leftovers from this and any previous/aborted run are auto-cleaned; only
-  the final archive + a `.log` remain on the Desktop.
+    7-Zip (Windows) / p7zip (macOS) is **auto-installed when needed**. No password → an
+    unencrypted archive (your choice). Live progress bars, size and free-space pre-checks (with a
+    confirmation if it looks tight or exceeds 50 GB), and a neat `<source> --> <macOS target>`
+    table are shown. Temp leftovers from this and any previous/aborted run are auto-cleaned; only
+    the final archive + a `.log` remain on the Desktop.
 
 **On macOS** (`submodules/restore_user_and_application_data.sh`, called by `execute_all.sh`
 after settings, self-gating with an archive-path prompt / `s` to skip):
@@ -400,20 +404,20 @@ This runs config → software → drivers in sequence. No administrator rights r
 
 ### The CSV columns (software inventory)
 
-| Column                                        | Source  | Meaning                                                                                                                           |
-| --------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| **Name**                                | from PC | Human-friendly product name.                                                                                                      |
-| **Version**                             | from PC | Installed version.                                                                                                                |
-| **Publisher**                           | from PC | Vendor.                                                                                                                           |
-| **Source**                              | from PC | `Win32` (registry) or `Store` (UWP/Appx).                                                                                     |
-| **macOS Availability**                  | curated | Flags: Available on macOS, Native Alternative, Available as WebApp, etc.                                                          |
-| **Best macOS Alternative**              | curated | The best macOS option. Free alt appended if paid.                                                                                 |
-| **Alternative Competency**              | curated | Rough % vs Windows (≥100 = macOS is better).                                                                                     |
-| **Pricing model**                       | curated | Free (FOSS), Free, Freemium, Shareware, or Paid.                                                                                  |
-| **Must be included on macOS**           | derived | `yes` / `no` - computed from competency threshold.                                                                            |
-| **Can be synched to macOS alternative** | curated | Whether the app's data auto-syncs into the macOS alternative by signing in (cloud):`Yes` or `No, manual transfer`.            |
+| Column                                        | Source  | Meaning                                                                                                                                                                                                                          |
+| --------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Name**                                | from PC | Human-friendly product name.                                                                                                                                                                                                     |
+| **Version**                             | from PC | Installed version.                                                                                                                                                                                                               |
+| **Publisher**                           | from PC | Vendor.                                                                                                                                                                                                                          |
+| **Source**                              | from PC | `Win32` (registry) or `Store` (UWP/Appx).                                                                                                                                                                                    |
+| **macOS Availability**                  | curated | Flags: Available on macOS, Native Alternative, Available as WebApp, etc.                                                                                                                                                         |
+| **Best macOS Alternative**              | curated | The best macOS option. Free alt appended if paid.                                                                                                                                                                                |
+| **Alternative Competency**              | curated | Rough % vs Windows (≥100 = macOS is better).                                                                                                                                                                                    |
+| **Pricing model**                       | curated | Free (FOSS), Free, Freemium, Shareware, or Paid.                                                                                                                                                                                 |
+| **Must be included on macOS**           | derived | `yes` / `no` - computed from competency threshold.                                                                                                                                                                           |
+| **Can be synched to macOS alternative** | curated | Whether the app's data auto-syncs into the macOS alternative by signing in (cloud):`Yes` or `No, manual transfer`.                                                                                                           |
 | **macOS Alternative Type**              | curated | How the alternative is delivered - Native (Homebrew Cask), Native (Homebrew formula), Native (Mac App Store), Native (built into macOS), WebApp, Docker container, Wine/CrossOver; this drives the generated installer's method. |
-| **Download URL**                        | curated | The official download or web-app URL for the chosen macOS alternative.                                                            |
+| **Download URL**                        | curated | The official download or web-app URL for the chosen macOS alternative.                                                                                                                                                           |
 
 ### The CSV columns (settings migration - `C_windows_configs.csv`)
 
@@ -425,7 +429,7 @@ This runs config → software → drivers in sequence. No administrator rights r
 | **macOSCommand** | from PC | Input language tags for keyboard mapping (optional).                                                                                                                                                                                                                                                                                                                          |
 | **Notes**        | from PC | Human-readable note about the macOS mapping.                                                                                                                                                                                                                                                                                                                                  |
 | **Phase**        | from PC | `pre` (applied before apps install) or `post` (after - needs the apps/desktop to exist).                                                                                                                                                                                                                                                                                  |
-| **Scope**        | from PC | `System` (machine-wide) or `User` (GNOME keys, written as system-wide dconf defaults so they reach every user).                                                                                                                                                                                                                                                           |
+| **Scope**        | from PC | `System` (machine-wide: `systemsetup`, `pmset`, `networksetup`, `pfctl`, `lpadmin`, `/etc/hosts`) or `User` (per-user `defaults` domains, written AS the logged-in user via `launchctl asuser` so they land in the real GUI session).                                                                                                                                                                                                                                                           |
 
 ### The CSV columns (driver inventory - `A_installed_windows_drivers.csv`)
 
@@ -433,19 +437,19 @@ Generate with `.\A_detect_installed_drivers.ps1` (no admin rights). Switches:
 `-IncludeVirtualDevices` keeps `ROOT\`/`SW\`/`SWD\` software devices;
 `-IncludeMicrosoftInbox` keeps generic Microsoft in-box drivers that need no macOS action.
 
-| Column                          | Source  | Meaning                                                                                                                                                             |
-| ------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Device Name**           | from PC | The PnP device's friendly name.                                                                                                                                     |
-| **Device Class**          | from PC | PnP class (`Display`, `Net`, `Bluetooth`, `Printer`, …).                                                                                                   |
-| **Manufacturer**          | from PC | Device manufacturer.                                                                                                                                                |
-| **Driver Version**        | from PC | Installed driver version.                                                                                                                                           |
-| **Driver Date**           | from PC | Driver date (`yyyy-MM-dd`).                                                                                                                                       |
-| **Driver Provider**       | from PC | Who signs/provides the driver (NVIDIA, Microsoft, …).                                                                                                              |
-| **Hardware ID**           | from PC | Bus ID (`PCI\VEN_10DE&DEV_…` / `USB\VID_…&PID_…`) - the reliable key to the silicon.                                                                         |
-| **macOS Driver Status**   | curated | Flags: In-OS, Generic Driver, Vendor Driver, Not Supported, Not Applicable, Needs Review.                                                                           |
-| **macOS Driver / Module** | curated | The macOS driver family or package (`IO80211Family`, `AppleHDA`, `IOUSBHostFamily`, AirPrint/CUPS, `ftdi-vcp-driver`, …).                                |
-| **Vendor Download**       | curated | Manufacturer's macOS driver page, filled only when a vendor download is needed.                                                                                     |
-| **Notes**                 | curated | Short note about the macOS situation.                                                                                                                               |
+| Column                          | Source  | Meaning                                                                                                                                                                                                      |
+| ------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Device Name**           | from PC | The PnP device's friendly name.                                                                                                                                                                              |
+| **Device Class**          | from PC | PnP class (`Display`, `Net`, `Bluetooth`, `Printer`, …).                                                                                                                                            |
+| **Manufacturer**          | from PC | Device manufacturer.                                                                                                                                                                                         |
+| **Driver Version**        | from PC | Installed driver version.                                                                                                                                                                                    |
+| **Driver Date**           | from PC | Driver date (`yyyy-MM-dd`).                                                                                                                                                                                |
+| **Driver Provider**       | from PC | Who signs/provides the driver (NVIDIA, Microsoft, …).                                                                                                                                                       |
+| **Hardware ID**           | from PC | Bus ID (`PCI\VEN_10DE&DEV_…` / `USB\VID_…&PID_…`) - the reliable key to the silicon.                                                                                                                  |
+| **macOS Driver Status**   | curated | Flags: In-OS, Generic Driver, Vendor Driver, Not Supported, Not Applicable, Needs Review.                                                                                                                    |
+| **macOS Driver / Module** | curated | The macOS driver family or package (`IO80211Family`, `AppleHDA`, `IOUSBHostFamily`, AirPrint/CUPS, `ftdi-vcp-driver`, …).                                                                           |
+| **Vendor Download**       | curated | Manufacturer's macOS driver page, filled only when a vendor download is needed.                                                                                                                              |
+| **Notes**                 | curated | Short note about the macOS situation.                                                                                                                                                                        |
 | **Must install on macOS** | derived | `yes` only when a vendor kext / DriverKit system extension / vendor installer is genuinely required; `no` when macOS already drives it, or when the device is PC-only and has no Mac counterpart at all. |
 
 ---
@@ -457,24 +461,24 @@ It documents every application that the macOS installer installs through **hardc
 logic** rather than through a simple "install the alternative listed in the CSV" path.
 These fall into three groups:
 
-| Group                                                  | Examples                                                                                              | Why hardcoded                                                                                                                                                                      |
-| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Apps absent from the Windows PC**              | Telegram, Terminator, WindTerm, WinDirStat                                                            | These are useful additions that your Windows machine may not have installed. They're always included.                                                                              |
-| **Apps needing custom install logic**            | Notepad++ (Wine + native), PowerToys (10 packages), WinRAR (Wine + native), IDM (Wine + native)       | These cannot be expressed as a single`apt install` command. They require Wine, multi-package splits, or special post-install steps.                                              |
+| Group                                                  | Examples                                                                                             | Why hardcoded                                                                                                                                                                                         |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Apps absent from the Windows PC**              | Telegram, Terminator, WindTerm, WinDirStat                                                           | These are useful additions that your Windows machine may not have installed. They're always included.                                                                                                 |
+| **Apps needing custom install logic**            | Notepad++ (Wine + native), PowerToys (10 packages), WinRAR (Wine + native), IDM (Wine + native)      | These cannot be expressed as a single`apt install` command. They require Wine, multi-package splits, or special post-install steps.                                                                 |
 | **Apps whose alternative IS the hardcoded path** | Advanced IP Scanner → Angry IP Scanner, Grammarly → LanguageTool, PowerToys → Rectangle + Raycast | The installer installs the ALTERNATIVE itself (used when the Windows app has no Mac build), and this alternative needs its own custom install logic (multi-package splits, Docker, manual downloads). |
 
-| Column                                         | Source  | Meaning                                                                                                                |
-| ---------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------- |
-| **Name**                                 | curated | Human-readable name of the original Windows app or hardcoded inclusion.                                                |
-| **Category**                             | curated | Functional category (PDF, Network, Editor, Utilities, etc.).                                                           |
-| **Windows App?**                         | curated | Whether this app exists/doesn't on Windows, and whether it's a hardcoded inclusion.                                    |
-| **In B_installed_windows_software.csv?** | curated | Whether a corresponding row appears in the machine-generated CSV.                                                      |
-| **macOS Package(s)**                     | curated | The exact macOS package(s) installed - a Homebrew Cask, a Homebrew formula, a Mac App Store id, a built-in Apple app, Docker, or Wine.  |
-| **Source / URL**                         | curated | The official source or download URL for the macOS package.                                                             |
-| **Notes**                                | curated | Why this is hardcoded, what special logic the installer applies.                                                       |
-| **Can be synched to macOS alternative**  | curated | Whether the app's data auto-syncs into the macOS alternative by signing in (cloud):`Yes` or `No, manual transfer`. |
-| **macOS Alternative Type**               | curated | How the alternative is delivered (Native (Homebrew Cask/formula/Mac App Store/built into macOS), WebApp, Docker, Wine). |
-| **Download URL**                         | curated | The official download or web-app URL for the macOS package.                                                            |
+| Column                                         | Source  | Meaning                                                                                                                                |
+| ---------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **Name**                                 | curated | Human-readable name of the original Windows app or hardcoded inclusion.                                                                |
+| **Category**                             | curated | Functional category (PDF, Network, Editor, Utilities, etc.).                                                                           |
+| **Windows App?**                         | curated | Whether this app exists/doesn't on Windows, and whether it's a hardcoded inclusion.                                                    |
+| **In B_installed_windows_software.csv?** | curated | Whether a corresponding row appears in the machine-generated CSV.                                                                      |
+| **macOS Package(s)**                     | curated | The exact macOS package(s) installed - a Homebrew Cask, a Homebrew formula, a Mac App Store id, a built-in Apple app, Docker, or Wine. |
+| **Source / URL**                         | curated | The official source or download URL for the macOS package.                                                                             |
+| **Notes**                                | curated | Why this is hardcoded, what special logic the installer applies.                                                                       |
+| **Can be synched to macOS alternative**  | curated | Whether the app's data auto-syncs into the macOS alternative by signing in (cloud):`Yes` or `No, manual transfer`.                 |
+| **macOS Alternative Type**               | curated | How the alternative is delivered (Native (Homebrew Cask/formula/Mac App Store/built into macOS), WebApp, Docker, Wine).                |
+| **Download URL**                         | curated | The official download or web-app URL for the macOS package.                                                                            |
 
 ---
 
@@ -679,10 +683,11 @@ cd "Execute on macOS!"
 sudo ./apply_settings.sh
 ```
 
-Runs as root. Prints structured output per setting, and **applies every setting to
-all users** (GNOME keys via system-wide dconf defaults; the rest are system-wide by
-nature). A reboot / re-login is recommended afterwards (display scaling, lock-screen
-timeout, logind changes).
+Runs as root. Prints structured output per setting, and **applies every setting in the
+right scope**: per-user preferences are written with `defaults` as the logged-in user
+(through `launchctl asuser`), while `systemsetup`, `pmset`, `networksetup`, `pfctl`,
+`socketfilterfw` and `lpadmin` are machine-wide. Log out and back in afterwards to pick
+up the keyboard input sources and the system language.
 
 ---
 
@@ -781,82 +786,93 @@ eyes open.
 
 ### Advantages of macOS over Windows
 
-- **Free and open source** - no licence fees, no activation, source is auditable.
-- **No forced telemetry or ads** - no Recall, no Start-menu ads, no account
-  requirement; privacy is the default.
-- **Lighter and faster** - runs well on old/low-RAM hardware; less background bloat.
-- **Updates on your terms** - no surprise reboots; you choose when to update, and
-  updates rarely break the machine.
-- **One package manager for everything** - Homebrew installs and updates all of it
-  with a single command instead of hunting installers across the web.
-- **Stability and uptime** - servers run for years without reboots; far less
-  "reinstall to fix it."
-- **Powerful, scriptable shell** - bash/zsh + coreutils make automation trivial.
-- **A certified UNIX with a real GUI** - zsh, coreutils, ssh, Python and the whole
-  developer toolchain are there natively, with a commercially supported desktop on top
-  (this is the trade Linux cannot offer).
-- **Security by default** - System Integrity Protection, Gatekeeper, XProtect, app
-  sandboxing, FileVault and the Secure Enclave are all on out of the box.
+- **No forced telemetry or ads** - no Recall, no Start-menu ads, no lock-screen
+  "suggestions"; diagnostics are opt-in and the toolkit opts you out anyway.
+- **Hardware and software designed together** - Apple Silicon's performance-per-watt
+  (silent, all-day battery), instant wake, Retina colour management and a display
+  pipeline that is calibrated out of the box.
+- **A certified UNIX with a real GUI** - zsh, `ssh`, Python, clang and the whole
+  developer toolchain are native, under a commercially supported desktop. This is the
+  trade neither Windows nor Linux offers.
 - **First-class commercial software** - Microsoft Office, Adobe Creative Cloud,
-  AutoCAD, DaVinci Resolve, Logic Pro and Final Cut Pro all ship native Mac builds,
-  which is exactly why this edition installs the real application instead of a
-  substitute wherever one exists.
-- **Hardware/software integration** - Apple Silicon's performance-per-watt, Retina
-  colour management, Continuity/Handoff/AirDrop with an iPhone or iPad, and Time
-  Machine backups that just work.
+  AutoCAD, DaVinci Resolve, Logic Pro, Final Cut Pro and Parallels all ship real Mac
+  builds. That is exactly why this edition installs **the actual application** instead
+  of a substitute wherever one exists - the single biggest difference from the Linux
+  edition of this toolkit.
+- **One package manager for everything** - Homebrew installs and updates casks,
+  formulae and App Store apps with a single command instead of hunting installers.
+- **Security by default** - System Integrity Protection, Gatekeeper, XProtect, app
+  sandboxing, notarisation, FileVault and the Secure Enclave are all on out of the box,
+  with no third-party antivirus to buy.
+- **Updates that don't fight you** - no surprise reboots mid-work; security fixes
+  arrive as small Rapid Security Responses.
+- **Continuity with your other devices** - AirDrop, Handoff, Universal Clipboard,
+  Sidecar, iPhone Mirroring, unlock-with-Apple-Watch, and Messages/FaceTime on the
+  desktop.
+- **Backups that just work** - Time Machine gives versioned, restorable backups to any
+  disk with no configuration, and Migration Assistant can import directly from a
+  Windows PC.
+- **Long support life and resale value** - Macs get roughly 7 years of macOS updates
+  and hold their value far better than equivalent PCs.
 
 ### Advantages of Windows over macOS (the honest list)
 
-- **Commercial software** - Adobe Creative Cloud, Microsoft Office (full), many CAD,
-  finance and engineering suites are Windows-only.
-- **Gaming** - the largest native catalogue; anti-cheat in many online games blocks
-  Wine/CrossOver and Apple's Game Porting Toolkit; some titles never work.
-- **Hardware/peripheral support** - PC fingerprint readers, NVIDIA GPUs, internal
-  expansion cards and exotic gadgets have no macOS driver at all; upgrades and repairs
-  on a Mac are limited.
-- **Price and configurability** - you cannot build your own Mac, and RAM/SSD are not
-  user-upgradable on Apple Silicon.
-- **Pro device ecosystems** - many music/recording, broadcast and lab tools assume
-  Windows (or macOS).
+- **Gaming** - by far the largest native catalogue; anti-cheat in many online games
+  blocks Wine/CrossOver and Apple's Game Porting Toolkit, and some titles never work.
+- **Hardware and peripheral support** - PC fingerprint readers, NVIDIA GPUs, internal
+  expansion cards and a lot of exotic gear have no macOS driver at all.
+- **Price and configurability** - you cannot build your own Mac; RAM and SSD are
+  soldered on Apple Silicon, so the machine you buy is the machine you keep.
+- **Repairability and upgrades** - limited and expensive compared with a desktop PC.
+- **Vertical/legacy software** - many CAD, finance, engineering, medical and
+  government applications are Windows-only, and some depend on ActiveX or a
+  Windows-only driver.
+- **Enterprise management** - Active Directory / Group Policy / Intune integration is
+  deeper on Windows (macOS uses MDM instead).
 - **Familiarity & support** - most workplaces, classrooms and help desks assume
-  Windows; more "click here" tutorials exist.
-- **Plug-and-play GPU/Optimus** - laptop GPU switching and vendor control panels are
-  smoother out of the box.
-- **Enterprise management** - Active Directory / Group Policy / Intune integration.
+  Windows; far more "click here" tutorials exist.
+- **Boot Camp is gone** - an Apple Silicon Mac cannot boot Windows at all; a VM is the
+  only route.
 
 ### For computer scientists & developers
 
-- **The platform you deploy to** - servers, containers and the cloud are macOS; dev
-  on the same OS removes "works on my machine" gaps.
-- **First-class toolchains** - gcc/clang, gdb/valgrind/perf/strace, make/cmake, and
-  package-manager-installed headers without hunting for SDKs.
-- **Native containers** - Docker/Podman run on the kernel directly (no VM tax),
-  faster builds and lower memory than Docker Desktop on Windows.
-- **WSL not needed** - you already have the real thing; no translation layer, no path
-  or line-ending friction.
-- **Reproducible environments** - apt/dnf + venv/conda + Nix/containers make setups
-  scriptable and shareable.
-- **Everything is a file / great IPC** - pipes, sockets, `/proc`, `/sys`,
-  systemd - ideal for understanding and instrumenting systems.
-- **SSH/remote-first** - effortless headless servers, tmux, remote dev over SSH.
-- **Research & HPC** - the default for clusters, CUDA/ROCm, scientific stacks
-  (NumPy/PyTorch/TensorFlow) and schedulers (Slurm).
+- **A real UNIX under the desktop** - the same shell, `ssh`, cron/launchd, permissions
+  model and POSIX APIs as the servers you deploy to, with no translation layer and no
+  path/line-ending friction (this is what WSL is trying to imitate).
+- **First-class toolchains** - clang/LLVM and lldb ship with Xcode; Homebrew supplies
+  gcc, gdb, make/cmake/ninja, and language runtimes without hunting for SDKs.
+- **The only place you can build for Apple platforms** - Xcode, iOS/iPadOS/watchOS
+  simulators and App Store signing exist on macOS and nowhere else.
+- **Containers and VMs** - Docker Desktop or colima run Linux containers in a
+  lightweight VM (a small tax versus native Linux, but transparent in daily use), and
+  UTM/Parallels/VMware Fusion run full Linux or Windows-on-ARM VMs.
+- **Reproducible environments** - Homebrew Bundle (`Brewfile`) + venv/conda +
+  Nix/containers make setups scriptable and shareable.
+- **Serious observability** - Instruments, `dtrace`/`dtruss`, `fs_usage`, `sample`,
+  `powermetrics` and Activity Monitor expose CPU, GPU, energy and I/O in detail.
+- **On-device machine learning** - the Neural Engine and unified memory make Core ML,
+  MLX and PyTorch's `mps` backend fast on a laptop; note that **CUDA does not exist on
+  macOS**, so NVIDIA-only workloads still need a Linux box or the cloud.
+- **SSH/remote-first** - a first-class terminal (Terminal or iTerm2), tmux, and remote
+  development over SSH from a machine with all-day battery.
 
 ### For getting the most out of your hardware
 
-- **Lower idle overhead** - less RAM/CPU spent on the OS, more left for your work.
-- **Fine-grained control** - CPU governors (`cpupower`/TLP), I/O schedulers, kernel
-  parameters, `nice`/`ionice`, cgroups to cap or prioritise processes.
-- **Real observability** - `htop`, `btop`, `perf`, `iotop`, `nvtop`, `powertop`,
-  `sensors` expose exactly what the hardware is doing.
-- **Tunable graphics & thermals** - MangoHud/GOverlay, CoolerControl, custom fan
-  curves, undervolting.
-- **No bloatware/background services** - install only what you need; nothing phones
-  home.
-- **Lightweight desktops** - Xfce/LXQt/i3/Sway sip resources on modest machines.
-- **Filesystems for power users** - Btrfs/ZFS snapshots, compression, RAID.
-- **Old hardware stays useful** - no hard CPU/TPM cut-offs; revive machines Windows
-  has abandoned.
+- **Performance-per-watt** - Apple Silicon sustains full performance on battery, where
+  most PC laptops throttle the moment they are unplugged.
+- **Unified memory** - CPU, GPU and Neural Engine share one pool, so large models and
+  big timelines fit without copying between GPU and system RAM.
+- **Thermals and noise** - many Macs are fanless or near-silent; `macs-fan-control`
+  and `Stats` expose temperatures and let you set custom curves.
+- **Energy tooling** - `powermetrics`, `pmset` and the Battery pane show exactly what
+  is draining the machine.
+- **Displays and colour** - Retina scaling, reference colour modes and per-display
+  profiles; `BetterDisplay` adds custom scaled resolutions for external monitors.
+- **Fast, encrypted storage** - very high internal SSD throughput with FileVault
+  always on, and APFS snapshots that make Time Machine cheap.
+- **Thunderbolt / USB4** - Apple co-invented it, so docks, eGPUs (Intel Macs) and
+  high-speed external storage work with no driver.
+- **No bloatware** - a clean install ships nothing that phones home to a third party.
 
 ---
 
@@ -867,18 +883,18 @@ how much native performance and integration you need. Roughly: **PWA < Wine/Cros
 < container < VM < cloud/second machine**, trading convenience for fidelity. (Note that
 Boot Camp does **not** exist on Apple Silicon - a VM is the dual-boot replacement.)
 
-| Strategy                                                                     | Best for                                                               | Performance                    | Ease of use | Pros                                                              | Cons                                                                   |
-| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------ | ----------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| **Web app / PWA** (browser app-mode, the installer's `--webapp`)     | Apps with a good web version (Teams, WhatsApp, Office.com, Excalidraw) | Good (it's the website)        | ★★★★★  | No install, auto-updates, cross-platform, zero maintenance        | Needs internet; limited OS integration & offline/local-file access     |
-| **Wine** (raw)                                                         | Small, well-behaved Windows apps                                       | Near-native CPU; GPU varies    | ★★        | No VM overhead; runs many`.exe` directly                        | Fiddly per-app tweaks; many apps break; no official support            |
-| **CrossOver** (commercial Wine)                                        | Windows apps & older games, managed bottles                            | Near-native CPU                | ★★★★    | Paid but supported; its own 32-bit layer; Game Porting Toolkit backend | Still Wine underneath - not everything works; x86-only (Rosetta)   |
-| **Game Porting Toolkit / Whisky**                                      | Windows games on Apple Silicon                                         | Varies (Metal translation)     | ★★★      | Apple's own D3D→Metal layer; runs some AAA titles                 | Developer-oriented; anti-cheat titles blocked; patchy compatibility  |
-| **Cloud gaming / remote** (GeForce NOW, Xbox Cloud, Parsec, Moonlight) | AAA games, occasional Windows access                                   | Depends on network/latency     | ★★★★    | No local GPU needed; runs anything server-side                    | Subscription/another PC; latency; needs strong connection              |
-| **Type-2 VM** (Parallels Desktop, VMware Fusion, UTM)                  | Office/CAD/dev tools needing real Windows                              | Good for desktop apps; weak 3D | ★★★★    | Full real Windows (ARM edition on Apple Silicon), snapshots, Coherence puts apps in the Dock | Heavy RAM/disk; weak 3D; licence needed; x86-only apps run emulated |
-| **GPU-passthrough VM**                                                 | GPU/3D apps at near-native speed                                       | n/a on Apple Silicon           | -           | Possible only on older Intel Mac Pro hardware                     | Apple Silicon has no PCIe GPU passthrough; not an option on modern Macs |
-| **Boot Camp** (Intel Macs only)                                        | Anything that must be 100% native (anti-cheat, pro hardware)           | Native (100%)                  | ★★        | Full performance & compatibility                                  | **Intel Macs only** - Apple Silicon cannot boot Windows at all         |
-| **Container** (Docker Desktop / colima)                                | Server/CLI/dev software (databases, SQL Server, LanguageTool)          | Near-native (runs in a light VM)| ★★★      | Lightweight, reproducible, no GUI baggage                         | Linux containers only (not Windows GUI apps); amd64 images need Rosetta emulation |
-| **Second machine / RDP**                                               | Rare, must-have Windows-only workloads                                 | Native on the other box        | ★★★      | Keep one Windows box; access remotely (RDP/Parsec)                | Cost of a second machine; remote-only                                  |
+| Strategy                                                                     | Best for                                                               | Performance                      | Ease of use | Pros                                                                                         | Cons                                                                              |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------- | -------------------------------- | ----------- | -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| **Web app / PWA** (browser app-mode, the installer's `--webapp`)     | Apps with a good web version (Teams, WhatsApp, Office.com, Excalidraw) | Good (it's the website)          | ★★★★★  | No install, auto-updates, cross-platform, zero maintenance                                   | Needs internet; limited OS integration & offline/local-file access                |
+| **Wine** (raw)                                                         | Small, well-behaved Windows apps                                       | Near-native CPU; GPU varies      | ★★        | No VM overhead; runs many`.exe` directly                                                   | Fiddly per-app tweaks; many apps break; no official support                       |
+| **CrossOver** (commercial Wine)                                        | Windows apps & older games, managed bottles                            | Near-native CPU                  | ★★★★    | Paid but supported; its own 32-bit layer; Game Porting Toolkit backend                       | Still Wine underneath - not everything works; x86-only (Rosetta)                  |
+| **Game Porting Toolkit / Whisky**                                      | Windows games on Apple Silicon                                         | Varies (Metal translation)       | ★★★      | Apple's own D3D→Metal layer; runs some AAA titles                                           | Developer-oriented; anti-cheat titles blocked; patchy compatibility               |
+| **Cloud gaming / remote** (GeForce NOW, Xbox Cloud, Parsec, Moonlight) | AAA games, occasional Windows access                                   | Depends on network/latency       | ★★★★    | No local GPU needed; runs anything server-side                                               | Subscription/another PC; latency; needs strong connection                         |
+| **Type-2 VM** (Parallels Desktop, VMware Fusion, UTM)                  | Office/CAD/dev tools needing real Windows                              | Good for desktop apps; weak 3D   | ★★★★    | Full real Windows (ARM edition on Apple Silicon), snapshots, Coherence puts apps in the Dock | Heavy RAM/disk; weak 3D; licence needed; x86-only apps run emulated               |
+| **GPU-passthrough VM**                                                 | GPU/3D apps at near-native speed                                       | n/a on Apple Silicon             | -           | Possible only on older Intel Mac Pro hardware                                                | Apple Silicon has no PCIe GPU passthrough; not an option on modern Macs           |
+| **Boot Camp** (Intel Macs only)                                        | Anything that must be 100% native (anti-cheat, pro hardware)           | Native (100%)                    | ★★        | Full performance & compatibility                                                             | **Intel Macs only** - Apple Silicon cannot boot Windows at all              |
+| **Container** (Docker Desktop / colima)                                | Server/CLI/dev software (databases, SQL Server, LanguageTool)          | Near-native (runs in a light VM) | ★★★      | Lightweight, reproducible, no GUI baggage                                                    | Linux containers only (not Windows GUI apps); amd64 images need Rosetta emulation |
+| **Second machine / RDP**                                               | Rare, must-have Windows-only workloads                                 | Native on the other box          | ★★★      | Keep one Windows box; access remotely (RDP/Parsec)                                           | Cost of a second machine; remote-only                                             |
 
 Rule of thumb on a Mac: try **the vendor's own Mac build → a native alternative →
 PWA → Wine/CrossOver → container → VM (Parallels/UTM) → cloud or a second machine**,

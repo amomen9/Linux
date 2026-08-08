@@ -313,6 +313,18 @@ $alias = [ordered]@{
     'lenovo go central'        = 'Lenovo Vantage / Lenovo Vantage Service'
     'nordupdater'              = 'NordVPN'
     'windows software development kit' = 'Windows Software Development Kit'
+    # The registry DisplayName carries the vendor prefix, which the base-name
+    # normaliser keeps ("oracle virtualbox" != "virtualbox"), so bridge it here.
+    'oracle virtualbox'        = 'VirtualBox'
+    # Intel/Broadcom ship this driver bundle with no space after "Bluetooth".
+    'bluetoothfor windows'     = 'Bluetooth for Windows'
+    'bluetooth for windows'    = 'Bluetooth for Windows'
+    'remote desktop manager'   = 'Remote Desktop Manager'
+    'tigervnc'                 = 'TigerVNC'
+    'vnc server'               = 'VNC Server'
+    'ticktick'                 = 'TickTick'
+    'blazesql'                 = 'BlazeSQL'
+    'microsoft mpi'            = 'Microsoft MPI'
 }
 $aliasKeys = @($alias.Keys | Sort-Object -Property Length -Descending)
 # Manifest base names, longest first (most specific wins).
